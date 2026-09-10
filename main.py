@@ -13601,12 +13601,21 @@ elif aktif == "kargolar":
                     if st.button("📤 Bu Dosyadaki Kayıtları Yükle", key="kargolar_excel_yukle_btn", type="primary"):
                         _kl_ters_yukle = {v: k for k, v in _kl_kolon_isim.items()}
                         _kl_musteri_adi_to_id = {v: k for k, v in _kl_musteri_map.items()}
+                        # NOT: Eski kod sadece BİREBİR aynı yazımı veya (nadiren işe
+                        # yarayan) büyük harf halini eşleştiriyordu — Excel'deki isimde
+                        # ufak bir boşluk/büyük-küçük harf farkı olunca sessizce
+                        # ATLANIYORDU (94 satırdan 91'i yüklenip 3'ü kaybolması gibi).
+                        # Şimdi hem Excel'deki hem sistemdeki isim boşluksuz+Türkçe
+                        # büyük harfe çevrilip öyle karşılaştırılıyor — sadece GERÇEKTEN
+                        # sistemde kaydı olmayan firmalar eşleşmez.
+                        _kl_musteri_adi_norm_to_id = {_tr_buyuk(str(_v).strip()): _k for _k, _v in _kl_musteri_map.items()}
                         _kl_yuklenen_sayac = 0
                         _kl_eslesmeyen = []
                         _kl_yeni_gruplar = {}
                         for _, _yr in _kl_yukleme_df.iterrows():
                             _yr_musteri = str(_yr.get("Müşteri", "")).strip()
-                            _yr_cid = _kl_musteri_adi_to_id.get(_yr_musteri) or _kl_musteri_adi_to_id.get(_tr_buyuk(_yr_musteri))
+                            _yr_cid = (_kl_musteri_adi_to_id.get(_yr_musteri)
+                                       or _kl_musteri_adi_norm_to_id.get(_tr_buyuk(_yr_musteri)))
                             if not _yr_cid:
                                 _kl_eslesmeyen.append(_yr_musteri)
                                 continue
@@ -13625,7 +13634,7 @@ elif aktif == "kargolar":
                         _kargolar_tumunu_yukle.clear()
                         _kg_kayitlari_yukle.clear()
                         if _kl_eslesmeyen:
-                            st.warning(f"⚠️ {len(set(_kl_eslesmeyen))} farklı müşteri adı sistemde bulunamadı (eklenmedi): {', '.join(sorted(set(_kl_eslesmeyen))[:10])}")
+                            st.warning(f"⚠️ {len(set(_kl_eslesmeyen))} farklı müşteri adı sistemde bulunamadı (eklenmedi — hepsi): {', '.join(sorted(set(_kl_eslesmeyen)))}")
                         st.toast(f"✅ {_kl_yuklenen_sayac} kayıt yüklendi", icon="📤")
                         st.rerun()
                 except Exception as _kl_yukleme_hata:
