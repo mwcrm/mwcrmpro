@@ -13589,6 +13589,27 @@ elif aktif == "kargolar":
         if _kl_secili_musteri != "-- Tüm Müşteriler --":
             _kl_df = _kl_df[_kl_df["Müşteri"] == _kl_secili_musteri]
 
+        # ── MÜKERRER (BİREBİR AYNI) KAYIT TESPİTİ — aynı müşteride, tarih/
+        # takip no/tutar/desi/kilo vb. TÜM alanları birebir aynı olan kayıtlar
+        # (ör. Excel'den yanlışlıkla iki kez yüklenmiş olabilir). Toplam sayı
+        # her zaman güncel filtreye göre hesaplanır; "🔁 Mükerrer" butonu
+        # açıkken tabloda SADECE bunlar listelenir.
+        _KL_MUKERRER_KARSILASTIRMA_KOLONLARI = [c for c in _KL_BEKLENEN_KOLONLAR if c not in ("Müşteri", "_cari_id", "_satir_no")]
+        if len(_kl_df) > 0:
+            _kl_df["_mukerrer_anahtar"] = list(zip(
+                _kl_df["_cari_id"],
+                *[_kl_df[c].astype(str) for c in _KL_MUKERRER_KARSILASTIRMA_KOLONLARI]
+            ))
+            _kl_mukerrer_sayilar = _kl_df["_mukerrer_anahtar"].value_counts()
+            _kl_df["_mukerrer_mi"] = _kl_df["_mukerrer_anahtar"].map(lambda k: _kl_mukerrer_sayilar.get(k, 1) > 1)
+            _kl_mukerrer_toplam = int(_kl_df["_mukerrer_mi"].sum())
+        else:
+            _kl_df["_mukerrer_mi"] = pd.Series(dtype=bool)
+            _kl_mukerrer_toplam = 0
+        if st.session_state.get("_kargolar_mukerrer_goster", False):
+            _kl_df = _kl_df[_kl_df["_mukerrer_mi"] == True]
+        _kl_df = _kl_df.drop(columns=[c for c in ["_mukerrer_anahtar", "_mukerrer_mi"] if c in _kl_df.columns])
+
         _kl_df.insert(0, "Seç", False)
         _kl_kolon_isim = {"Müşteri": "Müşteri", "tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No", "gonderen_firma": "Gönderen",
                            "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen",
@@ -13601,7 +13622,10 @@ elif aktif == "kargolar":
         _kl_gorunur_kolonlar = ["Seç", "Müşteri"] + [c for c in _kl_kolon_isim if c in _kl_df.columns and c != "Müşteri"]
         _kl_df = _kl_df.reset_index(drop=True)  # filtrelerden sonra index'ler boşluklu kalmasın (iloc hatası önlenir)
         _kl_df_goster = _kl_df[_kl_gorunur_kolonlar + ["_cari_id", "_satir_no"]].rename(columns=_kl_kolon_isim)
-        st.caption(f"Toplam {len(_kl_df)} kargo kaydı, {_kl_df['_cari_id'].nunique()} müşteride.")
+        st.caption(f"Toplam {len(_kl_df)} kargo kaydı, {_kl_df['_cari_id'].nunique()} müşteride."
+                   + (f" 🔁 Şu an sadece **birebir mükerrer** ({_kl_mukerrer_toplam} kayıt) gösteriliyor — kapatmak için üstteki butona tekrar bas."
+                      if st.session_state.get("_kargolar_mukerrer_goster", False) else
+                      (f" 🔁 {_kl_mukerrer_toplam} birebir mükerrer kayıt bulundu." if _kl_mukerrer_toplam > 0 else "")))
 
         # ── EXCEL İNDİR — tek sayfalık, bölünmemiş tam liste. Buton satırdaki
         # rezerve edilmiş kutunun İÇİNE konur (yukarıda "_kl_excel_indir_kutu").
@@ -13749,7 +13773,7 @@ elif aktif == "kargolar":
         )
 
         with _kl_btn_kutu:
-            _klb0a, _klb0b, _klb1, _klb2 = st.columns(4)
+            _klb0a, _klb0b, _klb0c, _klb1, _klb2 = st.columns(5)
             with _klb0a:
                 if st.button("☑️ Tümünü Seç", key="kargolar_tumunu_sec_btn", use_container_width=True):
                     st.session_state["_kl_tumu_secili_mod"] = True
@@ -13757,6 +13781,16 @@ elif aktif == "kargolar":
                     st.rerun()
             with _klb0b:
                 if st.button("⬜ Seçimi Temizle", key="kargolar_secimi_temizle_btn", use_container_width=True):
+                    st.session_state["_kl_tumu_secili_mod"] = False
+                    st.session_state["_kl_editor_versiyon"] += 1
+                    st.rerun()
+            with _klb0c:
+                _kl_mukerrer_aktif = st.session_state.get("_kargolar_mukerrer_goster", False)
+                _kl_mukerrer_etiket = f"🔁 {_kl_mukerrer_toplam} Mükerrer" if not _kl_mukerrer_aktif else "🔁 Mükerrer — Kapat"
+                if st.button(_kl_mukerrer_etiket, key="kargolar_mukerrer_btn", use_container_width=True,
+                             type="primary" if _kl_mukerrer_aktif else "secondary",
+                             disabled=(_kl_mukerrer_toplam == 0 and not _kl_mukerrer_aktif)):
+                    st.session_state["_kargolar_mukerrer_goster"] = not _kl_mukerrer_aktif
                     st.session_state["_kl_tumu_secili_mod"] = False
                     st.session_state["_kl_editor_versiyon"] += 1
                     st.rerun()
