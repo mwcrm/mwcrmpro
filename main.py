@@ -3834,10 +3834,9 @@ button[data-testid="manage-app-button"] { display: none !important; }
     </style>""", unsafe_allow_html=True)
 
     _MENU_GRUPLARI = [
-        ("🧾 Cari işlemleri",    ["yeni", "liste", "dis_nakliye_toplu", "excel", "mukerrer"]),
+        ("🧾 Cari işlemleri",    ["yeni", "liste", "kargolar", "excel", "mukerrer"]),
         ("📅 Randevu ve teklif", ["randevu", "ozel_teklif", "sozlesme", "kayitli_teklifler"]),
         ("🚚 Saha",              ["harita"]),
-        ("📦 Kargo Takip",       ["kargolar"]),
         ("⚙️ Yönetim",          ["kullanici"]),
         ("📊 Raporlar",          ["admin_rapor", "rapor"]),
     ]
