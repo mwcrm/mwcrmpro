@@ -13432,7 +13432,8 @@ elif aktif == "kargolar":
         _kl_alici_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_firma"].dropna().unique().tolist() if str(x).strip()]) if "alici_firma" in _kl_df.columns else ["-- Tümü --"]
         _kl_fatura_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["fatura_firma"].dropna().unique().tolist() if str(x).strip()]) if "fatura_firma" in _kl_df.columns else ["-- Tümü --"]
 
-        _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc5, _kl_fc6 = st.columns([1.6, 1.6, 1.3, 1.3, 1.3, 1.0], vertical_alignment="bottom")
+        _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc5, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
+            [1.4, 1.4, 1.1, 1.1, 1.1, 0.9, 1.0, 1.0, 1.0], vertical_alignment="bottom")
         _kl_secili_musteri_genel = _kl_fc1.selectbox("Genel Müşteri Seç (kargo girişi için)", _kl_musteri_secenekler, key="kargolar_musteri_filtre")
         _kl_sec_musteri_basligi = _kl_fc2.selectbox("📂 Müşteri (Gelen+Giden)", _kl_musteri_basligi_opts, key="kargolar_musteri_basligi_filtre")
         _kl_sec_gonderen = _kl_fc3.selectbox("Gönderen", _kl_gonderen_opts_ham, key="kargolar_gonderen_filtre")
@@ -13447,6 +13448,15 @@ elif aktif == "kargolar":
                         break
                 if st.button("📦 Kargo Girişi", key="kargolar_giris_ac_btn", use_container_width=True, disabled=_kl_sec_cari_id is None):
                     not_dialog(_kl_sec_cari_id, _kl_secili_musteri_genel)
+        # "Excel İndir" burada sadece bir yer tutucu (container) — gerçek indirme
+        # verisi aşağıda (tüm filtreler uygulandıktan sonra) hazır olunca içine konur.
+        _kl_excel_indir_kutu = _kl_fc7.container()
+        with _kl_fc8:
+            if st.button("📤 Excel Yükle", key="kargolar_excel_yukle_toggle_btn", use_container_width=True):
+                st.session_state["_kargolar_excel_yukle_ac"] = not st.session_state.get("_kargolar_excel_yukle_ac", False)
+        with _kl_fc9:
+            if st.button("📊 Genel Rapor", key="kargolar_genel_rapor_toggle_btn", use_container_width=True):
+                st.session_state["_kargolar_genel_rapor_ac"] = not st.session_state.get("_kargolar_genel_rapor_ac", False)
 
         # ── Filtreleri sırayla uygula — "Müşteri (Gelen+Giden)" firmanın hem
         # gönderen hem alıcı hem fatura ödeyen olduğu TÜM kayıtları (VEYA mantığı);
@@ -13529,19 +13539,20 @@ elif aktif == "kargolar":
         _kl_df_goster = _kl_df[_kl_gorunur_kolonlar + ["_cari_id", "_satir_no"]].rename(columns=_kl_kolon_isim)
         st.caption(f"Toplam {len(_kl_df)} kargo kaydı, {_kl_df['_cari_id'].nunique()} müşteride.")
 
-        # ── EXCEL İNDİR — tek sayfalık, bölünmemiş tam liste ──────────────────
+        # ── EXCEL İNDİR — tek sayfalık, bölünmemiş tam liste. Buton satırdaki
+        # rezerve edilmiş kutunun İÇİNE konur (yukarıda "_kl_excel_indir_kutu").
         _kl_excel_buf = io.BytesIO()
         _kl_df_goster.drop(columns=["Seç", "_cari_id", "_satir_no"]).to_excel(_kl_excel_buf, index=False, engine="openpyxl")
         _kl_excel_buf.seek(0)
-        st.download_button("📥 Listeyi Excel Olarak İndir", data=_kl_excel_buf,
-                            file_name=f"kargolar_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="kargolar_excel_indir")
+        with _kl_excel_indir_kutu:
+            st.download_button("📥 Excel İndir", data=_kl_excel_buf,
+                                file_name=f"kargolar_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="kargolar_excel_indir", use_container_width=True)
 
-        # ── EXCEL YÜKLE — indirdiğin (ya da aynı sütun başlıklarına sahip) bir
-        # Excel dosyasını toplu olarak geri yükler. "Müşteri" sütunundaki isim,
-        # sistemdeki bir cari ile eşleşince o müşterinin kaydına eklenir.
-        with st.expander("📤 Excel Yükle (toplu geri yükleme)", expanded=False):
+        # ── EXCEL YÜKLE — "📤 Excel Yükle" butonuna basılınca açılır/kapanır.
+        if st.session_state.get("_kargolar_excel_yukle_ac", False):
+            st.markdown("##### 📤 Excel Yükle (toplu geri yükleme)")
             st.caption("İndirdiğin Excel dosyasının sütun başlıklarıyla (Müşteri, Tarih, Gönderen, Alıcı, Fatura Ödeyen, vb.) aynı olmalı. "
                        "'Müşteri' sütunundaki isim sistemde kayıtlı bir firma adıyla BİREBİR eşleşmeli.")
             _kl_yuklenen_dosya = st.file_uploader("Excel dosyası seç (.xlsx)", type=["xlsx"], key="kargolar_excel_yukle_dosya")
@@ -13582,11 +13593,13 @@ elif aktif == "kargolar":
                         st.rerun()
                 except Exception as _kl_yukleme_hata:
                     st.error(f"Dosya okunamadı: {_kl_yukleme_hata}")
+            st.divider()
 
         # ── TÜM MÜŞTERİLER GENEL RAPORU — filtrelerden bağımsız, sistemdeki
         # HERKESİ kapsar. Firma + Gönderen İl + Alıcı İl + Tür kırılımlı, altında
         # genel toplam satırı. Aylık ya da tüm zaman seçilebilir.
-        with st.expander("📊 Tüm Müşteriler — Genel Rapor", expanded=False):
+        if st.session_state.get("_kargolar_genel_rapor_ac", False):
+            st.markdown("##### 📊 Tüm Müşteriler — Genel Rapor")
             _tg_df = pd.DataFrame(_kl_tum_kayitlar).fillna("") if _kl_tum_kayitlar else pd.DataFrame()
             if _tg_df.empty:
                 st.caption("Henüz hiçbir kayıt yok.")
