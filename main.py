@@ -13531,7 +13531,6 @@ elif aktif == "kargolar":
         _kl_musteri_basligi_opts = ["-- Tümü --"] + sorted(_kl_musteri_basligi_opts_ham)
         _kl_gonderen_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["gonderen_firma"].dropna().unique().tolist() if str(x).strip()]) if "gonderen_firma" in _kl_df.columns else ["-- Tümü --"]
         _kl_alici_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_firma"].dropna().unique().tolist() if str(x).strip()]) if "alici_firma" in _kl_df.columns else ["-- Tümü --"]
-        _kl_alici_il_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_il"].dropna().unique().tolist() if str(x).strip()]) if "alici_il" in _kl_df.columns else ["-- Tümü --"]
         _kl_fatura_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["fatura_firma"].dropna().unique().tolist() if str(x).strip()]) if "fatura_firma" in _kl_df.columns else ["-- Tümü --"]
 
         _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc4b, _kl_fc5, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
@@ -13540,6 +13539,14 @@ elif aktif == "kargolar":
         _kl_sec_musteri_basligi = _kl_fc2.selectbox("📂 Müşteri (Gelen+Giden)", _kl_musteri_basligi_opts, key="kargolar_musteri_basligi_filtre")
         _kl_sec_gonderen = _kl_fc3.selectbox("Gönderen", _kl_gonderen_opts_ham, key="kargolar_gonderen_filtre")
         _kl_sec_alici = _kl_fc4.selectbox("Alıcı", _kl_alici_opts_ham, key="kargolar_alici_filtre")
+        # Alıcı İl seçenekleri, "Genel Müşteri Seç" ile bir müşteri seçiliyse
+        # SADECE O MÜŞTERİNİN kayıtlarındaki illerle sınırlanır (cirosu olsun
+        # olmasın, kayıt varsa il listede çıkar) — 81 ili arayıp durmasın diye.
+        if _kl_secili_musteri_genel != "-- Tüm Müşteriler --":
+            _kl_alici_il_kapsam = _kl_df[_kl_df["Müşteri"] == _kl_secili_musteri_genel]
+        else:
+            _kl_alici_il_kapsam = _kl_df
+        _kl_alici_il_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_alici_il_kapsam["alici_il"].dropna().unique().tolist() if str(x).strip()]) if "alici_il" in _kl_alici_il_kapsam.columns else ["-- Tümü --"]
         _kl_sec_alici_il = _kl_fc4b.selectbox("Alıcı İl", _kl_alici_il_opts_ham, key="kargolar_alici_il_filtre")
         _kl_sec_fatura = _kl_fc5.selectbox("Fatura Ödeyen", _kl_fatura_opts_ham, key="kargolar_fatura_filtre")
         with _kl_fc6:
