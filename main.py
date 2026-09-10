@@ -13452,22 +13452,6 @@ elif aktif == "kargolar":
         for _kk in _kl_tum_kayitlar:
             _kk["Müşteri"] = _kl_musteri_map.get(_kk.get("_cari_id"), f"(ID {_kk.get('_cari_id')})")
 
-        # ── BİR KERELİK DOLDURMA — geçmişte girilmiş tüm (Alıcı Firma, Alıcı İl)
-        # çiftlerini kalıcı hafızaya aktarır. Sonrasında her yeni girişte zaten
-        # otomatik güncelleniyor, bu buton sadece ESKİ kayıtları yakalamak için.
-        if st.button("🔄 Geçmiş Kayıtlardan Alıcı-İl Hafızasını Doldur (bir kerelik)", key="kl_hafiza_doldur_btn"):
-            _kl_hafiza_yeni = dict(_kg_manuel_alici_yukle())
-            _kl_eklenen = 0
-            for _kk2 in _kl_tum_kayitlar:
-                _af = str(_kk2.get("alici_firma", "")).strip()
-                _ai = str(_kk2.get("alici_il", "")).strip()
-                if _af and _ai and _tr_buyuk(_af) not in _kl_hafiza_yeni:
-                    _kl_hafiza_yeni[_tr_buyuk(_af)] = _tr_buyuk(_ai)
-                    _kl_eklenen += 1
-            _kg_manuel_alici_kaydet(_kl_hafiza_yeni)
-            _kg_manuel_alici_yukle.clear()
-            st.toast(f"✅ {_kl_eklenen} yeni firma-il çifti hafızaya eklendi (toplam {len(_kl_hafiza_yeni)})", icon="💾")
-
         _kl_df = pd.DataFrame(_kl_tum_kayitlar)
         # Liste boşsa (hiç kargo kaydı yoksa) beklenen tüm sütunları BOŞ olarak
         # ekle — yoksa aşağıdaki filtre/Excel/rapor kodları "sütun yok" hatası
