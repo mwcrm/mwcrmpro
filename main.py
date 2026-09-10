@@ -13668,11 +13668,13 @@ elif aktif == "kargolar":
                       if st.session_state.get("_kargolar_mukerrer_goster", False) else
                       (f" 🔁 {_kl_mukerrer_toplam} birebir mükerrer kayıt bulundu." if _kl_mukerrer_toplam > 0 else "")))
 
-        # ── TEK SATIRLIK İL/ÜRÜN ÖZETİ — sadece "Genel Müşteri Seç" ile TEK bir
-        # müşteri seçiliyken gösterilir. Alıcı İl + Tür kırılımında, en yoğun
-        # (adedi en yüksek) il/ürün soldan başlayıp sağa doğru sıralanır; taşarsa
-        # sağa kaydırılabilir tek satır halinde kalır (satır satır alta düşmez).
-        if len(_kl_df) > 0:
+        # ── TEK SATIRLIK İL/ÜRÜN ÖZETİ — sadece sonuç TEK bir müşteriye
+        # indiğinde gösterilir (hangi filtreyle indiği fark etmez). Tüm
+        # müşteriler listesinde göstermek çok kalabalık/karışık olduğu için
+        # kapatıldı. Alıcı İl + Tür kırılımında, en yoğun (adedi en yüksek)
+        # il/ürün soldan başlayıp sağa doğru sıralanır; taşarsa sağa
+        # kaydırılabilir tek satır halinde kalır (satır satır alta düşmez).
+        if len(_kl_df) > 0 and _kl_df["_cari_id"].nunique() == 1:
             _oz_df = _kl_df.copy()
             _oz_df["_il_norm"] = _oz_df.get("alici_il", "").astype(str).str.strip()
             _oz_df["_tur_norm"] = _oz_df.get("tur", "").astype(str).str.strip()
