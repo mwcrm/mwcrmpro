@@ -13615,7 +13615,7 @@ elif aktif == "kargolar":
         # müşteri seçiliyken gösterilir. Alıcı İl + Tür kırılımında, en yoğun
         # (adedi en yüksek) il/ürün soldan başlayıp sağa doğru sıralanır; taşarsa
         # sağa kaydırılabilir tek satır halinde kalır (satır satır alta düşmez).
-        if _kl_secili_musteri_genel != "-- Tüm Müşteriler --" and len(_kl_df) > 0:
+        if len(_kl_df) > 0 and _kl_df["_cari_id"].nunique() == 1:
             _oz_df = _kl_df.copy()
             _oz_df["_il_norm"] = _oz_df.get("alici_il", "").astype(str).str.strip()
             _oz_df["_tur_norm"] = _oz_df.get("tur", "").astype(str).str.strip()
