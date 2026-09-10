@@ -216,6 +216,52 @@ def _kg_kayitlari_kaydet(_anahtar, _liste):
         pass
 
 
+def _kg_efektif_tutar(_kayit):
+    """Bir kargo kaydının 'gerçek' tutarı — Toplam Fatura doluysa o, yoksa Tutar.
+    Ciro hesaplarında (özet satırı, ödeme ekstresi, cari kart senkronu) hep
+    aynı mantık kullanılsın diye tek yerden."""
+    try:
+        _tf = float(_kayit.get("toplam_fatura", 0) or 0)
+    except Exception:
+        _tf = 0.0
+    if _tf:
+        return _tf
+    try:
+        return float(_kayit.get("tutar", 0) or 0)
+    except Exception:
+        return 0.0
+
+
+def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
+    """Kargo kaydı eklenince/düzenlenince/silinince, ana Cari Liste'deki
+    müşterinin 'gerçekleşen ciro' alanını otomatik günceller — _miktar
+    pozitifse artırır, negatifse azaltır (0'ın altına düşürmez). Böylece
+    kargo girdikçe müşterinin gerçekleşen cirosu (ve buna bağlı segment —
+    Özel Müşteri/Portföy) elle dokunmadan kendiliğinden güncel kalır."""
+    try:
+        _miktar = float(_miktar or 0)
+    except Exception:
+        return
+    if not _miktar:
+        return
+    try:
+        _sb_gc = get_sb_client()
+        if not _sb_gc:
+            return
+        _r_gc = _sb_gc.table("cari_kartlar").select("gerceklesen_ciro").eq("id", int(_cari_id)).execute()
+        if not _r_gc.data:
+            return
+        _mevcut = float(_r_gc.data[0].get("gerceklesen_ciro") or 0)
+        _yeni = max(0.0, round(_mevcut + _miktar, 2))
+        _sb_gc.table("cari_kartlar").update({"gerceklesen_ciro": _yeni}).eq("id", int(_cari_id)).execute()
+        try:
+            get_cari_listesi.clear()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 @st.cache_resource
 def get_sb_service():
     """Supabase service_role client — log ve admin işlemler için"""
@@ -2977,6 +3023,7 @@ def not_dialog(cari_id, firma_adi=""):
                 })
                 _kg_kayitlari_kaydet(_kg_anahtar, _kg_liste)
                 _kg_kayitlari_yukle.clear()
+                _cari_gerceklesen_ciro_ekle(cari_id, _kg_efektif_tutar(_kg_liste[-1]))
                 # Alıcı Firma + Alıcı İl çiftini kalıcı hafızaya yaz — bir dahaki
                 # sefere bu firma yazılınca ili otomatik gelsin.
                 if _kg_alici and _kg_alici_il_deger:
@@ -3052,6 +3099,7 @@ def not_dialog(cari_id, firma_adi=""):
             with _kgb1:
                 if st.button("💾 Değişiklikleri Kaydet", key=f"kg_duzenle_kaydet_{cari_id}", use_container_width=True):
                     _kg_ters_isim = {v: k for k, v in _kg_kolon_isim.items()}
+                    _kg_eski_toplam = sum(_kg_efektif_tutar(_k) for _k in _kg_mevcut)
                     _kg_yeni_liste = []
                     for _, _r in _kg_duzenlenen.iterrows():
                         if bool(_r.get("Seç")):
@@ -3064,6 +3112,8 @@ def not_dialog(cari_id, firma_adi=""):
                         _kg_yeni_liste.append(_kg_kayit)
                     _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste)
                     _kg_kayitlari_yukle.clear()
+                    _kg_yeni_toplam = sum(_kg_efektif_tutar(_k) for _k in _kg_yeni_liste)
+                    _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam - _kg_eski_toplam)
                     st.session_state[_kg_tumu_secili_anahtari] = False
                     st.session_state[_kg_ver_anahtari] += 1
                     st.toast("✅ Kargo kayıtları güncellendi", icon="🚚")
@@ -3072,6 +3122,7 @@ def not_dialog(cari_id, firma_adi=""):
                 _kg_secili_sayi = int(_kg_duzenlenen["Seç"].sum()) if "Seç" in _kg_duzenlenen.columns else 0
                 if st.button(f"🗑️ Seçili {_kg_secili_sayi} Kaydı Sil", key=f"kg_sil_btn_{cari_id}", use_container_width=True, disabled=_kg_secili_sayi == 0):
                     _kg_ters_isim2 = {v: k for k, v in _kg_kolon_isim.items()}
+                    _kg_eski_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kg_mevcut)
                     _kg_kalanlar = []
                     for _, _r in _kg_duzenlenen.iterrows():
                         if bool(_r.get("Seç")):
@@ -3084,6 +3135,8 @@ def not_dialog(cari_id, firma_adi=""):
                         _kg_kalanlar.append(_kg_kayit2)
                     _kg_kayitlari_kaydet(_kg_anahtar, _kg_kalanlar)
                     _kg_kayitlari_yukle.clear()
+                    _kg_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kg_kalanlar)
+                    _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam2 - _kg_eski_toplam2)
                     st.session_state[_kg_tumu_secili_anahtari] = False
                     st.session_state[_kg_ver_anahtari] += 1
                     st.toast(f"🗑️ {_kg_secili_sayi} kayıt silindi", icon="🗑️")
@@ -13478,14 +13531,16 @@ elif aktif == "kargolar":
         _kl_musteri_basligi_opts = ["-- Tümü --"] + sorted(_kl_musteri_basligi_opts_ham)
         _kl_gonderen_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["gonderen_firma"].dropna().unique().tolist() if str(x).strip()]) if "gonderen_firma" in _kl_df.columns else ["-- Tümü --"]
         _kl_alici_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_firma"].dropna().unique().tolist() if str(x).strip()]) if "alici_firma" in _kl_df.columns else ["-- Tümü --"]
+        _kl_alici_il_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_il"].dropna().unique().tolist() if str(x).strip()]) if "alici_il" in _kl_df.columns else ["-- Tümü --"]
         _kl_fatura_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["fatura_firma"].dropna().unique().tolist() if str(x).strip()]) if "fatura_firma" in _kl_df.columns else ["-- Tümü --"]
 
-        _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc5, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
-            [1.4, 1.4, 1.1, 1.1, 1.1, 0.9, 1.0, 1.0, 1.0], vertical_alignment="bottom")
+        _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc4b, _kl_fc5, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
+            [1.3, 1.3, 1.0, 1.0, 1.0, 1.0, 0.8, 0.9, 0.9, 0.9], vertical_alignment="bottom")
         _kl_secili_musteri_genel = _kl_fc1.selectbox("Genel Müşteri Seç (kargo girişi için)", _kl_musteri_secenekler, key="kargolar_musteri_filtre")
         _kl_sec_musteri_basligi = _kl_fc2.selectbox("📂 Müşteri (Gelen+Giden)", _kl_musteri_basligi_opts, key="kargolar_musteri_basligi_filtre")
         _kl_sec_gonderen = _kl_fc3.selectbox("Gönderen", _kl_gonderen_opts_ham, key="kargolar_gonderen_filtre")
         _kl_sec_alici = _kl_fc4.selectbox("Alıcı", _kl_alici_opts_ham, key="kargolar_alici_filtre")
+        _kl_sec_alici_il = _kl_fc4b.selectbox("Alıcı İl", _kl_alici_il_opts_ham, key="kargolar_alici_il_filtre")
         _kl_sec_fatura = _kl_fc5.selectbox("Fatura Ödeyen", _kl_fatura_opts_ham, key="kargolar_fatura_filtre")
         with _kl_fc6:
             if _kl_secili_musteri_genel != "-- Tüm Müşteriler --":
@@ -13519,6 +13574,8 @@ elif aktif == "kargolar":
             _kl_df = _kl_df[_kl_df["gonderen_firma"] == _kl_sec_gonderen]
         if _kl_sec_alici != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["alici_firma"] == _kl_sec_alici]
+        if _kl_sec_alici_il != "-- Tümü --":
+            _kl_df = _kl_df[_kl_df["alici_il"] == _kl_sec_alici_il]
         if _kl_sec_fatura != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["fatura_firma"] == _kl_sec_fatura]
 
@@ -13615,7 +13672,7 @@ elif aktif == "kargolar":
         # müşteri seçiliyken gösterilir. Alıcı İl + Tür kırılımında, en yoğun
         # (adedi en yüksek) il/ürün soldan başlayıp sağa doğru sıralanır; taşarsa
         # sağa kaydırılabilir tek satır halinde kalır (satır satır alta düşmez).
-        if len(_kl_df) > 0 and _kl_df["_cari_id"].nunique() == 1:
+        if len(_kl_df) > 0:
             _oz_df = _kl_df.copy()
             _oz_df["_il_norm"] = _oz_df.get("alici_il", "").astype(str).str.strip()
             _oz_df["_tur_norm"] = _oz_df.get("tur", "").astype(str).str.strip()
@@ -13698,6 +13755,8 @@ elif aktif == "kargolar":
                             _yr_mevcut = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_yr_cid2}"))
                             _yr_mevcut.extend(_yr_yeni_kayitlar)
                             _kargolar_yaz(_yr_cid2, _yr_mevcut)
+                            _yr_eklenen_tutar = sum(_kg_efektif_tutar(_k) for _k in _yr_yeni_kayitlar)
+                            _cari_gerceklesen_ciro_ekle(_yr_cid2, _yr_eklenen_tutar)
                         _kargolar_tumunu_yukle.clear()
                         _kg_kayitlari_yukle.clear()
                         if _kl_eslesmeyen:
@@ -13819,8 +13878,10 @@ elif aktif == "kargolar":
                     # — filtre dışındaki diğer kayıtlara HİÇ dokunulmaz.
                     _kl_etkilenen_cid = set(int(x) for x in _kl_df["_cari_id"].unique())
                     _kl_tam_listeler = {}
+                    _kl_eski_toplamlar = {}
                     for _cid_yukle in _kl_etkilenen_cid:
                         _kl_tam_listeler[_cid_yukle] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle}"))
+                        _kl_eski_toplamlar[_cid_yukle] = sum(_kg_efektif_tutar(_k) for _k in _kl_tam_listeler[_cid_yukle])
                     for _idx, _r in _kl_duzenlenen.iterrows():
                         _cid = int(_kl_df_goster.iloc[_idx]["_cari_id"])
                         _satir_no = int(_kl_df_goster.iloc[_idx]["_satir_no"])
@@ -13836,7 +13897,10 @@ elif aktif == "kargolar":
                             _kayit[_kl_ters.get(_kol, _kol)] = _val
                         _kl_tam_listeler[_cid][_satir_no] = _kayit
                     for _cid_kaydet, _liste_kaydet in _kl_tam_listeler.items():
-                        _kargolar_yaz(_cid_kaydet, [x for x in _liste_kaydet if x is not None])
+                        _kl_liste_temiz = [x for x in _liste_kaydet if x is not None]
+                        _kargolar_yaz(_cid_kaydet, _kl_liste_temiz)
+                        _kl_yeni_toplam = sum(_kg_efektif_tutar(_k) for _k in _kl_liste_temiz)
+                        _cari_gerceklesen_ciro_ekle(_cid_kaydet, _kl_yeni_toplam - _kl_eski_toplamlar.get(_cid_kaydet, 0))
                     _kargolar_tumunu_yukle.clear()
                     _kg_kayitlari_yukle.clear()
                     st.session_state["_kl_tumu_secili_mod"] = False
@@ -13849,8 +13913,10 @@ elif aktif == "kargolar":
                     _kl_etkilenen_cid2 = set(int(_kl_df_goster.iloc[_idx2]["_cari_id"])
                                               for _idx2, _r2 in _kl_duzenlenen.iterrows() if bool(_r2.get("Seç")))
                     _kl_tam_listeler2 = {}
+                    _kl_eski_toplamlar2 = {}
                     for _cid_yukle2 in _kl_etkilenen_cid2:
                         _kl_tam_listeler2[_cid_yukle2] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle2}"))
+                        _kl_eski_toplamlar2[_cid_yukle2] = sum(_kg_efektif_tutar(_k) for _k in _kl_tam_listeler2[_cid_yukle2])
                     for _idx2, _r2 in _kl_duzenlenen.iterrows():
                         if not bool(_r2.get("Seç")):
                             continue
@@ -13859,7 +13925,10 @@ elif aktif == "kargolar":
                         if _cid2 in _kl_tam_listeler2 and _satir_no2 < len(_kl_tam_listeler2[_cid2]):
                             _kl_tam_listeler2[_cid2][_satir_no2] = None
                     for _cid_kaydet2, _liste_kaydet2 in _kl_tam_listeler2.items():
-                        _kargolar_yaz(_cid_kaydet2, [x for x in _liste_kaydet2 if x is not None])
+                        _kl_liste_temiz2 = [x for x in _liste_kaydet2 if x is not None]
+                        _kargolar_yaz(_cid_kaydet2, _kl_liste_temiz2)
+                        _kl_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kl_liste_temiz2)
+                        _cari_gerceklesen_ciro_ekle(_cid_kaydet2, _kl_yeni_toplam2 - _kl_eski_toplamlar2.get(_cid_kaydet2, 0))
                     _kargolar_tumunu_yukle.clear()
                     _kg_kayitlari_yukle.clear()
                     st.session_state["_kl_tumu_secili_mod"] = False
