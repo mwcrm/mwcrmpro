@@ -1,5 +1,17 @@
 import streamlit as st
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 🚨🚨🚨 EN KRİTİK KURAL — ASLA İHLAL EDİLMEZ 🚨🚨🚨
+# HERHANGİ BİR "Kaydet"/"Sil"/toplu güncelleme işlemi, FİLTRELENMİŞ/DARALTILMIŞ
+# bir görünümdeki verilerle o filtrenin DIŞINDA KALAN kayıtların ÜZERİNE
+# YAZAMAZ. Bir müşterinin/kaydın TAM listesi HER ZAMAN önce taze (fresh) olarak
+# yüklenip, sadece GERÇEKTEN değiştirilen/silinen satırlar o listenin İÇİNDE
+# güncellenmeli — asla "görünenlerle tüm listeyi değiştir" mantığı kurulmaz.
+# Bu kural 2026'da bir Kargolar sayfası hatası yüzünden 94 kargo kaydının
+# kalıcı olarak kaybolmasına neden oldu. BİR DAHA ASLA OLMAYACAK.
+# Yeni bir toplu kaydet/sil özelliği yazmadan önce bu yorumu tekrar oku.
+# ═══════════════════════════════════════════════════════════════════════════
+
 # ── İL SÜTUNLARI — GLOBAL sabit (birden fazla sayfadan erişilir: Cari Liste
 # tablosunda kolon olarak, Kullanıcılar sayfasındaki Kolon Ayarları'nda genişlik
 # ayarı olarak). Tek bir sayfanın içinde tanımlanırsa diğer sayfa NameError alır.
@@ -13526,6 +13538,51 @@ elif aktif == "kargolar":
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             key="kargolar_excel_indir")
 
+        # ── EXCEL YÜKLE — indirdiğin (ya da aynı sütun başlıklarına sahip) bir
+        # Excel dosyasını toplu olarak geri yükler. "Müşteri" sütunundaki isim,
+        # sistemdeki bir cari ile eşleşince o müşterinin kaydına eklenir.
+        with st.expander("📤 Excel Yükle (toplu geri yükleme)", expanded=False):
+            st.caption("İndirdiğin Excel dosyasının sütun başlıklarıyla (Müşteri, Tarih, Gönderen, Alıcı, Fatura Ödeyen, vb.) aynı olmalı. "
+                       "'Müşteri' sütunundaki isim sistemde kayıtlı bir firma adıyla BİREBİR eşleşmeli.")
+            _kl_yuklenen_dosya = st.file_uploader("Excel dosyası seç (.xlsx)", type=["xlsx"], key="kargolar_excel_yukle_dosya")
+            if _kl_yuklenen_dosya is not None:
+                try:
+                    _kl_yukleme_df = pd.read_excel(_kl_yuklenen_dosya)
+                    st.caption(f"Dosyada {len(_kl_yukleme_df)} satır bulundu. Önizleme:")
+                    st.dataframe(_kl_yukleme_df.head(10), use_container_width=True, hide_index=True)
+                    if st.button("📤 Bu Dosyadaki Kayıtları Yükle", key="kargolar_excel_yukle_btn", type="primary"):
+                        _kl_ters_yukle = {v: k for k, v in _kl_kolon_isim.items()}
+                        _kl_musteri_adi_to_id = {v: k for k, v in _kl_musteri_map.items()}
+                        _kl_yuklenen_sayac = 0
+                        _kl_eslesmeyen = []
+                        _kl_yeni_gruplar = {}
+                        for _, _yr in _kl_yukleme_df.iterrows():
+                            _yr_musteri = str(_yr.get("Müşteri", "")).strip()
+                            _yr_cid = _kl_musteri_adi_to_id.get(_yr_musteri) or _kl_musteri_adi_to_id.get(_tr_buyuk(_yr_musteri))
+                            if not _yr_cid:
+                                _kl_eslesmeyen.append(_yr_musteri)
+                                continue
+                            _yr_kayit = {}
+                            for _yr_kol, _yr_val in _yr.items():
+                                if _yr_kol == "Müşteri":
+                                    continue
+                                _yr_anahtar = _kl_ters_yukle.get(_yr_kol, _yr_kol)
+                                _yr_kayit[_yr_anahtar] = "" if pd.isna(_yr_val) else (str(_yr_val) if _yr_kol != "Tarih" else str(_yr_val)[:10])
+                            _kl_yeni_gruplar.setdefault(_yr_cid, []).append(_yr_kayit)
+                            _kl_yuklenen_sayac += 1
+                        for _yr_cid2, _yr_yeni_kayitlar in _kl_yeni_gruplar.items():
+                            _yr_mevcut = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_yr_cid2}"))
+                            _yr_mevcut.extend(_yr_yeni_kayitlar)
+                            _kargolar_yaz(_yr_cid2, _yr_mevcut)
+                        _kargolar_tumunu_yukle.clear()
+                        _kg_kayitlari_yukle.clear()
+                        if _kl_eslesmeyen:
+                            st.warning(f"⚠️ {len(set(_kl_eslesmeyen))} farklı müşteri adı sistemde bulunamadı (eklenmedi): {', '.join(sorted(set(_kl_eslesmeyen))[:10])}")
+                        st.toast(f"✅ {_kl_yuklenen_sayac} kayıt yüklendi", icon="📤")
+                        st.rerun()
+                except Exception as _kl_yukleme_hata:
+                    st.error(f"Dosya okunamadı: {_kl_yukleme_hata}")
+
         # ── TÜM MÜŞTERİLER GENEL RAPORU — filtrelerden bağımsız, sistemdeki
         # HERKESİ kapsar. Firma + Gönderen İl + Alıcı İl + Tür kırılımlı, altında
         # genel toplam satırı. Aylık ya da tüm zaman seçilebilir.
@@ -13597,43 +13654,54 @@ elif aktif == "kargolar":
             with _klb1:
                 if st.button("💾 Değişiklikleri Kaydet", key="kargolar_kaydet_btn", type="primary", use_container_width=True):
                     _kl_ters = {v: k for k, v in _kl_kolon_isim.items()}
-                    # Her müşteri için kendi listesini ayrı ayrı yeniden oluştur
-                    _kl_musteri_gruplari = {}
+                    # ── DOĞRU MANTIK: her müşterinin TAM listesi (filtre dışında
+                    # kalanlar dahil) fresh olarak yüklenir, sadece o an TABLODA
+                    # GÖRÜNEN satırlar (kendi _satir_no'suna göre) güncellenir/silinir
+                    # — filtre dışındaki diğer kayıtlara HİÇ dokunulmaz.
+                    _kl_etkilenen_cid = set(int(x) for x in _kl_df["_cari_id"].unique())
+                    _kl_tam_listeler = {}
+                    for _cid_yukle in _kl_etkilenen_cid:
+                        _kl_tam_listeler[_cid_yukle] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle}"))
                     for _idx, _r in _kl_duzenlenen.iterrows():
                         _cid = int(_kl_df_goster.iloc[_idx]["_cari_id"])
+                        _satir_no = int(_kl_df_goster.iloc[_idx]["_satir_no"])
+                        if _satir_no >= len(_kl_tam_listeler[_cid]):
+                            continue
                         if bool(_r.get("Seç")):
-                            continue  # işaretliler siliniyor sayılır
+                            _kl_tam_listeler[_cid][_satir_no] = None  # işaretliyse sil (aşağıda filtrelenir)
+                            continue
                         _kayit = {}
                         for _kol, _val in _r.items():
                             if _kol in ("Seç", "Müşteri"):
                                 continue
                             _kayit[_kl_ters.get(_kol, _kol)] = _val
-                        _kl_musteri_gruplari.setdefault(_cid, []).append(_kayit)
-                    # Kayıtları hiç kalmayan (tamamı silinmiş/güncellenmiş) müşteriler için de boş liste yaz
-                    for _cid_hepsi in _kl_df["_cari_id"].unique():
-                        _kargolar_yaz(int(_cid_hepsi), _kl_musteri_gruplari.get(int(_cid_hepsi), []))
+                        _kl_tam_listeler[_cid][_satir_no] = _kayit
+                    for _cid_kaydet, _liste_kaydet in _kl_tam_listeler.items():
+                        _kargolar_yaz(_cid_kaydet, [x for x in _liste_kaydet if x is not None])
                     _kargolar_tumunu_yukle.clear()
-                    st.toast("✅ Kargo kayıtları güncellendi", icon="🚚")
+                    _kg_kayitlari_yukle.clear()
+                    st.toast("✅ Kargo kayıtları güncellendi (filtre dışındaki kayıtlara dokunulmadı)", icon="🚚")
                     st.rerun()
             with _klb2:
                 _kl_secili_sayi = int(_kl_duzenlenen["Seç"].sum()) if "Seç" in _kl_duzenlenen.columns else 0
                 if st.button(f"🗑️ Seçili {_kl_secili_sayi} Kaydı Sil", key="kargolar_sil_btn", use_container_width=True, disabled=_kl_secili_sayi == 0):
-                    _kl_ters2 = {v: k for k, v in _kl_kolon_isim.items()}
-                    _kl_musteri_gruplari2 = {}
-                    for _idx, _r in _kl_duzenlenen.iterrows():
-                        _cid = int(_kl_df_goster.iloc[_idx]["_cari_id"])
-                        if bool(_r.get("Seç")):
+                    _kl_etkilenen_cid2 = set(int(_kl_df_goster.iloc[_idx2]["_cari_id"])
+                                              for _idx2, _r2 in _kl_duzenlenen.iterrows() if bool(_r2.get("Seç")))
+                    _kl_tam_listeler2 = {}
+                    for _cid_yukle2 in _kl_etkilenen_cid2:
+                        _kl_tam_listeler2[_cid_yukle2] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle2}"))
+                    for _idx2, _r2 in _kl_duzenlenen.iterrows():
+                        if not bool(_r2.get("Seç")):
                             continue
-                        _kayit2 = {}
-                        for _kol, _val in _r.items():
-                            if _kol in ("Seç", "Müşteri"):
-                                continue
-                            _kayit2[_kl_ters2.get(_kol, _kol)] = _val
-                        _kl_musteri_gruplari2.setdefault(_cid, []).append(_kayit2)
-                    for _cid_hepsi2 in _kl_df["_cari_id"].unique():
-                        _kargolar_yaz(int(_cid_hepsi2), _kl_musteri_gruplari2.get(int(_cid_hepsi2), []))
+                        _cid2 = int(_kl_df_goster.iloc[_idx2]["_cari_id"])
+                        _satir_no2 = int(_kl_df_goster.iloc[_idx2]["_satir_no"])
+                        if _cid2 in _kl_tam_listeler2 and _satir_no2 < len(_kl_tam_listeler2[_cid2]):
+                            _kl_tam_listeler2[_cid2][_satir_no2] = None
+                    for _cid_kaydet2, _liste_kaydet2 in _kl_tam_listeler2.items():
+                        _kargolar_yaz(_cid_kaydet2, [x for x in _liste_kaydet2 if x is not None])
                     _kargolar_tumunu_yukle.clear()
-                    st.toast(f"🗑️ {_kl_secili_sayi} kayıt silindi", icon="🗑️")
+                    _kg_kayitlari_yukle.clear()
+                    st.toast(f"🗑️ {_kl_secili_sayi} kayıt silindi (filtre dışındaki kayıtlara dokunulmadı)", icon="🗑️")
                     st.rerun()
 
 elif aktif == "bolgeler":
