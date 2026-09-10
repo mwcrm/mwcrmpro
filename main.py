@@ -232,6 +232,21 @@ def _kg_efektif_tutar(_kayit):
         return 0.0
 
 
+def _kg_kar_hesapla(_kayit):
+    """Kar = Dış Nakliye Tutar - Müşteri Tutar. Artık tabloda ELLE
+    YAZILMIYOR — kayıt/güncelleme anında bu ikisinden OTOMATİK hesaplanıp
+    üzerine yazılıyor, Kar sütunu tabloda salt okunur."""
+    try:
+        _dn = float(_kayit.get("dis_nakliye_tutar", 0) or 0)
+    except Exception:
+        _dn = 0.0
+    try:
+        _mt = float(_kayit.get("musteri_tutar", 0) or 0)
+    except Exception:
+        _mt = 0.0
+    return round(_dn - _mt, 2)
+
+
 def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
     """Kargo kaydı eklenince/düzenlenince/silinince, ana Cari Liste'deki
     müşterinin 'gerçekleşen ciro' alanını otomatik günceller — _miktar
@@ -3069,7 +3084,14 @@ def not_dialog(cari_id, firma_adi=""):
                 if _kg_kol_ad == "Seç":
                     continue
                 _kg_gen = _kg_kol_genislik.get(_kg_kol_ad, 15)
-                _kg_col_config[_kg_kol_ad] = st.column_config.Column(_kg_kol_ad, width=int(_kg_gen) * 8)
+                if _kg_kol_ad == "Kar":
+                    # Kar artık ELLE YAZILMIYOR — Dış Nakliye Tutar - Müşteri
+                    # Tutar'dan OTOMATİK hesaplanıyor, kayıt anında üzerine yazılır.
+                    _kg_col_config[_kg_kol_ad] = st.column_config.NumberColumn(
+                        "Kar", width=int(_kg_gen) * 8, disabled=True,
+                        help="Otomatik hesaplanır: Dış Nakliye Tutar − Müşteri Tutar")
+                else:
+                    _kg_col_config[_kg_kol_ad] = st.column_config.Column(_kg_kol_ad, width=int(_kg_gen) * 8)
             _kg_ver_anahtari = f"_kg_editor_versiyon_{cari_id}"
             if _kg_ver_anahtari not in st.session_state:
                 st.session_state[_kg_ver_anahtari] = 0
@@ -3109,6 +3131,7 @@ def not_dialog(cari_id, firma_adi=""):
                             if _kol == "Seç":
                                 continue
                             _kg_kayit[_kg_ters_isim.get(_kol, _kol)] = _val
+                        _kg_kayit["kar"] = _kg_kar_hesapla(_kg_kayit)
                         _kg_yeni_liste.append(_kg_kayit)
                     _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste)
                     _kg_kayitlari_yukle.clear()
@@ -13758,6 +13781,7 @@ elif aktif == "kargolar":
                                     continue
                                 _yr_anahtar = _kl_ters_yukle.get(_yr_kol, _yr_kol)
                                 _yr_kayit[_yr_anahtar] = "" if pd.isna(_yr_val) else (str(_yr_val) if _yr_kol != "Tarih" else str(_yr_val)[:10])
+                            _yr_kayit["kar"] = _kg_kar_hesapla(_yr_kayit)
                             _kl_yeni_gruplar.setdefault(_yr_cid, []).append(_yr_kayit)
                             _kl_yuklenen_sayac += 1
                         for _yr_cid2, _yr_yeni_kayitlar in _kl_yeni_gruplar.items():
@@ -13835,7 +13859,13 @@ elif aktif == "kargolar":
             if _kl_kol_ad in ("Seç", "_cari_id", "_satir_no"):
                 continue
             _kl_gen = _kl_kol_genislik.get(_kl_kol_ad)
-            if _kl_gen:
+            if _kl_kol_ad == "Kar":
+                # Kar artık ELLE YAZILMIYOR — Dış Nakliye Tutar - Müşteri
+                # Tutar'dan OTOMATİK hesaplanıyor, kayıt anında üzerine yazılır.
+                _kl_col_config[_kl_kol_ad] = st.column_config.NumberColumn(
+                    "Kar", width=(int(_kl_gen) * 8 if _kl_gen else None), disabled=True,
+                    help="Otomatik hesaplanır: Dış Nakliye Tutar − Müşteri Tutar")
+            elif _kl_gen:
                 _kl_col_config[_kl_kol_ad] = st.column_config.Column(_kl_kol_ad, width=int(_kl_gen) * 8)
         if "_kl_editor_versiyon" not in st.session_state:
             st.session_state["_kl_editor_versiyon"] = 0
@@ -13904,6 +13934,7 @@ elif aktif == "kargolar":
                             if _kol in ("Seç", "Müşteri"):
                                 continue
                             _kayit[_kl_ters.get(_kol, _kol)] = _val
+                        _kayit["kar"] = _kg_kar_hesapla(_kayit)
                         _kl_tam_listeler[_cid][_satir_no] = _kayit
                     for _cid_kaydet, _liste_kaydet in _kl_tam_listeler.items():
                         _kl_liste_temiz = [x for x in _liste_kaydet if x is not None]
