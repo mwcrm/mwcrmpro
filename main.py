@@ -13442,6 +13442,52 @@ elif aktif == "kargolar":
         if _kl_sec_fatura != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["fatura_firma"] == _kl_sec_fatura]
 
+        # ── ÖDEME EKSTRESİ — "Fatura Ödeyen Filtrele" ile bir firma seçilince,
+        # o firmanın ödeme geçmişini/bakiyesini gösteren ayrı, indirilebilir ekstre.
+        if _kl_sec_fatura != "-- Tümü --" and not _kl_df.empty:
+            with st.expander(f"💳 Ödeme Ekstresi — {_kl_sec_fatura}", expanded=True):
+                _ek_df = _kl_df.copy()
+                _ek_df["_efektif_tutar"] = pd.to_numeric(_ek_df.get("toplam_fatura", 0), errors="coerce").fillna(0)
+                _ek_tutar_num = pd.to_numeric(_ek_df.get("tutar", 0), errors="coerce").fillna(0)
+                _ek_df.loc[_ek_df["_efektif_tutar"] == 0, "_efektif_tutar"] = _ek_tutar_num
+                _ek_df["_tarih_dt"] = pd.to_datetime(_ek_df.get("tarih", ""), errors="coerce")
+                _ek_df = _ek_df.sort_values("_tarih_dt")
+
+                _ek_toplam_tutar = float(_ek_df["_efektif_tutar"].sum())
+                _ek_tahsil = _ek_df[_ek_df.get("tahsilat_durumu", "") == "Tahsil Edildi"]
+                _ek_tahsil_tutar = float(_ek_tahsil["_efektif_tutar"].sum())
+                _ek_bakiye = _ek_toplam_tutar - _ek_tahsil_tutar
+
+                _ekm1, _ekm2, _ekm3 = st.columns(3)
+                _ekm1.metric("💰 Toplam Tutar", f"{_ek_toplam_tutar:,.0f} ₺")
+                _ekm2.metric("✅ Tahsil Edilen", f"{_ek_tahsil_tutar:,.0f} ₺")
+                _ekm3.metric("⏳ Bakiye (Kalan Borç)", f"{_ek_bakiye:,.0f} ₺")
+
+                if not _ek_tahsil.empty:
+                    _ek_son_odeme = _ek_tahsil.sort_values("_tarih_dt").iloc[-1]
+                    st.caption(f"🕐 En son ödeme: **{_ek_son_odeme['_tarih_dt'].strftime('%Y-%m-%d') if pd.notna(_ek_son_odeme['_tarih_dt']) else '—'}** "
+                               f"— {_ek_son_odeme['_efektif_tutar']:,.0f} ₺ ({_ek_son_odeme.get('alici_il','')})")
+                else:
+                    st.caption("🕐 Henüz tahsil edilmiş bir kayıt yok.")
+                st.caption("💡 Not: Sistemde şu an bir 'vade/ödeme tarihi' alanı tutulmuyor, bu yüzden "
+                           "'yaklaşan ödeme ne zaman' bilgisini gösteremiyoruz — istersen Kargo Girişi formuna bir 'Vade Tarihi' alanı ekleyebiliriz.")
+
+                st.caption("📋 Bu firmadan/için gelen tüm kargolar (tarih sırasıyla):")
+                _ek_goster = _ek_df[["_tarih_dt", "gonderen_il", "alici_il", "tur", "adet", "_efektif_tutar", "tahsilat_durumu"]].copy()
+                _ek_goster.columns = ["Tarih", "Gönderen İl", "Alıcı İl", "Tür", "Adet", "Tutar", "Tahsilat"]
+                _ek_goster["Tarih"] = _ek_goster["Tarih"].dt.strftime("%Y-%m-%d").fillna("—")
+                st.dataframe(_ek_goster, use_container_width=True, hide_index=True,
+                             height=min(38 * (len(_ek_goster) + 1) + 25, 500))
+
+                # ── Excel ekstre — TEK sayfa, bölünmemiş ──
+                _ek_excel_buf = io.BytesIO()
+                _ek_goster.to_excel(_ek_excel_buf, index=False, engine="openpyxl")
+                _ek_excel_buf.seek(0)
+                st.download_button("📥 Ödeme Ekstresini Excel Olarak İndir", data=_ek_excel_buf,
+                                    file_name=f"ekstre_{_kl_sec_fatura.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key="kargolar_ekstre_excel_indir")
+
         # Panel/özet gösterimi hâlâ "genel müşteri seçimi"ne bağlı çalışıyor
         _kl_secili_musteri = _kl_secili_musteri_genel
         if _kl_secili_musteri != "-- Tüm Müşteriler --":
