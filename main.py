@@ -2971,12 +2971,10 @@ def not_dialog(cari_id, firma_adi=""):
         _kg_hafizadan_ek = sorted([f for f in _kg_manuel_alici_hafiza.keys() if f not in _kg_musteri_opts_buyuk])
         _kg_alici_opts = ["-- Seç veya elle yaz --"] + sorted(set(_kg_musteri_liste) | set(_kg_hafizadan_ek))
 
-        _kgc1, _kgc2, _kgc3, _kgc4 = st.columns(4)
+        _kgc1, _kgc2, _kgc3 = st.columns(3)
         _kg_tarih = _kgc1.date_input("Tarih *", key=f"kg_tarih_{cari_id}")
         _kg_takip = _kgc2.text_input("Takip No", key=f"kg_takip_{cari_id}")
         _kg_fatura_no = _kgc3.text_input("Fatura No", key=f"kg_fatura_no_{cari_id}")
-        _kg_fatura_odeme_sekli = _kgc4.selectbox("Ödeme Türü (Fatura)", ["", "Faturasız", "PÖ", "ÜA", "CH"], key=f"kg_fatura_odeme_sekli_{cari_id}",
-                                                  help="PÖ/CH seçilirse Fatura Ödeyen otomatik Gönderen olur, ÜA seçilirse otomatik Alıcı olur.")
 
         _kg_gonderen_idx = (_kg_musteri_opts.index(firma_adi) if firma_adi in _kg_musteri_opts else 0)
         _kg_gonderen_sec = _kgc1.selectbox("Gönderen Firma", _kg_musteri_opts, index=_kg_gonderen_idx, key=f"kg_gonderen_sec_{cari_id}")
@@ -2998,7 +2996,6 @@ def not_dialog(cari_id, firma_adi=""):
             _kg_fatura_varsayilan_idx = _kg_musteri_opts.index(_kg_alici_hesaplanan)
         _kg_fatura_sec = _kgc3.selectbox("Fatura Ödeyen *", _kg_musteri_opts, index=_kg_fatura_varsayilan_idx, key=f"kg_fatura_sec_{cari_id}")
         _kg_fatura_elle = _kgc3.text_input("(Listede yoksa elle yaz)", key=f"kg_fatura_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
-        _kg_tahsilat = _kgc4.selectbox("Tahsilat", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_tahsilat_{cari_id}")
 
         _kg_gonderen_il = _kgc1.selectbox("Gönderen İl", _kg_il_opts, key=f"kg_gonderen_il_{cari_id}")
         # ── Alıcı İl — daha önce bu Alıcı Firma için kaydedilmiş bir il varsa
@@ -3012,26 +3009,29 @@ def not_dialog(cari_id, firma_adi=""):
         _kg_alici_il = _kgc2.selectbox("Alıcı İl", _kg_il_opts, index=_kg_alici_il_varsayilan_idx, key=f"kg_alici_il_{cari_id}")
         if _kg_alici_firma_hesaplanan and _kg_alici_il != "-- İl seçilir --" and _kg_manuel_alici_hafiza.get(_tr_buyuk(_kg_alici_firma_hesaplanan)):
             st.caption(f"💡 '{_kg_alici_firma_hesaplanan}' için daha önce kaydedilen il otomatik önerildi.")
-        _kg_not = _kgc3.text_input("Not", key=f"kg_not_{cari_id}", placeholder="Serbest not (opsiyonel)")
-
-        _kg_adet = _kgc1.number_input("Adet", min_value=0, step=1, key=f"kg_adet_{cari_id}")
-        _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, key=f"kg_tutar_{cari_id}",
-                                        help="Sigorta, Ara Toplam, Kdv ve Son Toplam bunun üzerinden otomatik hesaplanır.")
-        _kg_desi = _kgc3.number_input("Desi", min_value=0.0, step=1.0, key=f"kg_desi_{cari_id}")
-        _kg_kilo = _kgc4.number_input("Kilo", min_value=0.0, step=0.5, key=f"kg_kilo_{cari_id}")
+        _kg_fatura_odeme_sekli = _kgc3.selectbox("Ödeme Türü (Fatura)", ["", "Faturasız", "PÖ", "ÜA", "CH"], key=f"kg_fatura_odeme_sekli_{cari_id}",
+                                                  help="PÖ/CH seçilirse Fatura Ödeyen otomatik Gönderen olur, ÜA seçilirse otomatik Alıcı olur.")
 
         _kg_tur = _kgc1.text_input("Tür", key=f"kg_tur_{cari_id}", placeholder="Koli / Palet / ...")
-        _kg_yetkili = _kgc2.text_input("Yetkili", key=f"kg_yetkili_{cari_id}", placeholder="İlgili kişiyi elle yaz")
-        _kg_odeme_tur = _kgc3.selectbox("Ödeme Türü", ["", "Nakit", "Havale/EFT", "Çek", "Kredi Kartı", "Diğer"], key=f"kg_odeme_{cari_id}")
+        _kg_desi = _kgc2.number_input("Desi", min_value=0.0, step=1.0, key=f"kg_desi_{cari_id}")
+        _kg_kilo = _kgc3.number_input("Kilo", min_value=0.0, step=0.5, key=f"kg_kilo_{cari_id}")
 
         # ── OTOMATİK HESAPLAMA ZİNCİRİ — Sigorta %6 → Ara Toplam → Kdv %20 →
         # Son Toplam, hepsi B.Tutar'dan türetilir. ELLE YAZILMAZ; burada sadece
         # CANLI ÖNİZLEME gösterilir, kayıt anında da aynı mantıkla hesaplanır.
+        _kg_adet = _kgc1.number_input("Adet", min_value=0, step=1, key=f"kg_adet_{cari_id}")
+        _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, key=f"kg_tutar_{cari_id}",
+                                        help="Sigorta, Ara Toplam, Kdv ve Son Toplam bunun üzerinden otomatik hesaplanır.")
         _kg_onizleme = _kg_hesap_zinciri({"tutar": _kg_tutar})
-        _kgc1.metric("Sigorta %6", f"{_kg_onizleme['sigorta']:,.2f} ₺")
-        _kgc2.metric("Ara Toplam", f"{_kg_onizleme['ara_toplam']:,.2f} ₺")
-        _kgc3.metric("Kdv %20", f"{_kg_onizleme['kdv']:,.2f} ₺")
-        _kgc4.metric("Son Toplam", f"{_kg_onizleme['toplam_fatura']:,.2f} ₺")
+        _kgc3.metric("Sigorta %6", f"{_kg_onizleme['sigorta']:,.2f} ₺")
+        _kgc1.metric("Ara Toplam", f"{_kg_onizleme['ara_toplam']:,.2f} ₺")
+        _kgc2.metric("Kdv %20", f"{_kg_onizleme['kdv']:,.2f} ₺")
+        _kgc3.metric("Son Toplam", f"{_kg_onizleme['toplam_fatura']:,.2f} ₺")
+
+        _kg_yetkili = _kgc1.text_input("Yetkili", key=f"kg_yetkili_{cari_id}", placeholder="İlgili kişiyi elle yaz")
+        _kg_tahsilat = _kgc2.selectbox("Tahsilat", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_tahsilat_{cari_id}")
+        _kg_not = _kgc3.text_input("Not", key=f"kg_not_{cari_id}", placeholder="Serbest not (opsiyonel)")
+        _kg_odeme_tur = ""  # Bu şemada "Ödeme Türü" (Nakit/Havale/Çek) yok — kaldırıldı
 
         # ── Dış Nakliye bölümü — SADECE Alıcı İl "yerel" iller dışında bir il
         # (dış bölge) ise gösterilir. Yerel il seçiliyse bu alanlar hiç görünmez.
