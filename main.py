@@ -13351,11 +13351,25 @@ elif aktif == "kargolar":
             _sb_kt = get_sb_client()
             if not _sb_kt:
                 return []
-            _r_kt = _sb_kt.table("kullanici_tercih").select("anahtar,deger").eq(
-                "kullanici", "__liste_ui__").like("anahtar", "_kargo_kayitlari_%").execute()
+            # NOT: Supabase/PostgREST tek sorguda varsayılan olarak en fazla 1000
+            # satır döner. 1000'den fazla müşterinin kargo kaydı olduğunda önceki
+            # kod bunun bir kısmını sessizce KAÇIRIYORDU (Excel'den doğru yüklenmiş
+            # olsa bile Kargolar listesinde eksik görünüyordu). Burada 1000'lik
+            # bloklar halinde TÜMÜ bitene kadar çekiliyor — sınırsız.
+            _tum_satirlar_kt = []
+            _offset_kt = 0
+            while True:
+                _r_kt = _sb_kt.table("kullanici_tercih").select("anahtar,deger").eq(
+                    "kullanici", "__liste_ui__").like("anahtar", "_kargo_kayitlari_%").range(
+                    _offset_kt, _offset_kt + 999).execute()
+                _batch_kt = _r_kt.data or []
+                _tum_satirlar_kt.extend(_batch_kt)
+                if len(_batch_kt) < 1000:
+                    break
+                _offset_kt += 1000
             import json as _ktj
             _tum_kayitlar = []
-            for _row in (_r_kt.data or []):
+            for _row in _tum_satirlar_kt:
                 try:
                     _cid = int(str(_row["anahtar"]).replace("_kargo_kayitlari_", ""))
                 except Exception:
