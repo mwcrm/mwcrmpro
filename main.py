@@ -3023,24 +3023,29 @@ def not_dialog(cari_id, firma_adi=""):
                     continue
                 _kg_gen = _kg_kol_genislik.get(_kg_kol_ad, 15)
                 _kg_col_config[_kg_kol_ad] = st.column_config.Column(_kg_kol_ad, width=int(_kg_gen) * 8)
+            _kg_ver_anahtari = f"_kg_editor_versiyon_{cari_id}"
+            if _kg_ver_anahtari not in st.session_state:
+                st.session_state[_kg_ver_anahtari] = 0
+            _kg_tumunu_sec_anahtari = f"_kg_tumunu_sec_deger_{cari_id}"
+            if st.session_state.pop(_kg_tumunu_sec_anahtari, False):
+                _kg_df["Seç"] = True
+            _kg_editor_key = f"kg_editor_{cari_id}_{st.session_state[_kg_ver_anahtari]}"
             _kg_duzenlenen = st.data_editor(_kg_df, use_container_width=True, hide_index=True,
-                                             key=f"kg_editor_{cari_id}",
+                                             key=_kg_editor_key,
                                              column_config=_kg_col_config)
             _kgb0a, _kgb0b, _kgb1, _kgb2 = st.columns(4)
             with _kgb0a:
                 if st.button("☑️ Tümünü Seç", key=f"kg_tumunu_sec_{cari_id}", use_container_width=True):
-                    # NOT: data_editor'ün seçimi KALICI hatırlaması için taze
-                    # dataframe'i değil, widget'ın kendi 'edited_rows' durumunu
-                    # doğrudan ayarlıyoruz — yoksa seçim bir sonraki butona
-                    # (Sil) basılınca sıfırlanıp "sildiğimde silmiyor" oluyordu.
-                    st.session_state[f"kg_editor_{cari_id}"] = {
-                        "edited_rows": {i: {"Seç": True} for i in range(len(_kg_df))},
-                        "added_rows": [], "deleted_rows": []
-                    }
+                    # NOT: widget'a her seferinde YENİ bir key vererek (versiyon
+                    # sayacı artırılarak) taze başlatılıyor — bu, Streamlit'in
+                    # resmi "widget sıfırlama" yöntemi ve Sil butonuna kadar
+                    # seçimin kalıcı kalmasını garantiliyor.
+                    st.session_state[_kg_tumunu_sec_anahtari] = True
+                    st.session_state[_kg_ver_anahtari] += 1
                     st.rerun()
             with _kgb0b:
                 if st.button("⬜ Seçimi Temizle", key=f"kg_secimi_temizle_{cari_id}", use_container_width=True):
-                    st.session_state.pop(f"kg_editor_{cari_id}", None)
+                    st.session_state[_kg_ver_anahtari] += 1
                     st.rerun()
             with _kgb1:
                 if st.button("💾 Değişiklikleri Kaydet", key=f"kg_duzenle_kaydet_{cari_id}", use_container_width=True):
@@ -13718,9 +13723,14 @@ elif aktif == "kargolar":
             _kl_gen = _kl_kol_genislik.get(_kl_kol_ad)
             if _kl_gen:
                 _kl_col_config[_kl_kol_ad] = st.column_config.Column(_kl_kol_ad, width=int(_kl_gen) * 8)
+        if "_kl_editor_versiyon" not in st.session_state:
+            st.session_state["_kl_editor_versiyon"] = 0
+        if st.session_state.pop("_kl_tumunu_sec_deger", False):
+            _kl_df_goster["Seç"] = True
+        _kl_editor_key = f"kargolar_editor_{st.session_state['_kl_editor_versiyon']}"
         _kl_duzenlenen = st.data_editor(
             _kl_df_goster.drop(columns=["_cari_id", "_satir_no"]), use_container_width=True, hide_index=True,
-            key="kargolar_editor", height=_kl_yukseklik,
+            key=_kl_editor_key, height=_kl_yukseklik,
             column_config=_kl_col_config
         )
 
@@ -13728,17 +13738,18 @@ elif aktif == "kargolar":
             _klb0a, _klb0b, _klb1, _klb2 = st.columns(4)
             with _klb0a:
                 if st.button("☑️ Tümünü Seç", key="kargolar_tumunu_sec_btn", use_container_width=True):
-                    # NOT: taze dataframe yerine data_editor'ün kendi 'edited_rows'
-                    # durumunu doğrudan ayarlıyoruz — yoksa seçim Sil butonuna
-                    # basılınca sıfırlanıp "sildiğimde silmiyor" oluyordu.
-                    st.session_state["kargolar_editor"] = {
-                        "edited_rows": {i: {"Seç": True} for i in range(len(_kl_df_goster))},
-                        "added_rows": [], "deleted_rows": []
-                    }
+                    # NOT: data_editor'ün mevcut key'ini tekrar kullanmak yerine
+                    # widget'a YENİ bir key veriyoruz (versiyon sayacını artırarak)
+                    # — böylece widget tamamen TAZE başlar ve "Seç=True" içeren
+                    # veriyi olduğu gibi alır. Aynı key'i tekrar kullanmak (veya
+                    # dahili durumunu elle değiştirmeye çalışmak) güvenilir
+                    # çalışmıyordu — bir sonraki tıklamada seçim sıfırlanıyordu.
+                    st.session_state["_kl_tumunu_sec_deger"] = True
+                    st.session_state["_kl_editor_versiyon"] += 1
                     st.rerun()
             with _klb0b:
                 if st.button("⬜ Seçimi Temizle", key="kargolar_secimi_temizle_btn", use_container_width=True):
-                    st.session_state.pop("kargolar_editor", None)
+                    st.session_state["_kl_editor_versiyon"] += 1
                     st.rerun()
             with _klb1:
                 if st.button("💾 Değişiklikleri Kaydet", key="kargolar_kaydet_btn", type="primary", use_container_width=True):
