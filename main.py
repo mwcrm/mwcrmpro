@@ -2876,7 +2876,8 @@ def not_dialog(cari_id, firma_adi=""):
         _kgc1, _kgc2, _kgc3 = st.columns(3)
         _kg_tarih = _kgc1.date_input("Tarih *", key=f"kg_tarih_{cari_id}")
         _kg_takip = _kgc2.text_input("Takip No", key=f"kg_takip_{cari_id}")
-        _kg_tur = _kgc3.text_input("Tür", key=f"kg_tur_{cari_id}", placeholder="Koli / Palet / ...")
+        _kg_fatura_no = _kgc3.text_input("Fatura No", key=f"kg_fatura_no_{cari_id}")
+        _kg_tur = _kgc1.text_input("Tür", key=f"kg_tur_{cari_id}", placeholder="Koli / Palet / ...")
         _kg_gonderen_idx = (_kg_musteri_opts.index(firma_adi) if firma_adi in _kg_musteri_opts else 0)
         _kg_gonderen_sec = _kgc1.selectbox("Gönderen Firma", _kg_musteri_opts, index=_kg_gonderen_idx, key=f"kg_gonderen_sec_{cari_id}")
         _kg_gonderen_elle = _kgc1.text_input("(Listede yoksa elle yaz)", key=f"kg_gonderen_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
@@ -2963,7 +2964,7 @@ def not_dialog(cari_id, firma_adi=""):
                 # Yazdığın her şey (il isimleri dahil) kaydedilirken otomatik
                 # BÜYÜK HARFE çevrilir — Türkçe karaktere duyarlı şekilde.
                 _kg_liste.append({
-                    "tarih": str(_kg_tarih), "takip_no": _tr_buyuk(_kg_takip), "gonderen_firma": _tr_buyuk(_kg_gonderen),
+                    "tarih": str(_kg_tarih), "takip_no": _tr_buyuk(_kg_takip), "fatura_no": _tr_buyuk(_kg_fatura_no), "gonderen_firma": _tr_buyuk(_kg_gonderen),
                     "alici_firma": _tr_buyuk(_kg_alici), "fatura_firma": _tr_buyuk(_kg_fatura_odeyen),
                     "gonderen_il": _tr_buyuk(_kg_gonderen_il_deger), "alici_il": _tr_buyuk(_kg_alici_il_deger),
                     "fatura_odeme_sekli": _kg_fatura_odeme_sekli,
@@ -2994,7 +2995,7 @@ def not_dialog(cari_id, firma_adi=""):
             _kg_df = _kg_pd.DataFrame(_kg_mevcut)
             _kg_df = _kg_df.fillna("")  # eski kayıtlarda olmayan alanlar "None" değil boş görünsün
             _kg_df.insert(0, "Seç", False)
-            _kg_kolon_isim = {"tarih": "Tarih", "takip_no": "Takip No", "gonderen_firma": "Gönderen",
+            _kg_kolon_isim = {"tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No", "gonderen_firma": "Gönderen",
                                "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen",
                                "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl",
                                "adet": "Adet", "tur": "Tür", "tutar": "Tutar", "kdv": "KDV", "sigorta": "Sigorta",
@@ -3022,10 +3023,23 @@ def not_dialog(cari_id, firma_adi=""):
                     continue
                 _kg_gen = _kg_kol_genislik.get(_kg_kol_ad, 15)
                 _kg_col_config[_kg_kol_ad] = st.column_config.Column(_kg_kol_ad, width=int(_kg_gen) * 8)
+            _kg_sec_tumu_key = f"_kg_sec_tumu_deger_{cari_id}"
+            if _kg_sec_tumu_key in st.session_state:
+                _kg_df["Seç"] = st.session_state.pop(_kg_sec_tumu_key)
             _kg_duzenlenen = st.data_editor(_kg_df, use_container_width=True, hide_index=True,
                                              key=f"kg_editor_{cari_id}",
                                              column_config=_kg_col_config)
-            _kgb1, _kgb2 = st.columns(2)
+            _kgb0a, _kgb0b, _kgb1, _kgb2 = st.columns(4)
+            with _kgb0a:
+                if st.button("☑️ Tümünü Seç", key=f"kg_tumunu_sec_{cari_id}", use_container_width=True):
+                    st.session_state[_kg_sec_tumu_key] = True
+                    st.session_state.pop(f"kg_editor_{cari_id}", None)
+                    st.rerun()
+            with _kgb0b:
+                if st.button("⬜ Seçimi Temizle", key=f"kg_secimi_temizle_{cari_id}", use_container_width=True):
+                    st.session_state[_kg_sec_tumu_key] = False
+                    st.session_state.pop(f"kg_editor_{cari_id}", None)
+                    st.rerun()
             with _kgb1:
                 if st.button("💾 Değişiklikleri Kaydet", key=f"kg_duzenle_kaydet_{cari_id}", use_container_width=True):
                     _kg_ters_isim = {v: k for k, v in _kg_kolon_isim.items()}
@@ -13445,7 +13459,7 @@ elif aktif == "kargolar":
         # Liste boşsa (hiç kargo kaydı yoksa) beklenen tüm sütunları BOŞ olarak
         # ekle — yoksa aşağıdaki filtre/Excel/rapor kodları "sütun yok" hatası
         # verip çökerdi (tam da liste boşken erişilmesi gereken özellikler).
-        _KL_BEKLENEN_KOLONLAR = ["tarih", "takip_no", "gonderen_firma", "alici_firma", "fatura_firma",
+        _KL_BEKLENEN_KOLONLAR = ["tarih", "takip_no", "fatura_no", "gonderen_firma", "alici_firma", "fatura_firma",
                                   "gonderen_il", "alici_il", "adet", "tur", "tutar", "kdv", "sigorta",
                                   "toplam_fatura", "odeme_tur", "tahsilat_durumu", "dis_nakliye_firma",
                                   "dis_nakliye_fatura", "dis_nakliye_detay", "dis_nakliye_tutar",
@@ -13563,7 +13577,7 @@ elif aktif == "kargolar":
             _kl_df = _kl_df[_kl_df["Müşteri"] == _kl_secili_musteri]
 
         _kl_df.insert(0, "Seç", False)
-        _kl_kolon_isim = {"Müşteri": "Müşteri", "tarih": "Tarih", "takip_no": "Takip No", "gonderen_firma": "Gönderen",
+        _kl_kolon_isim = {"Müşteri": "Müşteri", "tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No", "gonderen_firma": "Gönderen",
                            "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen",
                            "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl",
                            "adet": "Adet", "tur": "Tür", "tutar": "Tutar", "kdv": "KDV", "sigorta": "Sigorta",
@@ -13702,6 +13716,9 @@ elif aktif == "kargolar":
             _kl_gen = _kl_kol_genislik.get(_kl_kol_ad)
             if _kl_gen:
                 _kl_col_config[_kl_kol_ad] = st.column_config.Column(_kl_kol_ad, width=int(_kl_gen) * 8)
+        _kl_sec_tumu_key = "_kl_sec_tumu_deger"
+        if _kl_sec_tumu_key in st.session_state:
+            _kl_df_goster["Seç"] = st.session_state.pop(_kl_sec_tumu_key)
         _kl_duzenlenen = st.data_editor(
             _kl_df_goster.drop(columns=["_cari_id", "_satir_no"]), use_container_width=True, hide_index=True,
             key="kargolar_editor", height=_kl_yukseklik,
@@ -13709,7 +13726,17 @@ elif aktif == "kargolar":
         )
 
         with _kl_btn_kutu:
-            _klb1, _klb2 = st.columns(2)
+            _klb0a, _klb0b, _klb1, _klb2 = st.columns(4)
+            with _klb0a:
+                if st.button("☑️ Tümünü Seç", key="kargolar_tumunu_sec_btn", use_container_width=True):
+                    st.session_state[_kl_sec_tumu_key] = True
+                    st.session_state.pop("kargolar_editor", None)
+                    st.rerun()
+            with _klb0b:
+                if st.button("⬜ Seçimi Temizle", key="kargolar_secimi_temizle_btn", use_container_width=True):
+                    st.session_state[_kl_sec_tumu_key] = False
+                    st.session_state.pop("kargolar_editor", None)
+                    st.rerun()
             with _klb1:
                 if st.button("💾 Değişiklikleri Kaydet", key="kargolar_kaydet_btn", type="primary", use_container_width=True):
                     _kl_ters = {v: k for k, v in _kl_kolon_isim.items()}
