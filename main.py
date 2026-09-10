@@ -13611,6 +13611,38 @@ elif aktif == "kargolar":
                       if st.session_state.get("_kargolar_mukerrer_goster", False) else
                       (f" 🔁 {_kl_mukerrer_toplam} birebir mükerrer kayıt bulundu." if _kl_mukerrer_toplam > 0 else "")))
 
+        # ── TEK SATIRLIK İL/ÜRÜN ÖZETİ — sadece "Genel Müşteri Seç" ile TEK bir
+        # müşteri seçiliyken gösterilir. Alıcı İl + Tür kırılımında, en yoğun
+        # (adedi en yüksek) il/ürün soldan başlayıp sağa doğru sıralanır; taşarsa
+        # sağa kaydırılabilir tek satır halinde kalır (satır satır alta düşmez).
+        if _kl_secili_musteri_genel != "-- Tüm Müşteriler --" and len(_kl_df) > 0:
+            _oz_df = _kl_df.copy()
+            _oz_df["_il_norm"] = _oz_df.get("alici_il", "").astype(str).str.strip()
+            _oz_df["_tur_norm"] = _oz_df.get("tur", "").astype(str).str.strip()
+            _oz_df = _oz_df[_oz_df["_il_norm"] != ""]
+            if not _oz_df.empty:
+                _oz_efektif = pd.to_numeric(_oz_df.get("toplam_fatura", 0), errors="coerce").fillna(0)
+                _oz_tutar_num = pd.to_numeric(_oz_df.get("tutar", 0), errors="coerce").fillna(0)
+                _oz_df["_efektif_tutar"] = _oz_efektif.where(_oz_efektif != 0, _oz_tutar_num)
+                _oz_df["_adet_num"] = pd.to_numeric(_oz_df.get("adet", 0), errors="coerce").fillna(0)
+                _oz_grup = (_oz_df.groupby(["_il_norm", "_tur_norm"])
+                            .agg(Adet=("_adet_num", "sum"), Tutar=("_efektif_tutar", "sum"))
+                            .reset_index()
+                            .sort_values("Adet", ascending=False))
+                _oz_parcalar = "".join(
+                    f"<span style='display:inline-block;white-space:nowrap;margin-right:22px;'>"
+                    f"<b>{_r['_il_norm']}</b> {int(_r['Adet'])} {_r['_tur_norm'] or 'adet'} — {_r['Tutar']:,.0f} ₺</span>"
+                    for _, _r in _oz_grup.iterrows()
+                )
+                _oz_genel_ciro = float(_oz_df["_efektif_tutar"].sum())
+                st.markdown(
+                    f"<div style='white-space:nowrap;overflow-x:auto;padding:6px 2px;font-size:15px;'>"
+                    f"📍 {_oz_parcalar}"
+                    f"<span style='display:inline-block;white-space:nowrap;'>💰 <b>Toplam Ciro: {_oz_genel_ciro:,.0f} ₺</b></span>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
         # ── EXCEL İNDİR — tek sayfalık, bölünmemiş tam liste. Buton satırdaki
         # rezerve edilmiş kutunun İÇİNE konur (yukarıda "_kl_excel_indir_kutu").
         _kl_excel_buf = io.BytesIO()
