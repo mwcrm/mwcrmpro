@@ -13409,48 +13409,42 @@ elif aktif == "kargolar":
         # Müşteri alfabetik, kendi içinde tarihe göre sırala
         _kl_df = _kl_df.sort_values(by=["Müşteri", "tarih"], kind="stable").reset_index(drop=True)
 
-        # ── GENEL MÜŞTERİ FİLTRESİ — sistemdeki TÜM müşteriler seçilebilir,
-        # buradan doğrudan o müşteri için Kargo Girişi açılabilir (kaydı olmasa bile).
+        # ── TÜM FİLTRELER TEK SATIRDA ──────────────────────────────────────────
         _kl_musteri_secenekler = ["-- Tüm Müşteriler --"] + sorted(_kl_musteri_map.values())
-        _kl_fc1, _kl_fc2 = st.columns([3, 1], vertical_alignment="bottom")
+        _kl_musteri_basligi_opts_ham = set()
+        for _kl_kol_ad_x in ["gonderen_firma", "alici_firma", "fatura_firma"]:
+            if _kl_kol_ad_x in _kl_df.columns:
+                _kl_musteri_basligi_opts_ham |= set(x for x in _kl_df[_kl_kol_ad_x].dropna().unique().tolist() if str(x).strip())
+        _kl_musteri_basligi_opts = ["-- Tümü --"] + sorted(_kl_musteri_basligi_opts_ham)
+        _kl_gonderen_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["gonderen_firma"].dropna().unique().tolist() if str(x).strip()]) if "gonderen_firma" in _kl_df.columns else ["-- Tümü --"]
+        _kl_alici_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_firma"].dropna().unique().tolist() if str(x).strip()]) if "alici_firma" in _kl_df.columns else ["-- Tümü --"]
+        _kl_fatura_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["fatura_firma"].dropna().unique().tolist() if str(x).strip()]) if "fatura_firma" in _kl_df.columns else ["-- Tümü --"]
+
+        _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc5, _kl_fc6 = st.columns([1.6, 1.6, 1.3, 1.3, 1.3, 1.0], vertical_alignment="bottom")
         _kl_secili_musteri_genel = _kl_fc1.selectbox("Genel Müşteri Seç (kargo girişi için)", _kl_musteri_secenekler, key="kargolar_musteri_filtre")
-        with _kl_fc2:
+        _kl_sec_musteri_basligi = _kl_fc2.selectbox("📂 Müşteri (Gelen+Giden)", _kl_musteri_basligi_opts, key="kargolar_musteri_basligi_filtre")
+        _kl_sec_gonderen = _kl_fc3.selectbox("Gönderen", _kl_gonderen_opts_ham, key="kargolar_gonderen_filtre")
+        _kl_sec_alici = _kl_fc4.selectbox("Alıcı", _kl_alici_opts_ham, key="kargolar_alici_filtre")
+        _kl_sec_fatura = _kl_fc5.selectbox("Fatura Ödeyen", _kl_fatura_opts_ham, key="kargolar_fatura_filtre")
+        with _kl_fc6:
             if _kl_secili_musteri_genel != "-- Tüm Müşteriler --":
                 _kl_sec_cari_id = None
                 for _cid_ara, _fad_ara in _kl_musteri_map.items():
                     if _fad_ara == _kl_secili_musteri_genel:
                         _kl_sec_cari_id = _cid_ara
                         break
-                if st.button("📦 Kargo Girişi Ekle", key="kargolar_giris_ac_btn", use_container_width=True, disabled=_kl_sec_cari_id is None):
+                if st.button("📦 Kargo Girişi", key="kargolar_giris_ac_btn", use_container_width=True, disabled=_kl_sec_cari_id is None):
                     not_dialog(_kl_sec_cari_id, _kl_secili_musteri_genel)
 
-        # ── MÜŞTERİ BAŞLIĞI FİLTRESİ — seçilen firmanın hem GELEN (Alıcı/Fatura
-        # Ödeyen olduğu) hem GİDEN (Gönderen olduğu) TÜM kayıtlarını tek başlık
-        # altında gösterir (3 rolü birleştirir — VEYA mantığıyla).
-        _kl_musteri_basligi_opts_ham = set()
-        for _kl_kol_ad_x in ["gonderen_firma", "alici_firma", "fatura_firma"]:
-            if _kl_kol_ad_x in _kl_df.columns:
-                _kl_musteri_basligi_opts_ham |= set(x for x in _kl_df[_kl_kol_ad_x].dropna().unique().tolist() if str(x).strip())
-        _kl_musteri_basligi_opts = ["-- Tümü --"] + sorted(_kl_musteri_basligi_opts_ham)
-        _kl_sec_musteri_basligi = st.selectbox("📂 Müşteri Filtrele (Gelen + Giden hepsi)", _kl_musteri_basligi_opts, key="kargolar_musteri_basligi_filtre")
+        # ── Filtreleri sırayla uygula — "Müşteri (Gelen+Giden)" firmanın hem
+        # gönderen hem alıcı hem fatura ödeyen olduğu TÜM kayıtları (VEYA mantığı);
+        # diğer 3'ü tek tek daha da daraltır.
         if _kl_sec_musteri_basligi != "-- Tümü --":
             _kl_df = _kl_df[
                 (_kl_df.get("gonderen_firma", "") == _kl_sec_musteri_basligi) |
                 (_kl_df.get("alici_firma", "") == _kl_sec_musteri_basligi) |
                 (_kl_df.get("fatura_firma", "") == _kl_sec_musteri_basligi)
             ]
-
-        # ── MUHASEBESEL FİLTRELER — Gönderen / Alıcı / Fatura Ödeyen AYRI AYRI.
-        # Tek bir "Müşteri" filtresi bu 3 farklı rolü karıştırıp ödeme takibini
-        # yanlış gösteriyordu; artık her rol kendi filtresiyle daraltılıyor.
-        st.caption("Aşağıdaki 3 filtre, listedeki kayıtları rol bazında daraltır (muhasebesel takip için):")
-        _kl_gc1, _kl_gc2, _kl_gc3 = st.columns(3)
-        _kl_gonderen_opts = ["-- Tümü --"] + sorted([x for x in _kl_df["gonderen_firma"].dropna().unique().tolist() if str(x).strip()]) if "gonderen_firma" in _kl_df.columns else ["-- Tümü --"]
-        _kl_alici_opts = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_firma"].dropna().unique().tolist() if str(x).strip()]) if "alici_firma" in _kl_df.columns else ["-- Tümü --"]
-        _kl_fatura_opts = ["-- Tümü --"] + sorted([x for x in _kl_df["fatura_firma"].dropna().unique().tolist() if str(x).strip()]) if "fatura_firma" in _kl_df.columns else ["-- Tümü --"]
-        _kl_sec_gonderen = _kl_gc1.selectbox("Gönderen Filtrele", _kl_gonderen_opts, key="kargolar_gonderen_filtre")
-        _kl_sec_alici = _kl_gc2.selectbox("Alıcı Filtrele", _kl_alici_opts, key="kargolar_alici_filtre")
-        _kl_sec_fatura = _kl_gc3.selectbox("Fatura Ödeyen Filtrele", _kl_fatura_opts, key="kargolar_fatura_filtre")
         if _kl_sec_gonderen != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["gonderen_firma"] == _kl_sec_gonderen]
         if _kl_sec_alici != "-- Tümü --":
