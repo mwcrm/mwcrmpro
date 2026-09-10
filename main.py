@@ -3023,10 +3023,10 @@ def not_dialog(cari_id, firma_adi=""):
         _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, key=f"kg_tutar_{cari_id}",
                                         help="Sigorta, Ara Toplam, Kdv ve Son Toplam bunun üzerinden otomatik hesaplanır.")
         _kg_onizleme = _kg_hesap_zinciri({"tutar": _kg_tutar})
-        _kgc3.metric("Sigorta %6", f"{_kg_onizleme['sigorta']:,.2f} ₺")
-        _kgc1.metric("Ara Toplam", f"{_kg_onizleme['ara_toplam']:,.2f} ₺")
-        _kgc2.metric("Kdv %20", f"{_kg_onizleme['kdv']:,.2f} ₺")
-        _kgc3.metric("Son Toplam", f"{_kg_onizleme['toplam_fatura']:,.2f} ₺")
+        _kgc3.number_input("Sigorta %6 (₺)", value=_kg_onizleme['sigorta'], disabled=True, format="%.2f", key=f"kg_onizleme_sigorta_{cari_id}")
+        _kgc1.number_input("Ara Toplam (₺)", value=_kg_onizleme['ara_toplam'], disabled=True, format="%.2f", key=f"kg_onizleme_ara_{cari_id}")
+        _kgc2.number_input("Kdv %20 (₺)", value=_kg_onizleme['kdv'], disabled=True, format="%.2f", key=f"kg_onizleme_kdv_{cari_id}")
+        _kgc3.number_input("Son Toplam (₺)", value=_kg_onizleme['toplam_fatura'], disabled=True, format="%.2f", key=f"kg_onizleme_son_{cari_id}")
 
         _kg_yetkili = _kgc1.text_input("Yetkili", key=f"kg_yetkili_{cari_id}", placeholder="İlgili kişiyi elle yaz")
         _kg_tahsilat = _kgc2.selectbox("Tahsilat", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_tahsilat_{cari_id}")
