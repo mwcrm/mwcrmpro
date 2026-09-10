@@ -186,6 +186,36 @@ def _kg_manuel_alici_kaydet(_sozluk):
         pass
 
 
+# ── KARGO KAYITLARI (müşteriye özel) — GLOBAL. Hem Notlar&Randevu dialog'undaki
+# Kargo Girişi sekmesi hem Kargolar sayfası AYNI fonksiyonu/önbelleği kullanır —
+# ayrı ayrı tanımlanırsa biri diğerini GÖREMEZ, "silme/kaydetme çalışmıyor" gibi
+# sessiz hatalara yol açar (bir kere böyle bir hata yaşandı, tekrar olmasın).
+@st.cache_data(ttl=30, show_spinner=False)
+def _kg_kayitlari_yukle(_anahtar):
+    try:
+        _sb_kg = get_sb_client()
+        if _sb_kg:
+            _r_kg = _sb_kg.table("kullanici_tercih").select("deger").eq(
+                "kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
+            if _r_kg.data:
+                import json as _kgj
+                return _kgj.loads(_r_kg.data[0]["deger"])
+    except Exception:
+        pass
+    return []
+
+def _kg_kayitlari_kaydet(_anahtar, _liste):
+    try:
+        _sb_kg2 = get_sb_client()
+        if _sb_kg2:
+            import json as _kgj2
+            _deger = _kgj2.dumps(_liste, ensure_ascii=False)
+            _sb_kg2.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
+            _sb_kg2.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}).execute()
+    except Exception:
+        pass
+
+
 @st.cache_resource
 def get_sb_service():
     """Supabase service_role client — log ve admin işlemler için"""
@@ -2810,33 +2840,10 @@ def not_dialog(cari_id, firma_adi=""):
         # kuralı), her müşterinin kargo çıkış kayıtları kullanici_tercih
         # tablosunda MÜŞTERİYE ÖZEL bir anahtarda (JSON liste) tutulur:
         # anahtar = "_kargo_kayitlari_<cari_id>"
+        # NOT: _kg_kayitlari_yukle/_kg_kayitlari_kaydet artık GLOBAL (dosyanın
+        # başında) — hem bu dialog hem Kargolar sayfası AYNI fonksiyonu kullanır.
         _kg_sb = get_sb_client()
         _kg_anahtar = f"_kargo_kayitlari_{int(cari_id)}"
-
-        @st.cache_data(ttl=30, show_spinner=False)
-        def _kg_kayitlari_yukle(_anahtar):
-            try:
-                _sb_kg = get_sb_client()
-                if _sb_kg:
-                    _r_kg = _sb_kg.table("kullanici_tercih").select("deger").eq(
-                        "kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
-                    if _r_kg.data:
-                        import json as _kgj
-                        return _kgj.loads(_r_kg.data[0]["deger"])
-            except Exception:
-                pass
-            return []
-
-        def _kg_kayitlari_kaydet(_anahtar, _liste):
-            try:
-                _sb_kg2 = get_sb_client()
-                if _sb_kg2:
-                    import json as _kgj2
-                    _deger = _kgj2.dumps(_liste, ensure_ascii=False)
-                    _sb_kg2.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
-                    _sb_kg2.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}).execute()
-            except Exception:
-                pass
 
         st.caption(f"**{firma_adi}** için kargo çıkış kaydı ekle:")
         # Kayıtlı müşteri listesi — Gönderen/Alıcı/Fatura Ödeyen alanlarında
