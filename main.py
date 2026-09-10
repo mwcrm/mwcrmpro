@@ -13398,8 +13398,12 @@ elif aktif == "kargolar":
 
     _kl_tum_kayitlar = _kargolar_tumunu_yukle()
     if not _kl_tum_kayitlar:
-        st.info("💡 Henüz hiçbir müşteride kargo kaydı yok. Cari Liste'de bir firmayı seçip (Seç işareti) açılan pencereden '📦 Kargo Girişi' sekmesiyle ekleyebilirsin.")
-    else:
+        st.info("💡 Henüz hiçbir müşteride kargo kaydı yok — ama filtreler ve Excel Yükle yine de aşağıda çalışır, "
+                "istersen doğrudan Excel'den toplu kayıt yükleyebilirsin.")
+    # NOT: Önceden burada "else:" vardı ve liste boşken TÜM filtreler/Excel
+    # Yükle/Genel Rapor da gizleniyordu — tam da geri yükleme yapman gereken
+    # anda erişilemez oluyordu. Artık aşağıdaki blok HER ZAMAN çalışır.
+    if True:
         try:
             _kl_musteri_map = dict(zip(get_cari_listesi()["id"], get_cari_listesi()["firma"]))
         except Exception:
@@ -13424,6 +13428,18 @@ elif aktif == "kargolar":
             st.toast(f"✅ {_kl_eklenen} yeni firma-il çifti hafızaya eklendi (toplam {len(_kl_hafiza_yeni)})", icon="💾")
 
         _kl_df = pd.DataFrame(_kl_tum_kayitlar)
+        # Liste boşsa (hiç kargo kaydı yoksa) beklenen tüm sütunları BOŞ olarak
+        # ekle — yoksa aşağıdaki filtre/Excel/rapor kodları "sütun yok" hatası
+        # verip çökerdi (tam da liste boşken erişilmesi gereken özellikler).
+        _KL_BEKLENEN_KOLONLAR = ["tarih", "takip_no", "gonderen_firma", "alici_firma", "fatura_firma",
+                                  "gonderen_il", "alici_il", "adet", "tur", "tutar", "kdv", "sigorta",
+                                  "toplam_fatura", "odeme_tur", "tahsilat_durumu", "dis_nakliye_firma",
+                                  "dis_nakliye_fatura", "dis_nakliye_detay", "dis_nakliye_tutar",
+                                  "musteri_tutar", "kar", "dis_nakliye_odeme_durumu", "fatura_odeme_sekli",
+                                  "desi", "kilo", "Müşteri", "_cari_id", "_satir_no"]
+        for _kl_bk in _KL_BEKLENEN_KOLONLAR:
+            if _kl_bk not in _kl_df.columns:
+                _kl_df[_kl_bk] = pd.Series(dtype=object)
         _kl_df = _kl_df.fillna("")  # eski kayıtlarda olmayan alanlar "None" değil boş görünsün
         # Müşteri alfabetik, kendi içinde tarihe göre sırala
         _kl_df = _kl_df.sort_values(by=["Müşteri", "tarih"], kind="stable").reset_index(drop=True)
