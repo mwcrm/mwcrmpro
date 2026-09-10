@@ -3023,21 +3023,23 @@ def not_dialog(cari_id, firma_adi=""):
                     continue
                 _kg_gen = _kg_kol_genislik.get(_kg_kol_ad, 15)
                 _kg_col_config[_kg_kol_ad] = st.column_config.Column(_kg_kol_ad, width=int(_kg_gen) * 8)
-            _kg_sec_tumu_key = f"_kg_sec_tumu_deger_{cari_id}"
-            if _kg_sec_tumu_key in st.session_state:
-                _kg_df["Seç"] = st.session_state.pop(_kg_sec_tumu_key)
             _kg_duzenlenen = st.data_editor(_kg_df, use_container_width=True, hide_index=True,
                                              key=f"kg_editor_{cari_id}",
                                              column_config=_kg_col_config)
             _kgb0a, _kgb0b, _kgb1, _kgb2 = st.columns(4)
             with _kgb0a:
                 if st.button("☑️ Tümünü Seç", key=f"kg_tumunu_sec_{cari_id}", use_container_width=True):
-                    st.session_state[_kg_sec_tumu_key] = True
-                    st.session_state.pop(f"kg_editor_{cari_id}", None)
+                    # NOT: data_editor'ün seçimi KALICI hatırlaması için taze
+                    # dataframe'i değil, widget'ın kendi 'edited_rows' durumunu
+                    # doğrudan ayarlıyoruz — yoksa seçim bir sonraki butona
+                    # (Sil) basılınca sıfırlanıp "sildiğimde silmiyor" oluyordu.
+                    st.session_state[f"kg_editor_{cari_id}"] = {
+                        "edited_rows": {i: {"Seç": True} for i in range(len(_kg_df))},
+                        "added_rows": [], "deleted_rows": []
+                    }
                     st.rerun()
             with _kgb0b:
                 if st.button("⬜ Seçimi Temizle", key=f"kg_secimi_temizle_{cari_id}", use_container_width=True):
-                    st.session_state[_kg_sec_tumu_key] = False
                     st.session_state.pop(f"kg_editor_{cari_id}", None)
                     st.rerun()
             with _kgb1:
@@ -13716,9 +13718,6 @@ elif aktif == "kargolar":
             _kl_gen = _kl_kol_genislik.get(_kl_kol_ad)
             if _kl_gen:
                 _kl_col_config[_kl_kol_ad] = st.column_config.Column(_kl_kol_ad, width=int(_kl_gen) * 8)
-        _kl_sec_tumu_key = "_kl_sec_tumu_deger"
-        if _kl_sec_tumu_key in st.session_state:
-            _kl_df_goster["Seç"] = st.session_state.pop(_kl_sec_tumu_key)
         _kl_duzenlenen = st.data_editor(
             _kl_df_goster.drop(columns=["_cari_id", "_satir_no"]), use_container_width=True, hide_index=True,
             key="kargolar_editor", height=_kl_yukseklik,
@@ -13729,12 +13728,16 @@ elif aktif == "kargolar":
             _klb0a, _klb0b, _klb1, _klb2 = st.columns(4)
             with _klb0a:
                 if st.button("☑️ Tümünü Seç", key="kargolar_tumunu_sec_btn", use_container_width=True):
-                    st.session_state[_kl_sec_tumu_key] = True
-                    st.session_state.pop("kargolar_editor", None)
+                    # NOT: taze dataframe yerine data_editor'ün kendi 'edited_rows'
+                    # durumunu doğrudan ayarlıyoruz — yoksa seçim Sil butonuna
+                    # basılınca sıfırlanıp "sildiğimde silmiyor" oluyordu.
+                    st.session_state["kargolar_editor"] = {
+                        "edited_rows": {i: {"Seç": True} for i in range(len(_kl_df_goster))},
+                        "added_rows": [], "deleted_rows": []
+                    }
                     st.rerun()
             with _klb0b:
                 if st.button("⬜ Seçimi Temizle", key="kargolar_secimi_temizle_btn", use_container_width=True):
-                    st.session_state[_kl_sec_tumu_key] = False
                     st.session_state.pop("kargolar_editor", None)
                     st.rerun()
             with _klb1:
