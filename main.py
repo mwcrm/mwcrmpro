@@ -13424,6 +13424,22 @@ elif aktif == "kargolar":
                 if st.button("📦 Kargo Girişi Ekle", key="kargolar_giris_ac_btn", use_container_width=True, disabled=_kl_sec_cari_id is None):
                     not_dialog(_kl_sec_cari_id, _kl_secili_musteri_genel)
 
+        # ── MÜŞTERİ BAŞLIĞI FİLTRESİ — seçilen firmanın hem GELEN (Alıcı/Fatura
+        # Ödeyen olduğu) hem GİDEN (Gönderen olduğu) TÜM kayıtlarını tek başlık
+        # altında gösterir (3 rolü birleştirir — VEYA mantığıyla).
+        _kl_musteri_basligi_opts_ham = set()
+        for _kl_kol_ad_x in ["gonderen_firma", "alici_firma", "fatura_firma"]:
+            if _kl_kol_ad_x in _kl_df.columns:
+                _kl_musteri_basligi_opts_ham |= set(x for x in _kl_df[_kl_kol_ad_x].dropna().unique().tolist() if str(x).strip())
+        _kl_musteri_basligi_opts = ["-- Tümü --"] + sorted(_kl_musteri_basligi_opts_ham)
+        _kl_sec_musteri_basligi = st.selectbox("📂 Müşteri Filtrele (Gelen + Giden hepsi)", _kl_musteri_basligi_opts, key="kargolar_musteri_basligi_filtre")
+        if _kl_sec_musteri_basligi != "-- Tümü --":
+            _kl_df = _kl_df[
+                (_kl_df.get("gonderen_firma", "") == _kl_sec_musteri_basligi) |
+                (_kl_df.get("alici_firma", "") == _kl_sec_musteri_basligi) |
+                (_kl_df.get("fatura_firma", "") == _kl_sec_musteri_basligi)
+            ]
+
         # ── MUHASEBESEL FİLTRELER — Gönderen / Alıcı / Fatura Ödeyen AYRI AYRI.
         # Tek bir "Müşteri" filtresi bu 3 farklı rolü karıştırıp ödeme takibini
         # yanlış gösteriyordu; artık her rol kendi filtresiyle daraltılıyor.
