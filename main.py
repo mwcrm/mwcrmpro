@@ -3026,8 +3026,13 @@ def not_dialog(cari_id, firma_adi=""):
             _kg_ver_anahtari = f"_kg_editor_versiyon_{cari_id}"
             if _kg_ver_anahtari not in st.session_state:
                 st.session_state[_kg_ver_anahtari] = 0
-            _kg_tumunu_sec_anahtari = f"_kg_tumunu_sec_deger_{cari_id}"
-            if st.session_state.pop(_kg_tumunu_sec_anahtari, False):
+            _kg_tumu_secili_anahtari = f"_kg_tumu_secili_mod_{cari_id}"
+            # NOT: Bayrak artık KALICI (pop değil) — Streamlit'in data_editor'ü
+            # seçimi taban veriye göre değil FARK olarak sakladığı için, tek
+            # seferlik bayrak ikinci render'da (Sil'e basılınca) sıfırlanıp
+            # seçimi kaybettiriyordu. Şimdi Temizle'ye ya da başarılı bir
+            # Kaydet/Sil işlemine kadar her render'da yeniden uygulanıyor.
+            if st.session_state.get(_kg_tumu_secili_anahtari, False):
                 _kg_df["Seç"] = True
             _kg_editor_key = f"kg_editor_{cari_id}_{st.session_state[_kg_ver_anahtari]}"
             _kg_duzenlenen = st.data_editor(_kg_df, use_container_width=True, hide_index=True,
@@ -3036,15 +3041,12 @@ def not_dialog(cari_id, firma_adi=""):
             _kgb0a, _kgb0b, _kgb1, _kgb2 = st.columns(4)
             with _kgb0a:
                 if st.button("☑️ Tümünü Seç", key=f"kg_tumunu_sec_{cari_id}", use_container_width=True):
-                    # NOT: widget'a her seferinde YENİ bir key vererek (versiyon
-                    # sayacı artırılarak) taze başlatılıyor — bu, Streamlit'in
-                    # resmi "widget sıfırlama" yöntemi ve Sil butonuna kadar
-                    # seçimin kalıcı kalmasını garantiliyor.
-                    st.session_state[_kg_tumunu_sec_anahtari] = True
+                    st.session_state[_kg_tumu_secili_anahtari] = True
                     st.session_state[_kg_ver_anahtari] += 1
                     st.rerun()
             with _kgb0b:
                 if st.button("⬜ Seçimi Temizle", key=f"kg_secimi_temizle_{cari_id}", use_container_width=True):
+                    st.session_state[_kg_tumu_secili_anahtari] = False
                     st.session_state[_kg_ver_anahtari] += 1
                     st.rerun()
             with _kgb1:
@@ -3062,6 +3064,8 @@ def not_dialog(cari_id, firma_adi=""):
                         _kg_yeni_liste.append(_kg_kayit)
                     _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste)
                     _kg_kayitlari_yukle.clear()
+                    st.session_state[_kg_tumu_secili_anahtari] = False
+                    st.session_state[_kg_ver_anahtari] += 1
                     st.toast("✅ Kargo kayıtları güncellendi", icon="🚚")
                     st.rerun()
             with _kgb2:
@@ -3080,6 +3084,8 @@ def not_dialog(cari_id, firma_adi=""):
                         _kg_kalanlar.append(_kg_kayit2)
                     _kg_kayitlari_kaydet(_kg_anahtar, _kg_kalanlar)
                     _kg_kayitlari_yukle.clear()
+                    st.session_state[_kg_tumu_secili_anahtari] = False
+                    st.session_state[_kg_ver_anahtari] += 1
                     st.toast(f"🗑️ {_kg_secili_sayi} kayıt silindi", icon="🗑️")
                     st.rerun()
         else:
@@ -13725,7 +13731,15 @@ elif aktif == "kargolar":
                 _kl_col_config[_kl_kol_ad] = st.column_config.Column(_kl_kol_ad, width=int(_kl_gen) * 8)
         if "_kl_editor_versiyon" not in st.session_state:
             st.session_state["_kl_editor_versiyon"] = 0
-        if st.session_state.pop("_kl_tumunu_sec_deger", False):
+        # NOT: Bu bayrak artık KALICI — bir önceki denemede sadece TEK render'da
+        # geçerli oluyordu (pop ile siliniyordu). Streamlit'in data_editor'ü
+        # seçimi taban veriye göre değil FARK (delta) olarak sakladığı için,
+        # ikinci render'da (mesela Sil butonuna basılınca) taban veri tekrar
+        # False'a dönüyor ve "işaretliydi ama artık değil" gibi görünüyordu —
+        # aslında hiç silinmiyordu çünkü Sil'in kendi render'ında seçim zaten
+        # sıfırlanmış oluyordu. Şimdi bayrak, Temizle'ye ya da başarılı bir
+        # Kaydet/Sil işlemine kadar HER render'da yeniden uygulanıyor.
+        if st.session_state.get("_kl_tumu_secili_mod", False):
             _kl_df_goster["Seç"] = True
         _kl_editor_key = f"kargolar_editor_{st.session_state['_kl_editor_versiyon']}"
         _kl_duzenlenen = st.data_editor(
@@ -13738,17 +13752,12 @@ elif aktif == "kargolar":
             _klb0a, _klb0b, _klb1, _klb2 = st.columns(4)
             with _klb0a:
                 if st.button("☑️ Tümünü Seç", key="kargolar_tumunu_sec_btn", use_container_width=True):
-                    # NOT: data_editor'ün mevcut key'ini tekrar kullanmak yerine
-                    # widget'a YENİ bir key veriyoruz (versiyon sayacını artırarak)
-                    # — böylece widget tamamen TAZE başlar ve "Seç=True" içeren
-                    # veriyi olduğu gibi alır. Aynı key'i tekrar kullanmak (veya
-                    # dahili durumunu elle değiştirmeye çalışmak) güvenilir
-                    # çalışmıyordu — bir sonraki tıklamada seçim sıfırlanıyordu.
-                    st.session_state["_kl_tumunu_sec_deger"] = True
+                    st.session_state["_kl_tumu_secili_mod"] = True
                     st.session_state["_kl_editor_versiyon"] += 1
                     st.rerun()
             with _klb0b:
                 if st.button("⬜ Seçimi Temizle", key="kargolar_secimi_temizle_btn", use_container_width=True):
+                    st.session_state["_kl_tumu_secili_mod"] = False
                     st.session_state["_kl_editor_versiyon"] += 1
                     st.rerun()
             with _klb1:
@@ -13780,6 +13789,8 @@ elif aktif == "kargolar":
                         _kargolar_yaz(_cid_kaydet, [x for x in _liste_kaydet if x is not None])
                     _kargolar_tumunu_yukle.clear()
                     _kg_kayitlari_yukle.clear()
+                    st.session_state["_kl_tumu_secili_mod"] = False
+                    st.session_state["_kl_editor_versiyon"] += 1
                     st.toast("✅ Kargo kayıtları güncellendi (filtre dışındaki kayıtlara dokunulmadı)", icon="🚚")
                     st.rerun()
             with _klb2:
@@ -13801,6 +13812,8 @@ elif aktif == "kargolar":
                         _kargolar_yaz(_cid_kaydet2, [x for x in _liste_kaydet2 if x is not None])
                     _kargolar_tumunu_yukle.clear()
                     _kg_kayitlari_yukle.clear()
+                    st.session_state["_kl_tumu_secili_mod"] = False
+                    st.session_state["_kl_editor_versiyon"] += 1
                     st.toast(f"🗑️ {_kl_secili_sayi} kayıt silindi (filtre dışındaki kayıtlara dokunulmadı)", icon="🗑️")
                     st.rerun()
 
