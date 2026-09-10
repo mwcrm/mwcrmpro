@@ -232,19 +232,56 @@ def _kg_efektif_tutar(_kayit):
         return 0.0
 
 
-def _kg_kar_hesapla(_kayit):
-    """Kar = Dış Nakliye Tutar - Müşteri Tutar. Artık tabloda ELLE
-    YAZILMIYOR — kayıt/güncelleme anında bu ikisinden OTOMATİK hesaplanıp
-    üzerine yazılıyor, Kar sütunu tabloda salt okunur."""
+def _kg_hesap_zinciri(_kayit):
+    """B.Tutar'dan (tutar) başlayarak Sigorta %6 → Ara Toplam → Kdv %20 →
+    Son Toplam (toplam_fatura) ZİNCİRLEME otomatik hesaplanır. Hiçbiri artık
+    elle yazılmıyor — kayıt/güncelleme anında tutar'dan türetilip üzerine
+    yazılır. _kayit sözlüğünü YERİNDE günceller ve aynı sözlüğü döndürür."""
     try:
-        _dn = float(_kayit.get("dis_nakliye_tutar", 0) or 0)
+        _tutar = float(_kayit.get("tutar", 0) or 0)
     except Exception:
-        _dn = 0.0
+        _tutar = 0.0
+    _sigorta = round(_tutar * 0.06, 2)
+    _ara_toplam = round(_tutar + _sigorta, 2)
+    _kdv = round(_ara_toplam * 0.20, 2)
+    _kayit["sigorta"] = _sigorta
+    _kayit["ara_toplam"] = _ara_toplam
+    _kayit["kdv"] = _kdv
+    _kayit["toplam_fatura"] = round(_ara_toplam + _kdv, 2)
+    return _kayit
+
+
+def _kg_kar_zarar_hesapla(_kayit):
+    """Kar/Zarar = Müşteri Tutar - Dış Nakliye Tutar (ESKİ formül tersti,
+    düzeltildi). Sonuç pozitifse 'kar' alanına, negatifse 'zarar' alanına
+    yazılır, diğeri 0 kalır (tabloda 0 yerine '-' gösterilir). Artık elle
+    yazılmıyor — kayıt/güncelleme anında otomatik hesaplanıp üzerine
+    yazılır. _kayit sözlüğünü YERİNDE günceller ve aynı sözlüğü döndürür."""
     try:
         _mt = float(_kayit.get("musteri_tutar", 0) or 0)
     except Exception:
         _mt = 0.0
-    return round(_dn - _mt, 2)
+    try:
+        _dn = float(_kayit.get("dis_nakliye_tutar", 0) or 0)
+    except Exception:
+        _dn = 0.0
+    _net = round(_mt - _dn, 2)
+    _kayit["kar"] = _net if _net > 0 else 0.0
+    _kayit["zarar"] = _net if _net < 0 else 0.0
+    return _kayit
+
+
+def _kg_sifir_tire(_deger):
+    """Kar/Zarar gibi 'ya biri ya diğeri dolu' sütunları TABLODA gösterirken
+    0 yerine '-' yazsın diye — sadece görünüm; kayıt sırasında zaten
+    _kg_kar_zarar_hesapla ile doğru sayısal değer yeniden yazılır."""
+    try:
+        _fv = float(_deger)
+    except Exception:
+        return "-"
+    if _fv == 0:
+        return "-"
+    return f"{_fv:,.2f}"
 
 
 def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
@@ -2974,14 +3011,26 @@ def not_dialog(cari_id, firma_adi=""):
         _kg_fatura_odeme_sekli = _kgc3.selectbox("Ödeme Türü (Fatura)", ["", "Faturasız", "PÖ", "ÜA", "CH"], key=f"kg_fatura_odeme_sekli_{cari_id}",
                                                   help="PÖ/CH seçilirse Fatura Ödeyen otomatik Gönderen olur, ÜA seçilirse otomatik Alıcı olur.")
         _kg_adet = _kgc1.number_input("Adet", min_value=0, step=1, key=f"kg_adet_{cari_id}")
-        _kg_tutar = _kgc2.number_input("Tutar", min_value=0.0, step=0.01, key=f"kg_tutar_{cari_id}")
-        _kg_kdv = _kgc3.number_input("KDV", min_value=0.0, step=0.01, key=f"kg_kdv_{cari_id}")
+        _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, key=f"kg_tutar_{cari_id}",
+                                        help="Sigorta, Ara Toplam, Kdv ve Son Toplam bunun üzerinden otomatik hesaplanır.")
+        _kg_yetkili = _kgc3.text_input("Yetkili", key=f"kg_yetkili_{cari_id}", placeholder="İlgili kişiyi elle yaz")
         _kg_desi = _kgc1.number_input("Desi", min_value=0.0, step=1.0, key=f"kg_desi_{cari_id}")
         _kg_kilo = _kgc2.number_input("Kilo", min_value=0.0, step=0.5, key=f"kg_kilo_{cari_id}")
-        _kg_sigorta = _kgc3.number_input("Sigorta", min_value=0.0, step=0.01, key=f"kg_sigorta_{cari_id}")
-        _kg_toplam_fatura = _kgc1.number_input("Toplam Fatura", min_value=0.0, step=0.01, key=f"kg_toplam_fatura_{cari_id}")
-        _kg_odeme_tur = _kgc2.selectbox("Ödeme Türü", ["", "Nakit", "Havale/EFT", "Çek", "Kredi Kartı", "Diğer"], key=f"kg_odeme_{cari_id}")
-        _kg_tahsilat = _kgc3.selectbox("Tahsilat Durumu", ["", "Tahsil Edildi", "Bekliyor", "Kısmi Tahsilat"], key=f"kg_tahsilat_{cari_id}")
+        _kg_odeme_tur = _kgc3.selectbox("Ödeme Türü", ["", "Nakit", "Havale/EFT", "Çek", "Kredi Kartı", "Diğer"], key=f"kg_odeme_{cari_id}")
+
+        # ── OTOMATİK HESAPLAMA ZİNCİRİ — Sigorta %6 → Ara Toplam → Kdv %20 →
+        # Son Toplam, hepsi B.Tutar'dan türetilir. ELLE YAZILMAZ; burada sadece
+        # CANLI ÖNİZLEME gösterilir, kayıt anında da aynı mantıkla hesaplanır.
+        _kg_onizleme = _kg_hesap_zinciri({"tutar": _kg_tutar})
+        _kgh1, _kgh2, _kgh3, _kgh4 = st.columns(4)
+        _kgh1.metric("Sigorta %6", f"{_kg_onizleme['sigorta']:,.2f} ₺")
+        _kgh2.metric("Ara Toplam", f"{_kg_onizleme['ara_toplam']:,.2f} ₺")
+        _kgh3.metric("Kdv %20", f"{_kg_onizleme['kdv']:,.2f} ₺")
+        _kgh4.metric("Son Toplam", f"{_kg_onizleme['toplam_fatura']:,.2f} ₺")
+
+        _kgc1b, _kgc2b = st.columns(2)
+        _kg_tahsilat = _kgc1b.selectbox("Tahsilat", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_tahsilat_{cari_id}")
+        _kg_not = _kgc2b.text_input("Not", key=f"kg_not_{cari_id}", placeholder="Serbest not (opsiyonel)")
 
         # ── Dış Nakliye bölümü — SADECE Alıcı İl "yerel" iller dışında bir il
         # (dış bölge) ise gösterilir. Yerel il seçiliyse bu alanlar hiç görünmez.
@@ -2997,8 +3046,8 @@ def not_dialog(cari_id, firma_adi=""):
             _kg_dn_detay = _kgd3.text_input("Dış Nakliye Detay", key=f"kg_dn_detay_{cari_id}", placeholder="Örn: 2 Palet")
             _kg_dn_tutar = _kgd1.number_input("Dış Nakliye Tutar", min_value=0.0, step=0.01, key=f"kg_dn_tutar_{cari_id}")
             _kg_musteri_tutar = _kgd2.number_input("Müşteri Tutar", min_value=0.0, step=0.01, key=f"kg_musteri_tutar_{cari_id}")
-            _kg_dn_odeme = _kgd3.selectbox("Dış Nakliye Ödeme Durumu", ["", "Ödendi", "Ödenmedi", "Kısmi Ödendi"], key=f"kg_dn_odeme_{cari_id}")
-            _kgd3.caption("Kar, kaydedince otomatik hesaplanır: Dış Nakliye Tutar − Müşteri Tutar")
+            _kg_dn_odeme = _kgd3.selectbox("İşlendi mi?", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_dn_odeme_{cari_id}")
+            _kgd3.caption("Kar/Zarar, kaydedince otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (pozitifse Kar, negatifse Zarar)")
             _kg_dn_firma = _kg_dn_firma_elle.strip() or (_kg_dn_firma_sec if _kg_dn_firma_sec != "-- Seç veya elle yaz --" else "")
         else:
             st.caption("💡 Alıcı İl olarak yerel bir il (İstanbul, Bursa, İzmir, Kocaeli, Tekirdağ, Manisa) seçilmedi/seçilirse Dış Nakliye alanları burada görünmez.")
@@ -3020,22 +3069,27 @@ def not_dialog(cari_id, firma_adi=""):
             else:
                 _kg_gonderen_il_deger = _kg_gonderen_il if _kg_gonderen_il != "-- İl seçilir --" else ""
                 _kg_alici_il_deger = _kg_alici_il if _kg_alici_il != "-- İl seçilir --" else ""
-                _kg_kar = round(_kg_dn_tutar - _kg_musteri_tutar, 2)
                 _kg_liste = list(_kg_kayitlari_yukle(_kg_anahtar))
                 # Yazdığın her şey (il isimleri dahil) kaydedilirken otomatik
                 # BÜYÜK HARFE çevrilir — Türkçe karaktere duyarlı şekilde.
-                _kg_liste.append({
+                _kg_yeni_kayit = {
                     "tarih": str(_kg_tarih), "takip_no": _tr_buyuk(_kg_takip), "fatura_no": _tr_buyuk(_kg_fatura_no), "gonderen_firma": _tr_buyuk(_kg_gonderen),
                     "alici_firma": _tr_buyuk(_kg_alici), "fatura_firma": _tr_buyuk(_kg_fatura_odeyen),
                     "gonderen_il": _tr_buyuk(_kg_gonderen_il_deger), "alici_il": _tr_buyuk(_kg_alici_il_deger),
-                    "fatura_odeme_sekli": _kg_fatura_odeme_sekli,
-                    "adet": _kg_adet, "tur": _tr_buyuk(_kg_tur), "tutar": _kg_tutar, "kdv": _kg_kdv, "sigorta": _kg_sigorta,
+                    "fatura_odeme_sekli": _kg_fatura_odeme_sekli, "yetkili": _tr_buyuk(_kg_yetkili), "not": _kg_not,
+                    "adet": _kg_adet, "tur": _tr_buyuk(_kg_tur), "tutar": _kg_tutar,
                     "desi": _kg_desi, "kilo": _kg_kilo,
-                    "toplam_fatura": _kg_toplam_fatura, "odeme_tur": _kg_odeme_tur, "tahsilat_durumu": _kg_tahsilat,
+                    "odeme_tur": _kg_odeme_tur, "tahsilat_durumu": _kg_tahsilat,
                     "dis_nakliye_firma": _tr_buyuk(_kg_dn_firma), "dis_nakliye_fatura": _tr_buyuk(_kg_dn_fatura),
                     "dis_nakliye_detay": _tr_buyuk(_kg_dn_detay), "dis_nakliye_tutar": _kg_dn_tutar,
-                    "musteri_tutar": _kg_musteri_tutar, "kar": _kg_kar, "dis_nakliye_odeme_durumu": _kg_dn_odeme,
-                })
+                    "musteri_tutar": _kg_musteri_tutar, "dis_nakliye_odeme_durumu": _kg_dn_odeme,
+                }
+                # Sigorta/Ara Toplam/Kdv/Son Toplam VE Kar/Zarar burada da
+                # (canlı önizlemedekiyle birebir aynı mantıkla) OTOMATİK
+                # hesaplanıp kayda yazılır — elle girilen bir değer yok.
+                _kg_hesap_zinciri(_kg_yeni_kayit)
+                _kg_kar_zarar_hesapla(_kg_yeni_kayit)
+                _kg_liste.append(_kg_yeni_kayit)
                 _kg_kayitlari_kaydet(_kg_anahtar, _kg_liste)
                 _kg_kayitlari_yukle.clear()
                 _cari_gerceklesen_ciro_ekle(cari_id, _kg_efektif_tutar(_kg_liste[-1]))
@@ -3058,14 +3112,20 @@ def not_dialog(cari_id, firma_adi=""):
             _kg_df = _kg_df.fillna("")  # eski kayıtlarda olmayan alanlar "None" değil boş görünsün
             _kg_df.insert(0, "Seç", False)
             _kg_kolon_isim = {"tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No", "gonderen_firma": "Gönderen",
-                               "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen",
+                               "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
                                "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl",
-                               "adet": "Adet", "tur": "Tür", "tutar": "Tutar", "kdv": "KDV", "sigorta": "Sigorta",
-                               "toplam_fatura": "Toplam Fatura", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat",
+                               "adet": "Adet", "tur": "Tür", "tutar": "B.Tutar", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam", "kdv": "Kdv %20",
+                               "toplam_fatura": "Son Toplam", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat", "not": "Not",
                                "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura",
                                "dis_nakliye_detay": "Dış Nakliye Detay", "dis_nakliye_tutar": "Dış Nakliye Tutar",
-                               "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme", "fatura_odeme_sekli": "Fatura Ödeme Şekli", "desi": "Desi", "kilo": "Kilo"}
+                               "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar", "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme", "fatura_odeme_sekli": "Fatura Ödeme Şekli", "desi": "Desi", "kilo": "Kilo"}
             _kg_df = _kg_df.rename(columns=_kg_kolon_isim)
+            # Kar/Zarar'da ikisinden sadece biri dolu olur — 0 yerine "-"
+            # göstersin diye biçimlendiriliyor (kayıt sırasında gerçek sayısal
+            # değer zaten otomatik yeniden hesaplanıp yazılıyor).
+            for _kg_kz_kol in ("Kar", "Zarar"):
+                if _kg_kz_kol in _kg_df.columns:
+                    _kg_df[_kg_kz_kol] = _kg_df[_kg_kz_kol].map(_kg_sifir_tire)
             # Kolon Ayarları'nda ayarlanan (5-50 arası) genişlikleri burada da uygula —
             # yoksa tablo çok geniş açılıp okunması zorlaşıyordu.
             if "_kargo_kol_genislik" not in st.session_state:
@@ -3079,17 +3139,25 @@ def not_dialog(cari_id, firma_adi=""):
                 except Exception:
                     pass
             _kg_kol_genislik = st.session_state.get("_kargo_kol_genislik", {})
+            _KG_OTOMATIK_HESAPLI_KOLONLAR = {
+                "Kar": "Otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (pozitifse burada görünür)",
+                "Zarar": "Otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (negatifse burada görünür)",
+                "Sigorta %6": "Otomatik hesaplanır: B.Tutar × %6",
+                "Ara Toplam": "Otomatik hesaplanır: B.Tutar + Sigorta %6",
+                "Kdv %20": "Otomatik hesaplanır: Ara Toplam × %20",
+                "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
+            }
             _kg_col_config = {"Seç": st.column_config.CheckboxColumn("Seç", default=False, width=40)}
             for _kg_kol_ad in _kg_df.columns:
                 if _kg_kol_ad == "Seç":
                     continue
                 _kg_gen = _kg_kol_genislik.get(_kg_kol_ad, 15)
-                if _kg_kol_ad == "Kar":
-                    # Kar artık ELLE YAZILMIYOR — Dış Nakliye Tutar - Müşteri
-                    # Tutar'dan OTOMATİK hesaplanıyor, kayıt anında üzerine yazılır.
-                    _kg_col_config[_kg_kol_ad] = st.column_config.NumberColumn(
-                        "Kar", width=int(_kg_gen) * 8, disabled=True,
-                        help="Otomatik hesaplanır: Dış Nakliye Tutar − Müşteri Tutar")
+                if _kg_kol_ad in _KG_OTOMATIK_HESAPLI_KOLONLAR:
+                    # Bu sütunlar artık ELLE YAZILMIYOR — otomatik hesaplanıp
+                    # kayıt anında üzerine yazılıyor.
+                    _kg_col_config[_kg_kol_ad] = st.column_config.Column(
+                        _kg_kol_ad, width=int(_kg_gen) * 8, disabled=True,
+                        help=_KG_OTOMATIK_HESAPLI_KOLONLAR[_kg_kol_ad])
                 else:
                     _kg_col_config[_kg_kol_ad] = st.column_config.Column(_kg_kol_ad, width=int(_kg_gen) * 8)
             _kg_ver_anahtari = f"_kg_editor_versiyon_{cari_id}"
@@ -3131,7 +3199,8 @@ def not_dialog(cari_id, firma_adi=""):
                             if _kol == "Seç":
                                 continue
                             _kg_kayit[_kg_ters_isim.get(_kol, _kol)] = _val
-                        _kg_kayit["kar"] = _kg_kar_hesapla(_kg_kayit)
+                        _kg_hesap_zinciri(_kg_kayit)
+                        _kg_kar_zarar_hesapla(_kg_kayit)
                         _kg_yeni_liste.append(_kg_kayit)
                     _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste)
                     _kg_kayitlari_yukle.clear()
@@ -13532,11 +13601,11 @@ elif aktif == "kargolar":
         # Liste boşsa (hiç kargo kaydı yoksa) beklenen tüm sütunları BOŞ olarak
         # ekle — yoksa aşağıdaki filtre/Excel/rapor kodları "sütun yok" hatası
         # verip çökerdi (tam da liste boşken erişilmesi gereken özellikler).
-        _KL_BEKLENEN_KOLONLAR = ["tarih", "takip_no", "fatura_no", "gonderen_firma", "alici_firma", "fatura_firma",
-                                  "gonderen_il", "alici_il", "adet", "tur", "tutar", "kdv", "sigorta",
-                                  "toplam_fatura", "odeme_tur", "tahsilat_durumu", "dis_nakliye_firma",
+        _KL_BEKLENEN_KOLONLAR = ["tarih", "takip_no", "fatura_no", "gonderen_firma", "alici_firma", "fatura_firma", "yetkili",
+                                  "gonderen_il", "alici_il", "adet", "tur", "tutar", "sigorta", "ara_toplam", "kdv",
+                                  "toplam_fatura", "odeme_tur", "tahsilat_durumu", "not", "dis_nakliye_firma",
                                   "dis_nakliye_fatura", "dis_nakliye_detay", "dis_nakliye_tutar",
-                                  "musteri_tutar", "kar", "dis_nakliye_odeme_durumu", "fatura_odeme_sekli",
+                                  "musteri_tutar", "kar", "zarar", "dis_nakliye_odeme_durumu", "fatura_odeme_sekli",
                                   "desi", "kilo", "Müşteri", "_cari_id", "_satir_no"]
         for _kl_bk in _KL_BEKLENEN_KOLONLAR:
             if _kl_bk not in _kl_df.columns:
@@ -13683,16 +13752,22 @@ elif aktif == "kargolar":
 
         _kl_df.insert(0, "Seç", False)
         _kl_kolon_isim = {"Müşteri": "Müşteri", "tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No", "gonderen_firma": "Gönderen",
-                           "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen",
+                           "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
                            "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl",
-                           "adet": "Adet", "tur": "Tür", "tutar": "Tutar", "kdv": "KDV", "sigorta": "Sigorta",
-                           "toplam_fatura": "Toplam Fatura", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat",
+                           "adet": "Adet", "tur": "Tür", "tutar": "B.Tutar", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam", "kdv": "Kdv %20",
+                           "toplam_fatura": "Son Toplam", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat", "not": "Not",
                            "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura",
                            "dis_nakliye_detay": "Dış Nakliye Detay", "dis_nakliye_tutar": "Dış Nakliye Tutar",
-                           "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme", "fatura_odeme_sekli": "Fatura Ödeme Şekli", "desi": "Desi", "kilo": "Kilo"}
+                           "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar", "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme", "fatura_odeme_sekli": "Fatura Ödeme Şekli", "desi": "Desi", "kilo": "Kilo"}
         _kl_gorunur_kolonlar = ["Seç", "Müşteri"] + [c for c in _kl_kolon_isim if c in _kl_df.columns and c != "Müşteri"]
         _kl_df = _kl_df.reset_index(drop=True)  # filtrelerden sonra index'ler boşluklu kalmasın (iloc hatası önlenir)
         _kl_df_goster = _kl_df[_kl_gorunur_kolonlar + ["_cari_id", "_satir_no"]].rename(columns=_kl_kolon_isim)
+        # Kar/Zarar'da ikisinden sadece biri dolu olur — 0 yerine "-"
+        # göstersin diye biçimlendiriliyor (kayıt sırasında gerçek sayısal
+        # değer zaten otomatik yeniden hesaplanıp yazılıyor).
+        for _kl_kz_kol in ("Kar", "Zarar"):
+            if _kl_kz_kol in _kl_df_goster.columns:
+                _kl_df_goster[_kl_kz_kol] = _kl_df_goster[_kl_kz_kol].map(_kg_sifir_tire)
         st.caption(f"Toplam {len(_kl_df)} kargo kaydı, {_kl_df['_cari_id'].nunique()} müşteride."
                    + (f" 🔁 Şu an sadece **birebir mükerrer** ({_kl_mukerrer_toplam} kayıt) gösteriliyor — kapatmak için üstteki butona tekrar bas."
                       if st.session_state.get("_kargolar_mukerrer_goster", False) else
@@ -13809,7 +13884,8 @@ elif aktif == "kargolar":
                                     continue
                                 _yr_anahtar = _kl_ters_yukle.get(_yr_kol, _yr_kol)
                                 _yr_kayit[_yr_anahtar] = "" if pd.isna(_yr_val) else (str(_yr_val) if _yr_kol != "Tarih" else str(_yr_val)[:10])
-                            _yr_kayit["kar"] = _kg_kar_hesapla(_yr_kayit)
+                            _kg_hesap_zinciri(_yr_kayit)
+                            _kg_kar_zarar_hesapla(_yr_kayit)
                             _kl_yeni_gruplar.setdefault(_yr_cid, []).append(_yr_kayit)
                             _kl_yuklenen_sayac += 1
                         for _yr_cid2, _yr_yeni_kayitlar in _kl_yeni_gruplar.items():
@@ -13882,17 +13958,25 @@ elif aktif == "kargolar":
         _kl_yukseklik = min(38 * (len(_kl_df_goster) + 1) + 25, 900)
         # Kolon Ayarları (Kullanıcılar sayfası) sekmesinde ayarlanan genişlikler
         _kl_kol_genislik = st.session_state.get("_kargo_kol_genislik", {})
+        _KL_OTOMATIK_HESAPLI_KOLONLAR = {
+            "Kar": "Otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (pozitifse burada görünür)",
+            "Zarar": "Otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (negatifse burada görünür)",
+            "Sigorta %6": "Otomatik hesaplanır: B.Tutar × %6",
+            "Ara Toplam": "Otomatik hesaplanır: B.Tutar + Sigorta %6",
+            "Kdv %20": "Otomatik hesaplanır: Ara Toplam × %20",
+            "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
+        }
         _kl_col_config = {"Seç": st.column_config.CheckboxColumn("Seç", default=False)}
         for _kl_kol_ad in _kl_df_goster.columns:
             if _kl_kol_ad in ("Seç", "_cari_id", "_satir_no"):
                 continue
             _kl_gen = _kl_kol_genislik.get(_kl_kol_ad)
-            if _kl_kol_ad == "Kar":
-                # Kar artık ELLE YAZILMIYOR — Dış Nakliye Tutar - Müşteri
-                # Tutar'dan OTOMATİK hesaplanıyor, kayıt anında üzerine yazılır.
-                _kl_col_config[_kl_kol_ad] = st.column_config.NumberColumn(
-                    "Kar", width=(int(_kl_gen) * 8 if _kl_gen else None), disabled=True,
-                    help="Otomatik hesaplanır: Dış Nakliye Tutar − Müşteri Tutar")
+            if _kl_kol_ad in _KL_OTOMATIK_HESAPLI_KOLONLAR:
+                # Bu sütunlar artık ELLE YAZILMIYOR — otomatik hesaplanıp
+                # kayıt anında üzerine yazılıyor.
+                _kl_col_config[_kl_kol_ad] = st.column_config.Column(
+                    _kl_kol_ad, width=(int(_kl_gen) * 8 if _kl_gen else None), disabled=True,
+                    help=_KL_OTOMATIK_HESAPLI_KOLONLAR[_kl_kol_ad])
             elif _kl_gen:
                 _kl_col_config[_kl_kol_ad] = st.column_config.Column(_kl_kol_ad, width=int(_kl_gen) * 8)
         if "_kl_editor_versiyon" not in st.session_state:
@@ -13962,7 +14046,8 @@ elif aktif == "kargolar":
                             if _kol in ("Seç", "Müşteri"):
                                 continue
                             _kayit[_kl_ters.get(_kol, _kol)] = _val
-                        _kayit["kar"] = _kg_kar_hesapla(_kayit)
+                        _kg_hesap_zinciri(_kayit)
+                        _kg_kar_zarar_hesapla(_kayit)
                         _kl_tam_listeler[_cid][_satir_no] = _kayit
                     for _cid_kaydet, _liste_kaydet in _kl_tam_listeler.items():
                         _kl_liste_temiz = [x for x in _liste_kaydet if x is not None]
