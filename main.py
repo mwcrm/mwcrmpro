@@ -3540,6 +3540,24 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
     if st.button("❌ Vazgeç (kaydetmeden kapat)", key=f"kgduz_vazgec_{cari_id}_{satir_no}"):
         st.rerun()
 
+    # ── MÜŞTERİ SEÇİCİ — bu kayıt yanlışlıkla başka bir müşterinin altına
+    # girmiş olabilir; buradan başka bir müşteriye TAŞINABİLİR. Kaydedince
+    # eski müşteriden silinip yeni müşteriye eklenir, gerçekleşen ciro da
+    # her ikisinde buna göre güncellenir.
+    try:
+        _kgd_tum_cari = get_cari_listesi()
+        _kgd_musteri_id_harita = dict(zip(_kgd_tum_cari["firma"].astype(str), _kgd_tum_cari["id"]))
+        _kgd_musteri_secim_opts = sorted(_kgd_musteri_id_harita.keys())
+    except Exception:
+        _kgd_musteri_id_harita = {}
+        _kgd_musteri_secim_opts = []
+    _kgd_musteri_varsayilan_idx = _kgd_musteri_secim_opts.index(_kgd_firma_adi) if _kgd_firma_adi in _kgd_musteri_secim_opts else 0
+    _kgd_musteri_secili_firma = st.selectbox("Müşteri", _kgd_musteri_secim_opts, index=_kgd_musteri_varsayilan_idx, key=f"kgduz_{cari_id}_{satir_no}_musteri_sec",
+                                              help="Bu kayıt yanlış müşterideyse, buradan doğru müşteriyi seçip kaydedebilirsin — kayıt o müşteriye taşınır.")
+    _kgd_hedef_cari_id = int(_kgd_musteri_id_harita.get(_kgd_musteri_secili_firma, cari_id))
+    if _kgd_hedef_cari_id != int(cari_id):
+        st.info(f"💡 Kaydedince bu kayıt **{_kgd_firma_adi}** → **{_kgd_musteri_secili_firma}** müşterisine taşınacak.")
+
     try:
         _kgd_musteri_liste = sorted(get_cari_listesi()["firma"].dropna().astype(str).unique().tolist())
     except Exception:
@@ -3672,45 +3690,72 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
         else:
             _kg_gonderen_il_deger = _kg_gonderen_il if _kg_gonderen_il != "-- İl seçilir --" else ""
             _kg_alici_il_deger = _kg_alici_il if _kg_alici_il != "-- İl seçilir --" else ""
-            # Kaydetmeden HEMEN önce listeyi TEKRAR fresh yüklüyoruz — arada
-            # başka bir yerden değişmiş olabilir; sadece bu satırı güncelliyoruz.
-            _kgd_liste_fresh = list(_kg_kayitlari_yukle(_kgd_anahtar))
-            if satir_no >= len(_kgd_liste_fresh):
-                st.error("Bu kayıt kaydedilirken bulunamadı, başka bir yerden silinmiş olabilir.")
+            _kgd_guncel_kayit = {
+                "tarih": str(_kg_tarih), "takip_no": _tr_buyuk(_kg_takip), "fatura_no": _tr_buyuk(_kg_fatura_no), "gonderen_firma": _tr_buyuk(_kg_gonderen),
+                "alici_firma": _tr_buyuk(_kg_alici), "fatura_firma": _tr_buyuk(_kg_fatura_odeyen),
+                "gonderen_il": _tr_buyuk(_kg_gonderen_il_deger), "alici_il": _tr_buyuk(_kg_alici_il_deger),
+                "fatura_odeme_sekli": _kg_fatura_odeme_sekli, "yetkili": _tr_buyuk(_kg_yetkili), "not": _kg_not,
+                "adet": _kg_adet, "tur": _tr_buyuk(_kg_tur), "tutar": _kg_tutar,
+                "desi": _kg_desi, "kilo": _kg_kilo,
+                "odeme_tur": _kg_odeme_tur, "tahsilat_durumu": _kg_tahsilat,
+                "dis_nakliye_firma": _tr_buyuk(_kg_dn_firma), "dis_nakliye_fatura": _tr_buyuk(_kg_dn_fatura),
+                "dis_nakliye_detay": _tr_buyuk(_kg_dn_detay), "dis_nakliye_tutar": _kg_dn_tutar,
+                "musteri_tutar": _kg_musteri_tutar, "dis_nakliye_odeme_durumu": _kg_dn_odeme,
+            }
+            _kg_hesap_zinciri(_kgd_guncel_kayit)
+            _kg_kar_zarar_hesapla(_kgd_guncel_kayit)
+            _kgd_yeni_tutar = _kg_efektif_tutar(_kgd_guncel_kayit)
+
+            if _kgd_hedef_cari_id == int(cari_id):
+                # ── AYNI MÜŞTERİ — yerinde güncelle (satir_no'nun üzerine yaz).
+                _kgd_liste_fresh = list(_kg_kayitlari_yukle(_kgd_anahtar))
+                if satir_no >= len(_kgd_liste_fresh):
+                    st.error("Bu kayıt kaydedilirken bulunamadı, başka bir yerden silinmiş olabilir.")
+                else:
+                    _kgd_eski_tutar = _kg_efektif_tutar(_kgd_liste_fresh[satir_no])
+                    _kgd_liste_fresh[satir_no] = _kgd_guncel_kayit
+                    _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_liste_fresh)
+                    _kg_kayitlari_yukle.clear()
+                    # NOT: _kargolar_tumunu_yukle Kargolar sayfasının kendi İÇİNDE
+                    # tanımlı yerel bir fonksiyon, buradan (ayrı bir dialog
+                    # fonksiyonundan) doğrudan erişilemiyor — o yüzden Kargolar
+                    # sayfasının önbelleğini de kapsayacak şekilde genel önbellek
+                    # temizleniyor (not_dialog'daki "Cari Sil" ile aynı yöntem).
+                    st.cache_data.clear()
+                    _cari_gerceklesen_ciro_ekle(cari_id, _kgd_yeni_tutar - _kgd_eski_tutar)
+                    if _kg_alici and _kg_alici_il_deger:
+                        _kgd_hafiza_guncel = dict(_kgd_manuel_alici_hafiza)
+                        _kgd_hafiza_guncel[_tr_buyuk(_kg_alici)] = _tr_buyuk(_kg_alici_il_deger)
+                        _kg_manuel_alici_kaydet(_kgd_hafiza_guncel)
+                        _kg_manuel_alici_yukle.clear()
+                    st.toast("✅ Kargo kaydı güncellendi", icon="🚚")
+                    st.rerun()
             else:
-                _kgd_eski_tutar = _kg_efektif_tutar(_kgd_liste_fresh[satir_no])
-                _kgd_guncel_kayit = {
-                    "tarih": str(_kg_tarih), "takip_no": _tr_buyuk(_kg_takip), "fatura_no": _tr_buyuk(_kg_fatura_no), "gonderen_firma": _tr_buyuk(_kg_gonderen),
-                    "alici_firma": _tr_buyuk(_kg_alici), "fatura_firma": _tr_buyuk(_kg_fatura_odeyen),
-                    "gonderen_il": _tr_buyuk(_kg_gonderen_il_deger), "alici_il": _tr_buyuk(_kg_alici_il_deger),
-                    "fatura_odeme_sekli": _kg_fatura_odeme_sekli, "yetkili": _tr_buyuk(_kg_yetkili), "not": _kg_not,
-                    "adet": _kg_adet, "tur": _tr_buyuk(_kg_tur), "tutar": _kg_tutar,
-                    "desi": _kg_desi, "kilo": _kg_kilo,
-                    "odeme_tur": _kg_odeme_tur, "tahsilat_durumu": _kg_tahsilat,
-                    "dis_nakliye_firma": _tr_buyuk(_kg_dn_firma), "dis_nakliye_fatura": _tr_buyuk(_kg_dn_fatura),
-                    "dis_nakliye_detay": _tr_buyuk(_kg_dn_detay), "dis_nakliye_tutar": _kg_dn_tutar,
-                    "musteri_tutar": _kg_musteri_tutar, "dis_nakliye_odeme_durumu": _kg_dn_odeme,
-                }
-                _kg_hesap_zinciri(_kgd_guncel_kayit)
-                _kg_kar_zarar_hesapla(_kgd_guncel_kayit)
-                _kgd_liste_fresh[satir_no] = _kgd_guncel_kayit
-                _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_liste_fresh)
-                _kg_kayitlari_yukle.clear()
-                # NOT: _kargolar_tumunu_yukle Kargolar sayfasının kendi İÇİNDE
-                # tanımlı yerel bir fonksiyon, buradan (ayrı bir dialog
-                # fonksiyonundan) doğrudan erişilemiyor — o yüzden Kargolar
-                # sayfasının önbelleğini de kapsayacak şekilde genel önbellek
-                # temizleniyor (not_dialog'daki "Cari Sil" ile aynı yöntem).
-                st.cache_data.clear()
-                _kgd_yeni_tutar = _kg_efektif_tutar(_kgd_guncel_kayit)
-                _cari_gerceklesen_ciro_ekle(cari_id, _kgd_yeni_tutar - _kgd_eski_tutar)
-                if _kg_alici and _kg_alici_il_deger:
-                    _kgd_hafiza_guncel = dict(_kgd_manuel_alici_hafiza)
-                    _kgd_hafiza_guncel[_tr_buyuk(_kg_alici)] = _tr_buyuk(_kg_alici_il_deger)
-                    _kg_manuel_alici_kaydet(_kgd_hafiza_guncel)
-                    _kg_manuel_alici_yukle.clear()
-                st.toast("✅ Kargo kaydı güncellendi", icon="🚚")
-                st.rerun()
+                # ── FARKLI MÜŞTERİ SEÇİLDİ — kayıt TAŞINIYOR: eski müşteriden
+                # silinip yeni müşteriye (güncel haliyle) ekleniyor. Gerçekleşen
+                # ciro her iki müşteride de buna göre düzeltiliyor.
+                _kgd_eski_liste = list(_kg_kayitlari_yukle(_kgd_anahtar))
+                if satir_no >= len(_kgd_eski_liste):
+                    st.error("Bu kayıt taşınırken bulunamadı, başka bir yerden silinmiş olabilir.")
+                else:
+                    _kgd_eski_tutar = _kg_efektif_tutar(_kgd_eski_liste[satir_no])
+                    _kgd_eski_liste_temiz = [_k for _i2, _k in enumerate(_kgd_eski_liste) if _i2 != satir_no]
+                    _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_eski_liste_temiz)
+                    _kgd_hedef_anahtar = f"_kargo_kayitlari_{_kgd_hedef_cari_id}"
+                    _kgd_hedef_liste = list(_kg_kayitlari_yukle(_kgd_hedef_anahtar))
+                    _kgd_hedef_liste.append(_kgd_guncel_kayit)
+                    _kg_kayitlari_kaydet(_kgd_hedef_anahtar, _kgd_hedef_liste)
+                    _kg_kayitlari_yukle.clear()
+                    st.cache_data.clear()
+                    _cari_gerceklesen_ciro_ekle(cari_id, -_kgd_eski_tutar)
+                    _cari_gerceklesen_ciro_ekle(_kgd_hedef_cari_id, _kgd_yeni_tutar)
+                    if _kg_alici and _kg_alici_il_deger:
+                        _kgd_hafiza_guncel = dict(_kgd_manuel_alici_hafiza)
+                        _kgd_hafiza_guncel[_tr_buyuk(_kg_alici)] = _tr_buyuk(_kg_alici_il_deger)
+                        _kg_manuel_alici_kaydet(_kgd_hafiza_guncel)
+                        _kg_manuel_alici_yukle.clear()
+                    st.toast(f"✅ Kayıt '{_kgd_musteri_secili_firma}' müşterisine taşındı ve güncellendi", icon="🚚")
+                    st.rerun()
 
 
 def not_paneli(cari_id, firma_adi="", key_prefix="np"):
