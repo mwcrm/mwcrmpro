@@ -3509,6 +3509,184 @@ textarea[aria-label="Koli/Palet önizleme"] { font-family: 'Courier New', monosp
             except Exception as _cse:
                 st.error(f"Silme hatası: {_cse}")
 
+@st.dialog("✏️ Kargo Kaydını Düzenle", width="large")
+def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
+    """Kargolar — Tüm Müşteriler sayfasından TEK bir kayıt seçip bu formda
+    düzenlemek için. Kargo Girişi formuyla birebir aynı alanlar/hesaplamalar,
+    ama YENİ satır eklemek yerine var olan kaydın (satir_no) üzerine yazar."""
+    _kgd_anahtar = f"_kargo_kayitlari_{int(cari_id)}"
+    _kgd_liste = list(_kg_kayitlari_yukle(_kgd_anahtar))
+    if satir_no >= len(_kgd_liste):
+        st.error("Bu kayıt artık bulunamadı (başka bir yerden silinmiş olabilir).")
+        if st.button("Kapat", key=f"kgduz_bulunamadi_kapat_{cari_id}_{satir_no}"):
+            st.rerun()
+        return
+    _kgd_kayit = _kgd_liste[satir_no]
+
+    try:
+        _kgd_cl = get_cari_listesi()
+        _kgd_satir_cl = _kgd_cl[_kgd_cl["id"] == int(cari_id)]
+        _kgd_firma_adi = _kgd_satir_cl["firma"].iloc[0] if not _kgd_satir_cl.empty else ""
+    except Exception:
+        _kgd_firma_adi = ""
+
+    st.caption(f"**{_kgd_firma_adi}** — kayıtlı kargo kaydını düzenliyorsun. Kaydedince YENİ satır eklenmez, bu kaydın üzerine yazılır.")
+    if st.button("❌ Vazgeç (kaydetmeden kapat)", key=f"kgduz_vazgec_{cari_id}_{satir_no}"):
+        st.rerun()
+
+    try:
+        _kgd_musteri_liste = sorted(get_cari_listesi()["firma"].dropna().astype(str).unique().tolist())
+    except Exception:
+        _kgd_musteri_liste = []
+    _kgd_musteri_opts = ["-- Seç veya elle yaz --"] + _kgd_musteri_liste
+    _kgd_il_opts = ["-- İl seçilir --"] + [_tr_buyuk(a) for a in (_IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI)]
+    try:
+        _kgd_tasiyici_opts = ["-- Seç veya elle yaz --"] + _dis_nakliye_tasiyici_yukle()
+    except Exception:
+        _kgd_tasiyici_opts = ["-- Seç veya elle yaz --"]
+    _KGD_YEREL_ILLER = [_tr_buyuk(a) for a in ["İzmir", "Bursa", "Kocaeli", "Tekirdağ", "İstanbul", "Manisa"]]
+    _kgd_manuel_alici_hafiza = _kg_manuel_alici_yukle()
+    _kgd_musteri_opts_buyuk = set(_tr_buyuk(x) for x in _kgd_musteri_liste)
+    _kgd_hafizadan_ek = sorted([f for f in _kgd_manuel_alici_hafiza.keys() if f not in _kgd_musteri_opts_buyuk])
+    _kgd_alici_opts = ["-- Seç veya elle yaz --"] + sorted(set(_kgd_musteri_liste) | set(_kgd_hafizadan_ek))
+
+    def _kgd_idx(_opts, _deger):
+        _dbuyuk = _tr_buyuk(str(_deger or "").strip())
+        for _i, _o in enumerate(_opts):
+            if _tr_buyuk(str(_o).strip()) == _dbuyuk:
+                return _i
+        return 0
+
+    def _kgd_float(_deger):
+        try:
+            return float(_deger or 0)
+        except Exception:
+            return 0.0
+
+    try:
+        _kgd_tarih_val = datetime.strptime(str(_kgd_kayit.get("tarih", "")).strip()[:10], "%Y-%m-%d").date()
+    except Exception:
+        _kgd_tarih_val = datetime.now().date()
+
+    _kp = f"kgduz_{cari_id}_{satir_no}"
+
+    _kgc1, _kgc2, _kgc3 = st.columns(3)
+    _kg_tarih = _kgc1.date_input("Tarih *", value=_kgd_tarih_val, key=f"{_kp}_tarih")
+    _kg_takip = _kgc2.text_input("Takip No", value=str(_kgd_kayit.get("takip_no", "")), key=f"{_kp}_takip")
+    _kg_fatura_no = _kgc3.text_input("Fatura No", value=str(_kgd_kayit.get("fatura_no", "")), key=f"{_kp}_fatura_no")
+
+    _kg_gonderen_sec = _kgc1.selectbox("Gönderen Firma", _kgd_musteri_opts, index=_kgd_idx(_kgd_musteri_opts, _kgd_kayit.get("gonderen_firma", "")), key=f"{_kp}_gonderen_sec")
+    _kg_gonderen_elle = _kgc1.text_input("(Listede yoksa elle yaz)", key=f"{_kp}_gonderen_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+    _kg_alici_sec = _kgc2.selectbox("Alıcı Firma", _kgd_alici_opts, index=_kgd_idx(_kgd_alici_opts, _kgd_kayit.get("alici_firma", "")), key=f"{_kp}_alici_sec")
+    _kg_alici_elle = _kgc2.text_input("(Listede yoksa elle yaz)", key=f"{_kp}_alici_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+    _kg_fatura_sec = _kgc3.selectbox("Fatura Ödeyen *", _kgd_musteri_opts, index=_kgd_idx(_kgd_musteri_opts, _kgd_kayit.get("fatura_firma", "")), key=f"{_kp}_fatura_sec")
+    _kg_fatura_elle = _kgc3.text_input("(Listede yoksa elle yaz)", key=f"{_kp}_fatura_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+
+    _kg_gonderen_il = _kgc1.selectbox("Gönderen İl", _kgd_il_opts, index=_kgd_idx(_kgd_il_opts, _kgd_kayit.get("gonderen_il", "")), key=f"{_kp}_gonderen_il")
+    _kg_alici_il = _kgc2.selectbox("Alıcı İl", _kgd_il_opts, index=_kgd_idx(_kgd_il_opts, _kgd_kayit.get("alici_il", "")), key=f"{_kp}_alici_il")
+    _kgd_fos_opts = ["", "Faturasız", "PÖ", "ÜA", "CH"]
+    _kg_fatura_odeme_sekli = _kgc3.selectbox("Ödeme Türü (Fatura)", _kgd_fos_opts,
+                                              index=(_kgd_fos_opts.index(_kgd_kayit.get("fatura_odeme_sekli", "")) if _kgd_kayit.get("fatura_odeme_sekli", "") in _kgd_fos_opts else 0),
+                                              key=f"{_kp}_fatura_odeme_sekli")
+
+    _kg_tur = _kgc1.text_input("Tür", value=str(_kgd_kayit.get("tur", "")), key=f"{_kp}_tur", placeholder="Koli / Palet / ...")
+    _kg_desi = _kgc2.number_input("Desi", min_value=0.0, step=1.0, value=_kgd_float(_kgd_kayit.get("desi")), key=f"{_kp}_desi")
+    _kg_kilo = _kgc3.number_input("Kilo", min_value=0.0, step=0.5, value=_kgd_float(_kgd_kayit.get("kilo")), key=f"{_kp}_kilo")
+
+    _kg_adet = _kgc1.number_input("Adet", min_value=0, step=1, value=int(_kgd_float(_kgd_kayit.get("adet"))), key=f"{_kp}_adet")
+    _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, value=_kgd_float(_kgd_kayit.get("tutar")), key=f"{_kp}_tutar",
+                                    help="Sigorta, Ara Toplam, Kdv ve Son Toplam bunun üzerinden otomatik hesaplanır.")
+    _kg_onizleme = _kg_hesap_zinciri({"tutar": _kg_tutar})
+    _kgc3.number_input("Sigorta %6 (₺)", value=_kg_onizleme['sigorta'], format="%.2f", key=f"{_kp}_oniz_sigorta_{_kg_tutar}")
+    _kgc1.number_input("Ara Toplam (₺)", value=_kg_onizleme['ara_toplam'], format="%.2f", key=f"{_kp}_oniz_ara_{_kg_tutar}")
+    _kgc2.number_input("Kdv %20 (₺)", value=_kg_onizleme['kdv'], format="%.2f", key=f"{_kp}_oniz_kdv_{_kg_tutar}")
+    _kgc3.number_input("Son Toplam (₺)", value=_kg_onizleme['toplam_fatura'], format="%.2f", key=f"{_kp}_oniz_son_{_kg_tutar}")
+
+    _kg_yetkili = _kgc1.text_input("Yetkili", value=str(_kgd_kayit.get("yetkili", "")), key=f"{_kp}_yetkili", placeholder="İlgili kişiyi elle yaz")
+    _kgd_tahsilat_opts = ["", "Evet", "Hayır", "Kısmi"]
+    _kg_tahsilat = _kgc2.selectbox("Tahsilat", _kgd_tahsilat_opts,
+                                    index=(_kgd_tahsilat_opts.index(_kgd_kayit.get("tahsilat_durumu", "")) if _kgd_kayit.get("tahsilat_durumu", "") in _kgd_tahsilat_opts else 0),
+                                    key=f"{_kp}_tahsilat")
+    _kg_not = _kgc3.text_input("Not", value=str(_kgd_kayit.get("not", "")), key=f"{_kp}_not", placeholder="Serbest not (opsiyonel)")
+    _kg_odeme_tur = _kgd_kayit.get("odeme_tur", "")
+
+    _kg_dis_bolge_mi = (_kg_alici_il != "-- İl seçilir --" and _kg_alici_il not in _KGD_YEREL_ILLER)
+    _kg_dn_firma, _kg_dn_fatura, _kg_dn_detay, _kg_dn_tutar, _kg_musteri_tutar, _kg_dn_odeme = "", "", "", 0.0, 0.0, ""
+    if _kg_dis_bolge_mi:
+        st.markdown(f"**🚚 Dış Nakliye** — *{_kg_alici_il} dış bölge sayıldığı için gerekli*")
+        with st.container(border=True):
+            _kgd1, _kgd2, _kgd3 = st.columns(3)
+            _kg_dn_firma_sec = _kgd1.selectbox("Dış Nakliye Firma", _kgd_tasiyici_opts, index=_kgd_idx(_kgd_tasiyici_opts, _kgd_kayit.get("dis_nakliye_firma", "")), key=f"{_kp}_dn_firma_sec")
+            _kg_dn_firma_elle = _kgd1.text_input("(Listede yoksa elle yaz)", key=f"{_kp}_dn_firma_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+            _kg_dn_fatura = _kgd2.text_input("Dış Nakliye Fatura", value=str(_kgd_kayit.get("dis_nakliye_fatura", "")), key=f"{_kp}_dn_fatura")
+            _kg_dn_detay = _kgd3.text_input("Dış Nakliye Detay", value=str(_kgd_kayit.get("dis_nakliye_detay", "")), key=f"{_kp}_dn_detay", placeholder="Örn: 2 Palet")
+            _kg_dn_tutar = _kgd1.number_input("Dış Nakliye Tutar", min_value=0.0, step=0.01, value=_kgd_float(_kgd_kayit.get("dis_nakliye_tutar")), key=f"{_kp}_dn_tutar")
+            _kg_musteri_tutar = _kgd2.number_input("Müşteri Tutar", min_value=0.0, step=0.01, value=_kgd_float(_kgd_kayit.get("musteri_tutar")), key=f"{_kp}_musteri_tutar")
+            _kgd_dn_odeme_opts = ["", "Evet", "Hayır", "Kısmi"]
+            _kg_dn_odeme = _kgd3.selectbox("İşlendi mi?", _kgd_dn_odeme_opts,
+                                            index=(_kgd_dn_odeme_opts.index(_kgd_kayit.get("dis_nakliye_odeme_durumu", "")) if _kgd_kayit.get("dis_nakliye_odeme_durumu", "") in _kgd_dn_odeme_opts else 0),
+                                            key=f"{_kp}_dn_odeme")
+            st.caption("🧮 Kar/Zarar, kaydedince otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (pozitifse Kar, negatifse Zarar)")
+            _kg_dn_firma = _kg_dn_firma_elle.strip() or (_kg_dn_firma_sec if _kg_dn_firma_sec != "-- Seç veya elle yaz --" else "")
+    else:
+        st.caption("💡 Alıcı İl olarak yerel bir il (İstanbul, Bursa, İzmir, Kocaeli, Tekirdağ, Manisa) seçilmedi/seçilirse Dış Nakliye alanları burada görünmez.")
+
+    st.divider()
+    if st.button("💾 Değişiklikleri Kaydet", type="primary", key=f"{_kp}_kaydet_btn", use_container_width=True):
+        _kg_gonderen = _kg_gonderen_elle.strip() or (_kg_gonderen_sec if _kg_gonderen_sec != "-- Seç veya elle yaz --" else "")
+        _kg_alici = _kg_alici_elle.strip() or (_kg_alici_sec if _kg_alici_sec != "-- Seç veya elle yaz --" else "")
+        _kg_fatura_odeyen = _kg_fatura_elle.strip() or (_kg_fatura_sec if _kg_fatura_sec != "-- Seç veya elle yaz --" else "")
+        _kgd_eksikler = []
+        if not _kg_tarih:
+            _kgd_eksikler.append("Tarih")
+        if not _kg_fatura_odeyen:
+            _kgd_eksikler.append("Fatura Ödeyen")
+        if _kgd_eksikler:
+            st.error(f"⚠️ Zorunlu alan(lar) eksik: {', '.join(_kgd_eksikler)}")
+        else:
+            _kg_gonderen_il_deger = _kg_gonderen_il if _kg_gonderen_il != "-- İl seçilir --" else ""
+            _kg_alici_il_deger = _kg_alici_il if _kg_alici_il != "-- İl seçilir --" else ""
+            # Kaydetmeden HEMEN önce listeyi TEKRAR fresh yüklüyoruz — arada
+            # başka bir yerden değişmiş olabilir; sadece bu satırı güncelliyoruz.
+            _kgd_liste_fresh = list(_kg_kayitlari_yukle(_kgd_anahtar))
+            if satir_no >= len(_kgd_liste_fresh):
+                st.error("Bu kayıt kaydedilirken bulunamadı, başka bir yerden silinmiş olabilir.")
+            else:
+                _kgd_eski_tutar = _kg_efektif_tutar(_kgd_liste_fresh[satir_no])
+                _kgd_guncel_kayit = {
+                    "tarih": str(_kg_tarih), "takip_no": _tr_buyuk(_kg_takip), "fatura_no": _tr_buyuk(_kg_fatura_no), "gonderen_firma": _tr_buyuk(_kg_gonderen),
+                    "alici_firma": _tr_buyuk(_kg_alici), "fatura_firma": _tr_buyuk(_kg_fatura_odeyen),
+                    "gonderen_il": _tr_buyuk(_kg_gonderen_il_deger), "alici_il": _tr_buyuk(_kg_alici_il_deger),
+                    "fatura_odeme_sekli": _kg_fatura_odeme_sekli, "yetkili": _tr_buyuk(_kg_yetkili), "not": _kg_not,
+                    "adet": _kg_adet, "tur": _tr_buyuk(_kg_tur), "tutar": _kg_tutar,
+                    "desi": _kg_desi, "kilo": _kg_kilo,
+                    "odeme_tur": _kg_odeme_tur, "tahsilat_durumu": _kg_tahsilat,
+                    "dis_nakliye_firma": _tr_buyuk(_kg_dn_firma), "dis_nakliye_fatura": _tr_buyuk(_kg_dn_fatura),
+                    "dis_nakliye_detay": _tr_buyuk(_kg_dn_detay), "dis_nakliye_tutar": _kg_dn_tutar,
+                    "musteri_tutar": _kg_musteri_tutar, "dis_nakliye_odeme_durumu": _kg_dn_odeme,
+                }
+                _kg_hesap_zinciri(_kgd_guncel_kayit)
+                _kg_kar_zarar_hesapla(_kgd_guncel_kayit)
+                _kgd_liste_fresh[satir_no] = _kgd_guncel_kayit
+                _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_liste_fresh)
+                _kg_kayitlari_yukle.clear()
+                # NOT: _kargolar_tumunu_yukle Kargolar sayfasının kendi İÇİNDE
+                # tanımlı yerel bir fonksiyon, buradan (ayrı bir dialog
+                # fonksiyonundan) doğrudan erişilemiyor — o yüzden Kargolar
+                # sayfasının önbelleğini de kapsayacak şekilde genel önbellek
+                # temizleniyor (not_dialog'daki "Cari Sil" ile aynı yöntem).
+                st.cache_data.clear()
+                _kgd_yeni_tutar = _kg_efektif_tutar(_kgd_guncel_kayit)
+                _cari_gerceklesen_ciro_ekle(cari_id, _kgd_yeni_tutar - _kgd_eski_tutar)
+                if _kg_alici and _kg_alici_il_deger:
+                    _kgd_hafiza_guncel = dict(_kgd_manuel_alici_hafiza)
+                    _kgd_hafiza_guncel[_tr_buyuk(_kg_alici)] = _tr_buyuk(_kg_alici_il_deger)
+                    _kg_manuel_alici_kaydet(_kgd_hafiza_guncel)
+                    _kg_manuel_alici_yukle.clear()
+                st.toast("✅ Kargo kaydı güncellendi", icon="🚚")
+                st.rerun()
+
+
 def not_paneli(cari_id, firma_adi="", key_prefix="np"):
     """Her yerde kullanılan ortak not paneli — Model 5: ultra minimal"""
     _sb = get_sb_client()
@@ -14018,7 +14196,7 @@ elif aktif == "kargolar":
         )
 
         with _kl_btn_kutu:
-            _klb0a, _klb0b, _klb0c, _klb0d, _klb1, _klb2 = st.columns(6)
+            _klb0a, _klb0b, _klb0c, _klb0d, _klb0e, _klb1, _klb2 = st.columns(7)
             with _klb0a:
                 if st.button("☑️ Tümünü Seç", key="kargolar_tumunu_sec_btn", use_container_width=True):
                     st.session_state["_kl_tumu_secili_mod"] = True
@@ -14061,6 +14239,15 @@ elif aktif == "kargolar":
                     st.session_state["_kl_tumu_secili_mod"] = False
                     st.session_state["_kl_editor_versiyon"] += 1
                     st.rerun()
+            with _klb0e:
+                _kl_secili_indeksler = [_i for _i in _kl_duzenlenen.index if bool(_kl_duzenlenen.loc[_i].get("Seç"))]
+                if st.button("✏️ Düzenle", key="kargolar_duzenle_btn", use_container_width=True,
+                             disabled=len(_kl_secili_indeksler) != 1,
+                             help="Kargo Girişi formunda açıp düzenlemek için tam olarak 1 kayıt seç."):
+                    _kl_duz_idx = _kl_secili_indeksler[0]
+                    _kl_duz_cid = int(_kl_df_goster.iloc[_kl_duz_idx]["_cari_id"])
+                    _kl_duz_satir = int(_kl_df_goster.iloc[_kl_duz_idx]["_satir_no"])
+                    kargo_kaydi_duzenle_dialog(_kl_duz_cid, _kl_duz_satir)
             with _klb1:
                 if st.button("💾 Değişiklikleri Kaydet", key="kargolar_kaydet_btn", type="primary", use_container_width=True):
                     _kl_ters = {v: k for k, v in _kl_kolon_isim.items()}
