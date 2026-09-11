@@ -13994,8 +13994,8 @@ elif aktif == "kargolar":
         _kl_alici_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_firma"].dropna().unique().tolist() if str(x).strip()]) if "alici_firma" in _kl_df.columns else ["-- Tümü --"]
         _kl_fatura_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["fatura_firma"].dropna().unique().tolist() if str(x).strip()]) if "fatura_firma" in _kl_df.columns else ["-- Tümü --"]
 
-        _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc4b, _kl_fc5, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
-            [1.3, 1.3, 1.0, 1.0, 1.0, 1.0, 0.8, 0.9, 0.9, 0.9], vertical_alignment="bottom")
+        _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc4b, _kl_fc5, _kl_fc5b, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
+            [1.2, 1.2, 0.9, 0.9, 0.9, 0.9, 1.0, 0.8, 0.9, 0.9, 0.9], vertical_alignment="bottom")
         _kl_secili_musteri_genel = _kl_fc1.selectbox("Genel Müşteri Seç (kargo girişi için)", _kl_musteri_secenekler, key="kargolar_musteri_filtre")
         _kl_sec_musteri_basligi = _kl_fc2.selectbox("📂 Müşteri (Gelen+Giden)", _kl_musteri_basligi_opts, key="kargolar_musteri_basligi_filtre")
         _kl_sec_gonderen = _kl_fc3.selectbox("Gönderen", _kl_gonderen_opts_ham, key="kargolar_gonderen_filtre")
@@ -14010,6 +14010,23 @@ elif aktif == "kargolar":
         _kl_alici_il_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_alici_il_kapsam["alici_il"].dropna().unique().tolist() if str(x).strip()]) if "alici_il" in _kl_alici_il_kapsam.columns else ["-- Tümü --"]
         _kl_sec_alici_il = _kl_fc4b.selectbox("Alıcı İl", _kl_alici_il_opts_ham, key="kargolar_alici_il_filtre")
         _kl_sec_fatura = _kl_fc5.selectbox("Fatura Ödeyen", _kl_fatura_opts_ham, key="kargolar_fatura_filtre")
+        _KL_AY_ADLARI = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                         "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+        _kl_ay_secenekleri_ham = set()
+        if "tarih" in _kl_df.columns:
+            for _kl_t in _kl_df["tarih"].dropna().astype(str):
+                _kl_t = _kl_t.strip()
+                if len(_kl_t) >= 7:
+                    try:
+                        _kl_yil_t, _kl_ay_t = _kl_t[:4], int(_kl_t[5:7])
+                        if 1 <= _kl_ay_t <= 12:
+                            _kl_ay_secenekleri_ham.add((_kl_yil_t, _kl_ay_t))
+                    except Exception:
+                        pass
+        _kl_ay_secenekleri_sirali = sorted(_kl_ay_secenekleri_ham)
+        _kl_ay_opts = ["-- Tümü --"] + [f"{_KL_AY_ADLARI[_ay - 1]} {_yil}" for _yil, _ay in _kl_ay_secenekleri_sirali]
+        _kl_ay_haritasi = {f"{_KL_AY_ADLARI[_ay - 1]} {_yil}": (_yil, _ay) for _yil, _ay in _kl_ay_secenekleri_sirali}
+        _kl_sec_ay = _kl_fc5b.selectbox("Ay", _kl_ay_opts, key="kargolar_ay_filtre")
         with _kl_fc6:
             if _kl_secili_musteri_genel != "-- Tüm Müşteriler --":
                 _kl_sec_cari_id = None
@@ -14046,6 +14063,10 @@ elif aktif == "kargolar":
             _kl_df = _kl_df[_kl_df["alici_il"] == _kl_sec_alici_il]
         if _kl_sec_fatura != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["fatura_firma"] == _kl_sec_fatura]
+        if _kl_sec_ay != "-- Tümü --":
+            _kl_hedef_yil, _kl_hedef_ay = _kl_ay_haritasi[_kl_sec_ay]
+            _kl_df = _kl_df[_kl_df["tarih"].astype(str).str[:4] == _kl_hedef_yil]
+            _kl_df = _kl_df[_kl_df["tarih"].astype(str).str[5:7] == f"{_kl_hedef_ay:02d}"]
 
         # ── ÖDEME EKSTRESİ — "Fatura Ödeyen Filtrele" ile bir firma seçilince,
         # o firmanın ödeme geçmişini/bakiyesini gösteren ayrı, indirilebilir ekstre.
