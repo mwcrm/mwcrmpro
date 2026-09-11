@@ -204,6 +204,26 @@ def _kg_kayitlari_yukle(_anahtar):
         pass
     return []
 
+
+def _kg_kayitlari_yukle_taze(_anahtar):
+    """_kg_kayitlari_yukle ile AYNI okuma, ama ÖNBELLEKSİZ — doğrudan
+    Supabase'den okur. GÜVENLİK: 'tam listeyi yükle → bir kısmını değiştir →
+    TAMAMINI üzerine yaz' işlemlerinde (Kaydet/Sil/Geri Al/Kalıcı Sil) artık
+    HEP bu kullanılıyor — çünkü önbellek (30sn) bayatsa, az önce (başka bir
+    ekrandan) eklenmiş bir kayıt bu listede YOK sayılıp üzerine yazılınca
+    sessizce kaybolabiliyordu. Bu riski tamamen ortadan kaldırır."""
+    try:
+        _sb_kgt = get_sb_client()
+        if _sb_kgt:
+            _r_kgt = _sb_kgt.table("kullanici_tercih").select("deger").eq(
+                "kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
+            if _r_kgt.data:
+                import json as _kgjt
+                return _kgjt.loads(_r_kgt.data[0]["deger"])
+    except Exception:
+        pass
+    return []
+
 def _kg_kayitlari_kaydet(_anahtar, _liste):
     try:
         _sb_kg2 = get_sb_client()
@@ -3286,7 +3306,12 @@ def not_dialog(cari_id, firma_adi=""):
                         _kg_hesap_zinciri(_kg_kayit)
                         _kg_kar_zarar_hesapla(_kg_kayit)
                         _kg_yeni_liste.append(_kg_kayit)
-                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste + _kg_silinmis_kayitlar)
+                    # GÜVENLİK: silinmiş kayıtları da RENDER anındaki (bayat
+                    # olabilecek) kopyadan değil, tam bu an TAZE çekiyoruz —
+                    # yoksa arada başka bir yerden eklenmiş bir kayıt burada
+                    # sessizce kaybolabilirdi.
+                    _kg_silinmis_taze = [_k for _k in _kg_kayitlari_yukle_taze(_kg_anahtar) if _k.get("silindi")]
+                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste + _kg_silinmis_taze)
                     _kg_kayitlari_yukle.clear()
                     _kg_yeni_toplam = sum(_kg_efektif_tutar(_k) for _k in _kg_yeni_liste)
                     _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam - _kg_eski_toplam)
@@ -3313,7 +3338,8 @@ def not_dialog(cari_id, firma_adi=""):
                             _kg_kayit2["silindi"] = True
                             _kg_kayit2["silinme_tarihi"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                         _kg_kalanlar.append(_kg_kayit2)
-                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_kalanlar + _kg_silinmis_kayitlar)
+                    _kg_silinmis_taze2 = [_k for _k in _kg_kayitlari_yukle_taze(_kg_anahtar) if _k.get("silindi")]
+                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_kalanlar + _kg_silinmis_taze2)
                     _kg_kayitlari_yukle.clear()
                     _kg_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kg_kalanlar if not _k.get("silindi"))
                     _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam2 - _kg_eski_toplam2)
@@ -3783,7 +3809,7 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
 
             if _kgd_hedef_cari_id == int(cari_id):
                 # ── AYNI MÜŞTERİ — yerinde güncelle (satir_no'nun üzerine yaz).
-                _kgd_liste_fresh = list(_kg_kayitlari_yukle(_kgd_anahtar))
+                _kgd_liste_fresh = list(_kg_kayitlari_yukle_taze(_kgd_anahtar))
                 if satir_no >= len(_kgd_liste_fresh):
                     st.error("Bu kayıt kaydedilirken bulunamadı, başka bir yerden silinmiş olabilir.")
                 else:
@@ -3809,7 +3835,7 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
                 # ── FARKLI MÜŞTERİ SEÇİLDİ — kayıt TAŞINIYOR: eski müşteriden
                 # silinip yeni müşteriye (güncel haliyle) ekleniyor. Gerçekleşen
                 # ciro her iki müşteride de buna göre düzeltiliyor.
-                _kgd_eski_liste = list(_kg_kayitlari_yukle(_kgd_anahtar))
+                _kgd_eski_liste = list(_kg_kayitlari_yukle_taze(_kgd_anahtar))
                 if satir_no >= len(_kgd_eski_liste):
                     st.error("Bu kayıt taşınırken bulunamadı, başka bir yerden silinmiş olabilir.")
                 else:
@@ -3817,7 +3843,7 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
                     _kgd_eski_liste_temiz = [_k for _i2, _k in enumerate(_kgd_eski_liste) if _i2 != satir_no]
                     _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_eski_liste_temiz)
                     _kgd_hedef_anahtar = f"_kargo_kayitlari_{_kgd_hedef_cari_id}"
-                    _kgd_hedef_liste = list(_kg_kayitlari_yukle(_kgd_hedef_anahtar))
+                    _kgd_hedef_liste = list(_kg_kayitlari_yukle_taze(_kgd_hedef_anahtar))
                     _kgd_hedef_liste.append(_kgd_guncel_kayit)
                     _kg_kayitlari_kaydet(_kgd_hedef_anahtar, _kgd_hedef_liste)
                     _kg_kayitlari_yukle.clear()
@@ -14238,7 +14264,7 @@ elif aktif == "kargolar":
                             _kl_yeni_gruplar.setdefault(_yr_cid, []).append(_yr_kayit)
                             _kl_yuklenen_sayac += 1
                         for _yr_cid2, _yr_yeni_kayitlar in _kl_yeni_gruplar.items():
-                            _yr_mevcut = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_yr_cid2}"))
+                            _yr_mevcut = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_yr_cid2}"))
                             _yr_mevcut.extend(_yr_yeni_kayitlar)
                             _kargolar_yaz(_yr_cid2, _yr_mevcut)
                             _yr_eklenen_tutar = sum(_kg_efektif_tutar(_k) for _k in _yr_yeni_kayitlar)
@@ -14437,7 +14463,7 @@ elif aktif == "kargolar":
                     _kl_tam_listeler = {}
                     _kl_eski_toplamlar = {}
                     for _cid_yukle in _kl_etkilenen_cid:
-                        _kl_tam_listeler[_cid_yukle] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle}"))
+                        _kl_tam_listeler[_cid_yukle] = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle}"))
                         _kl_eski_toplamlar[_cid_yukle] = sum(_kg_efektif_tutar(_k) for _k in _kl_tam_listeler[_cid_yukle])
                     # GÜVENLİK: Kaydet artık "Seç" işaretine bakmadan SADECE
                     # değerleri günceller — işaretli olsa bile SATIR SİLİNMEZ.
@@ -14477,7 +14503,7 @@ elif aktif == "kargolar":
                     _kl_tam_listeler2 = {}
                     _kl_eski_toplamlar2 = {}
                     for _cid_yukle2 in _kl_etkilenen_cid2:
-                        _kl_tam_listeler2[_cid_yukle2] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle2}"))
+                        _kl_tam_listeler2[_cid_yukle2] = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle2}"))
                         _kl_eski_toplamlar2[_cid_yukle2] = sum(_kg_efektif_tutar(_k) for _k in _kl_tam_listeler2[_cid_yukle2])
                     # GÜVENLİK: YUMUŞAK SİLME — kayıt listeden ÇIKARILMIYOR,
                     # sadece "silindi" olarak işaretlenip normal görünümden
@@ -14511,7 +14537,7 @@ elif aktif == "kargolar":
                                                   for _idx3, _r3 in _kl_duzenlenen.iterrows() if bool(_r3.get("Seç")))
                         _kl_tam_listeler3 = {}
                         for _cid_yukle3 in _kl_etkilenen_cid3:
-                            _kl_tam_listeler3[_cid_yukle3] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle3}"))
+                            _kl_tam_listeler3[_cid_yukle3] = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle3}"))
                         _kl_geri_alinan_tutar = {}
                         for _idx3, _r3 in _kl_duzenlenen.iterrows():
                             if not bool(_r3.get("Seç")):
@@ -14542,7 +14568,7 @@ elif aktif == "kargolar":
                                                   for _idx4, _r4 in _kl_duzenlenen.iterrows() if bool(_r4.get("Seç")))
                         _kl_tam_listeler4 = {}
                         for _cid_yukle4 in _kl_etkilenen_cid4:
-                            _kl_tam_listeler4[_cid_yukle4] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle4}"))
+                            _kl_tam_listeler4[_cid_yukle4] = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle4}"))
                         _kl_silinecek_satirlar = {}
                         for _idx4, _r4 in _kl_duzenlenen.iterrows():
                             if not bool(_r4.get("Seç")):
