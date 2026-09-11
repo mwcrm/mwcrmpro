@@ -3032,9 +3032,9 @@ def not_dialog(cari_id, firma_adi=""):
 
         _kg_gonderen_idx = (_kg_musteri_opts.index(firma_adi) if firma_adi in _kg_musteri_opts else 0)
         _kg_gonderen_sec = _kgc1.selectbox("Gönderen Firma", _kg_musteri_opts, index=_kg_gonderen_idx, key=f"kg_gonderen_sec_{cari_id}")
-        _kg_gonderen_elle = _kgc1.text_input("(Listede yoksa elle yaz)", key=f"kg_gonderen_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+        _kg_gonderen_elle = _kgc1.text_area("(Listede yoksa elle yaz)", key=f"kg_gonderen_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz", height=68)
         _kg_alici_sec = _kgc2.selectbox("Alıcı Firma", _kg_alici_opts, key=f"kg_alici_sec_{cari_id}")
-        _kg_alici_elle = _kgc2.text_input("(Listede yoksa elle yaz)", key=f"kg_alici_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+        _kg_alici_elle = _kgc2.text_area("(Listede yoksa elle yaz)", key=f"kg_alici_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz", height=68)
         # ── Fatura Ödeyen — "Ödeme Türü (Fatura)" seçimine göre OTOMATİK belirlenir:
         # PÖ veya CH ise Gönderen Firma, ÜA ise Alıcı Firma otomatik seçilir.
         # (O widget kodda daha aşağıda tanımlı olsa da, session_state'teki
@@ -3049,7 +3049,7 @@ def not_dialog(cari_id, firma_adi=""):
         elif _kg_odeme_sekli_onceki == "ÜA" and _kg_alici_hesaplanan in _kg_musteri_opts:
             _kg_fatura_varsayilan_idx = _kg_musteri_opts.index(_kg_alici_hesaplanan)
         _kg_fatura_sec = _kgc3.selectbox("Fatura Ödeyen *", _kg_musteri_opts, index=_kg_fatura_varsayilan_idx, key=f"kg_fatura_sec_{cari_id}")
-        _kg_fatura_elle = _kgc3.text_input("(Listede yoksa elle yaz)", key=f"kg_fatura_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+        _kg_fatura_elle = _kgc3.text_area("(Listede yoksa elle yaz)", key=f"kg_fatura_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz", height=68)
 
         _kg_gonderen_il = _kgc1.selectbox("Gönderen İl", _kg_il_opts, key=f"kg_gonderen_il_{cari_id}")
         # ── Alıcı İl — daha önce bu Alıcı Firma için kaydedilmiş bir il varsa
@@ -3683,11 +3683,11 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
     _kg_fatura_no = _kgc3.text_input("Fatura No", value=str(_kgd_kayit.get("fatura_no", "")), key=f"{_kp}_fatura_no")
 
     _kg_gonderen_sec = _kgc1.selectbox("Gönderen Firma", _kgd_musteri_opts, index=_kgd_idx(_kgd_musteri_opts, _kgd_kayit.get("gonderen_firma", "")), key=f"{_kp}_gonderen_sec")
-    _kg_gonderen_elle = _kgc1.text_input("(Listede yoksa elle yaz)", value=_kgd_elle_varsayilan(_kgd_musteri_opts, _kgd_kayit.get("gonderen_firma", "")), key=f"{_kp}_gonderen_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+    _kg_gonderen_elle = _kgc1.text_area("(Listede yoksa elle yaz)", value=_kgd_elle_varsayilan(_kgd_musteri_opts, _kgd_kayit.get("gonderen_firma", "")), key=f"{_kp}_gonderen_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz", height=68)
     _kg_alici_sec = _kgc2.selectbox("Alıcı Firma", _kgd_alici_opts, index=_kgd_idx(_kgd_alici_opts, _kgd_kayit.get("alici_firma", "")), key=f"{_kp}_alici_sec")
-    _kg_alici_elle = _kgc2.text_input("(Listede yoksa elle yaz)", value=_kgd_elle_varsayilan(_kgd_alici_opts, _kgd_kayit.get("alici_firma", "")), key=f"{_kp}_alici_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+    _kg_alici_elle = _kgc2.text_area("(Listede yoksa elle yaz)", value=_kgd_elle_varsayilan(_kgd_alici_opts, _kgd_kayit.get("alici_firma", "")), key=f"{_kp}_alici_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz", height=68)
     _kg_fatura_sec = _kgc3.selectbox("Fatura Ödeyen *", _kgd_musteri_opts, index=_kgd_idx(_kgd_musteri_opts, _kgd_kayit.get("fatura_firma", "")), key=f"{_kp}_fatura_sec")
-    _kg_fatura_elle = _kgc3.text_input("(Listede yoksa elle yaz)", value=_kgd_elle_varsayilan(_kgd_musteri_opts, _kgd_kayit.get("fatura_firma", "")), key=f"{_kp}_fatura_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
+    _kg_fatura_elle = _kgc3.text_area("(Listede yoksa elle yaz)", value=_kgd_elle_varsayilan(_kgd_musteri_opts, _kgd_kayit.get("fatura_firma", "")), key=f"{_kp}_fatura_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz", height=68)
 
     _kg_gonderen_il = _kgc1.selectbox("Gönderen İl", _kgd_il_opts, index=_kgd_idx(_kgd_il_opts, _kgd_kayit.get("gonderen_il", "")), key=f"{_kp}_gonderen_il")
     _kg_alici_il = _kgc2.selectbox("Alıcı İl", _kgd_il_opts, index=_kgd_idx(_kgd_il_opts, _kgd_kayit.get("alici_il", "")), key=f"{_kp}_alici_il")
