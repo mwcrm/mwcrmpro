@@ -13985,19 +13985,13 @@ elif aktif == "kargolar":
 
         # ── TÜM FİLTRELER TEK SATIRDA ──────────────────────────────────────────
         _kl_musteri_secenekler = ["-- Tüm Müşteriler --"] + sorted(_kl_musteri_map.values())
-        _kl_musteri_basligi_opts_ham = set()
-        for _kl_kol_ad_x in ["gonderen_firma", "alici_firma", "fatura_firma"]:
-            if _kl_kol_ad_x in _kl_df.columns:
-                _kl_musteri_basligi_opts_ham |= set(x for x in _kl_df[_kl_kol_ad_x].dropna().unique().tolist() if str(x).strip())
-        _kl_musteri_basligi_opts = ["-- Tümü --"] + sorted(_kl_musteri_basligi_opts_ham)
         _kl_gonderen_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["gonderen_firma"].dropna().unique().tolist() if str(x).strip()]) if "gonderen_firma" in _kl_df.columns else ["-- Tümü --"]
         _kl_alici_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["alici_firma"].dropna().unique().tolist() if str(x).strip()]) if "alici_firma" in _kl_df.columns else ["-- Tümü --"]
         _kl_fatura_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["fatura_firma"].dropna().unique().tolist() if str(x).strip()]) if "fatura_firma" in _kl_df.columns else ["-- Tümü --"]
 
-        _kl_fc1, _kl_fc2, _kl_fc3, _kl_fc4, _kl_fc4b, _kl_fc5, _kl_fc5b, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
-            [1.2, 1.2, 0.9, 0.9, 0.9, 0.9, 1.0, 0.8, 0.9, 0.9, 0.9], vertical_alignment="bottom")
+        _kl_fc1, _kl_fc3, _kl_fc4, _kl_fc4b, _kl_fc5, _kl_fc5b, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
+            [1.5, 1.0, 1.0, 1.0, 1.0, 1.1, 0.9, 1.0, 1.0, 1.0], vertical_alignment="bottom")
         _kl_secili_musteri_genel = _kl_fc1.selectbox("Genel Müşteri Seç (kargo girişi için)", _kl_musteri_secenekler, key="kargolar_musteri_filtre")
-        _kl_sec_musteri_basligi = _kl_fc2.selectbox("📂 Müşteri (Gelen+Giden)", _kl_musteri_basligi_opts, key="kargolar_musteri_basligi_filtre")
         _kl_sec_gonderen = _kl_fc3.selectbox("Gönderen", _kl_gonderen_opts_ham, key="kargolar_gonderen_filtre")
         _kl_sec_alici = _kl_fc4.selectbox("Alıcı", _kl_alici_opts_ham, key="kargolar_alici_filtre")
         # Alıcı İl seçenekleri, "Genel Müşteri Seç" ile bir müşteri seçiliyse
@@ -14046,15 +14040,7 @@ elif aktif == "kargolar":
             if st.button("📊 Genel Rapor", key="kargolar_genel_rapor_toggle_btn", use_container_width=True):
                 st.session_state["_kargolar_genel_rapor_ac"] = not st.session_state.get("_kargolar_genel_rapor_ac", False)
 
-        # ── Filtreleri sırayla uygula — "Müşteri (Gelen+Giden)" firmanın hem
-        # gönderen hem alıcı hem fatura ödeyen olduğu TÜM kayıtları (VEYA mantığı);
-        # diğer 3'ü tek tek daha da daraltır.
-        if _kl_sec_musteri_basligi != "-- Tümü --":
-            _kl_df = _kl_df[
-                (_kl_df.get("gonderen_firma", "") == _kl_sec_musteri_basligi) |
-                (_kl_df.get("alici_firma", "") == _kl_sec_musteri_basligi) |
-                (_kl_df.get("fatura_firma", "") == _kl_sec_musteri_basligi)
-            ]
+        # ── Filtreleri sırayla uygula
         if _kl_sec_gonderen != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["gonderen_firma"] == _kl_sec_gonderen]
         if _kl_sec_alici != "-- Tümü --":
