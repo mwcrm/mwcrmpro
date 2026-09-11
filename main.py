@@ -14166,16 +14166,16 @@ elif aktif == "kargolar":
                             .reset_index()
                             .sort_values("Adet", ascending=False))
                 _oz_parcalar = "".join(
-                    f"<span style='display:inline-block;white-space:nowrap;margin:1px 4px 1px 0;padding:3px 8px;"
-                    f"border:1px solid #e0e0e0;border-radius:6px;background:#f7f8fa;'>"
+                    f"<span style='display:inline-block;white-space:nowrap;padding:2px 6px;"
+                    f"border-radius:5px;background:#eef1f5;'>"
                     f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} {_r['_tur_norm'] or 'adet'} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
                     for _, _r in _oz_grup.iterrows()
                 )
                 _oz_yekun_toplam = float(_oz_df["_yekun_num"].sum())
                 st.markdown(
-                    f"<div style='white-space:nowrap;overflow-x:auto;padding:4px 2px;font-size:12px;'>"
-                    f"📍 {_oz_parcalar}"
-                    f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border-radius:6px;background:#fff4e5;'>"
+                    f"<div style='display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 2px;font-size:11px;'>"
+                    f"<span>📍</span>{_oz_parcalar}"
+                    f"<span style='display:inline-block;white-space:nowrap;padding:2px 6px;border-radius:5px;background:#fff0d9;'>"
                     f"💰 <b>Toplam Yekün: {_kg_tr_format(_oz_yekun_toplam)} ₺</b></span>"
                     f"</div>",
                     unsafe_allow_html=True
@@ -14195,16 +14195,16 @@ elif aktif == "kargolar":
                              .reset_index()
                              .sort_values("Adet", ascending=False))
                 _oz_parcalar2 = "".join(
-                    f"<span style='display:inline-block;white-space:nowrap;margin:1px 4px 1px 0;padding:3px 8px;"
-                    f"border:1px solid #e0e0e0;border-radius:6px;background:#f7f8fa;'>"
+                    f"<span style='display:inline-block;white-space:nowrap;padding:2px 6px;"
+                    f"border-radius:5px;background:#eef1f5;'>"
                     f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
                     for _, _r in _oz_grup2.iterrows()
                 )
                 _oz_yekun_toplam2 = float(_oz_df2["_yekun_num"].sum())
                 st.markdown(
-                    f"<div style='white-space:nowrap;overflow-x:auto;padding:4px 2px;font-size:12px;'>"
-                    f"📍 {_oz_parcalar2}"
-                    f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border-radius:6px;background:#fff4e5;'>"
+                    f"<div style='display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 2px;font-size:11px;'>"
+                    f"<span>📍</span>{_oz_parcalar2}"
+                    f"<span style='display:inline-block;white-space:nowrap;padding:2px 6px;border-radius:5px;background:#fff0d9;'>"
                     f"💰 <b>Toplam Yekün: {_kg_tr_format(_oz_yekun_toplam2)} ₺</b></span>"
                     f"</div>",
                     unsafe_allow_html=True
