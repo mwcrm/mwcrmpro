@@ -232,24 +232,36 @@ def _kg_efektif_tutar(_kayit):
         return 0.0
 
 
-def _kg_hesap_zinciri(_kayit):
-    """B.Tutar (birim fiyat) × Adet = taban tutar; oradan Sigorta %6 →
-    Ara Toplam → Kdv %20 → Son Toplam (toplam_fatura) ZİNCİRLEME otomatik
-    hesaplanır. Hiçbiri artık elle yazılmıyor — kayıt/güncelleme anında
-    türetilip üzerine yazılır. _kayit sözlüğünü YERİNDE günceller ve aynı
-    sözlüğü döndürür. B.Tutar'ın kendisi (birim fiyat) DEĞİŞTİRİLMEZ."""
+def _kg_yuvarla(_deger, _basamak=2):
+    """Excel'den veya elle girişten gelen uzun ondalıklı sayıları (ör.
+    90.72164948) TÜM parasal alanlarda 2 ondalık haneye indirir — muhasebe
+    kolay olsun diye. Sayıya çevrilemeyen değerler 0 döner."""
     try:
-        _tutar = float(_kayit.get("tutar", 0) or 0)
+        return round(float(_deger or 0), _basamak)
     except Exception:
-        _tutar = 0.0
+        return 0.0
+
+
+def _kg_hesap_zinciri(_kayit):
+    """B.Tutar (birim fiyat) × Adet = Yekün; oradan Sigorta %6 → Ara Toplam
+    → Kdv %20 → Son Toplam (toplam_fatura) ZİNCİRLEME otomatik hesaplanır.
+    Hiçbiri artık elle yazılmıyor — kayıt/güncelleme anında türetilip
+    üzerine yazılır. Ayrıca B.Tutar/Desi/Kilo'nun kendisi de (Excel'den
+    gelen uzun ondalıklı sayılar dahil) burada 2 haneye YUVARLANIR.
+    _kayit sözlüğünü YERİNDE günceller ve aynı sözlüğü döndürür."""
+    _tutar = _kg_yuvarla(_kayit.get("tutar", 0))
     try:
         _adet = float(_kayit.get("adet", 0) or 0)
     except Exception:
         _adet = 0.0
-    _taban = round(_tutar * _adet, 2)
-    _sigorta = round(_taban * 0.06, 2)
-    _ara_toplam = round(_taban + _sigorta, 2)
+    _kayit["tutar"] = _tutar
+    _kayit["desi"] = _kg_yuvarla(_kayit.get("desi", 0))
+    _kayit["kilo"] = _kg_yuvarla(_kayit.get("kilo", 0))
+    _yekun = round(_tutar * _adet, 2)
+    _sigorta = round(_yekun * 0.06, 2)
+    _ara_toplam = round(_yekun + _sigorta, 2)
     _kdv = round(_ara_toplam * 0.20, 2)
+    _kayit["yekun"] = _yekun
     _kayit["sigorta"] = _sigorta
     _kayit["ara_toplam"] = _ara_toplam
     _kayit["kdv"] = _kdv
@@ -260,17 +272,14 @@ def _kg_hesap_zinciri(_kayit):
 def _kg_kar_zarar_hesapla(_kayit):
     """Kar/Zarar = Müşteri Tutar - Dış Nakliye Tutar (ESKİ formül tersti,
     düzeltildi). Sonuç pozitifse 'kar' alanına, negatifse 'zarar' alanına
-    yazılır, diğeri 0 kalır (tabloda 0 yerine '-' gösterilir). Artık elle
-    yazılmıyor — kayıt/güncelleme anında otomatik hesaplanıp üzerine
+    yazılır, diğeri 0 kalır (tabloda 0 yerine '-' gösterilir). Müşteri
+    Tutar/Dış Nakliye Tutar'ın kendisi de burada 2 haneye YUVARLANIR. Artık
+    elle yazılmıyor — kayıt/güncelleme anında otomatik hesaplanıp üzerine
     yazılır. _kayit sözlüğünü YERİNDE günceller ve aynı sözlüğü döndürür."""
-    try:
-        _mt = float(_kayit.get("musteri_tutar", 0) or 0)
-    except Exception:
-        _mt = 0.0
-    try:
-        _dn = float(_kayit.get("dis_nakliye_tutar", 0) or 0)
-    except Exception:
-        _dn = 0.0
+    _mt = _kg_yuvarla(_kayit.get("musteri_tutar", 0))
+    _dn = _kg_yuvarla(_kayit.get("dis_nakliye_tutar", 0))
+    _kayit["musteri_tutar"] = _mt
+    _kayit["dis_nakliye_tutar"] = _dn
     _net = round(_mt - _dn, 2)
     _kayit["kar"] = _net if _net > 0 else 0.0
     _kayit["zarar"] = _net if _net < 0 else 0.0
@@ -3022,21 +3031,24 @@ def not_dialog(cari_id, firma_adi=""):
         _kg_desi = _kgc2.number_input("Desi", min_value=0.0, step=1.0, key=f"kg_desi_{cari_id}")
         _kg_kilo = _kgc3.number_input("Kilo", min_value=0.0, step=0.5, key=f"kg_kilo_{cari_id}")
 
-        # ── OTOMATİK HESAPLAMA ZİNCİRİ — Sigorta %6 → Ara Toplam → Kdv %20 →
-        # Son Toplam, hepsi B.Tutar'dan türetilir. ELLE YAZILMAZ; burada sadece
-        # CANLI ÖNİZLEME gösterilir, kayıt anında da aynı mantıkla hesaplanır.
+        # ── OTOMATİK HESAPLAMA ZİNCİRİ — Yekün (B.Tutar × Adet) → Sigorta %6 →
+        # Ara Toplam → Kdv %20 → Son Toplam, hepsi B.Tutar ve Adet'ten
+        # türetilir. ELLE YAZILMAZ; burada sadece CANLI ÖNİZLEME gösterilir,
+        # kayıt anında da aynı mantıkla hesaplanır.
         _kg_adet = _kgc1.number_input("Adet", min_value=0, step=1, key=f"kg_adet_{cari_id}")
         _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, key=f"kg_tutar_{cari_id}",
-                                        help="Sigorta, Ara Toplam, Kdv ve Son Toplam bunun üzerinden otomatik hesaplanır.")
+                                        help="Yekün (B.Tutar × Adet) ve oradan Sigorta, Ara Toplam, Kdv, Son Toplam otomatik hesaplanır.")
         _kg_onizleme = _kg_hesap_zinciri({"tutar": _kg_tutar, "adet": _kg_adet})
-        _kgc3.number_input("Sigorta %6 (₺)", value=_kg_onizleme['sigorta'], format="%.2f", key=f"kg_onizleme_sigorta_{cari_id}_{_kg_tutar}_{_kg_adet}")
-        _kgc1.number_input("Ara Toplam (₺)", value=_kg_onizleme['ara_toplam'], format="%.2f", key=f"kg_onizleme_ara_{cari_id}_{_kg_tutar}_{_kg_adet}")
-        _kgc2.number_input("Kdv %20 (₺)", value=_kg_onizleme['kdv'], format="%.2f", key=f"kg_onizleme_kdv_{cari_id}_{_kg_tutar}_{_kg_adet}")
-        _kgc3.number_input("Son Toplam (₺)", value=_kg_onizleme['toplam_fatura'], format="%.2f", key=f"kg_onizleme_son_{cari_id}_{_kg_tutar}_{_kg_adet}")
+        _kgc3.number_input("Yekün (₺)", value=_kg_onizleme['yekun'], format="%.2f", key=f"kg_onizleme_yekun_{cari_id}_{_kg_tutar}_{_kg_adet}",
+                            help="B.Tutar × Adet")
+        _kgc1.number_input("Sigorta %6 (₺)", value=_kg_onizleme['sigorta'], format="%.2f", key=f"kg_onizleme_sigorta_{cari_id}_{_kg_tutar}_{_kg_adet}")
+        _kgc2.number_input("Ara Toplam (₺)", value=_kg_onizleme['ara_toplam'], format="%.2f", key=f"kg_onizleme_ara_{cari_id}_{_kg_tutar}_{_kg_adet}")
+        _kgc3.number_input("Kdv %20 (₺)", value=_kg_onizleme['kdv'], format="%.2f", key=f"kg_onizleme_kdv_{cari_id}_{_kg_tutar}_{_kg_adet}")
+        _kgc1.number_input("Son Toplam (₺)", value=_kg_onizleme['toplam_fatura'], format="%.2f", key=f"kg_onizleme_son_{cari_id}_{_kg_tutar}_{_kg_adet}")
 
-        _kg_yetkili = _kgc1.text_input("Yetkili", key=f"kg_yetkili_{cari_id}", placeholder="İlgili kişiyi elle yaz")
-        _kg_tahsilat = _kgc2.selectbox("Tahsilat", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_tahsilat_{cari_id}")
-        _kg_not = _kgc3.text_input("Not", key=f"kg_not_{cari_id}", placeholder="Serbest not (opsiyonel)")
+        _kg_yetkili = _kgc2.text_input("Yetkili", key=f"kg_yetkili_{cari_id}", placeholder="İlgili kişiyi elle yaz")
+        _kg_tahsilat = _kgc3.selectbox("Tahsilat", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_tahsilat_{cari_id}")
+        _kg_not = _kgc1.text_input("Not", key=f"kg_not_{cari_id}", placeholder="Serbest not (opsiyonel)")
         _kg_odeme_tur = ""  # Bu şemada "Ödeme Türü" (Nakit/Havale/Çek) yok — kaldırıldı
 
         # ── Dış Nakliye bölümü — SADECE Alıcı İl "yerel" iller dışında bir il
@@ -3119,7 +3131,7 @@ def not_dialog(cari_id, firma_adi=""):
             _kg_df = _kg_df.fillna("")  # eski kayıtlarda olmayan alanlar "None" değil boş görünsün
             _kg_df.insert(0, "Seç", False)
             _KG_SIRA = ["tarih", "takip_no", "fatura_no", "gonderen_firma", "alici_firma", "fatura_firma", "yetkili",
-                        "gonderen_il", "alici_il", "tur", "desi", "kilo", "adet", "fatura_odeme_sekli", "tutar", "sigorta",
+                        "gonderen_il", "alici_il", "tur", "desi", "kilo", "adet", "fatura_odeme_sekli", "tutar", "yekun", "sigorta",
                         "ara_toplam", "kdv", "toplam_fatura", "odeme_tur", "tahsilat_durumu", "not", "dis_nakliye_firma",
                         "dis_nakliye_fatura", "dis_nakliye_detay", "dis_nakliye_tutar", "musteri_tutar", "kar", "zarar",
                         "dis_nakliye_odeme_durumu"]
@@ -3128,7 +3140,7 @@ def not_dialog(cari_id, firma_adi=""):
             _kg_kolon_isim = {"tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No",
                                "gonderen_firma": "Gönderen", "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
                                "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl", "tur": "Tür", "desi": "Desi", "kilo": "Kilo", "adet": "Adet",
-                               "fatura_odeme_sekli": "Fatura Ödeme Şekli", "tutar": "B.Tutar", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam",
+                               "fatura_odeme_sekli": "Fatura Ödeme Şekli", "tutar": "B.Tutar", "yekun": "Yekün", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam",
                                "kdv": "Kdv %20", "toplam_fatura": "Son Toplam", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat", "not": "Not",
                                "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura", "dis_nakliye_detay": "Dış Nakliye Detay",
                                "dis_nakliye_tutar": "Dış Nakliye Tutar", "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar",
@@ -3156,8 +3168,9 @@ def not_dialog(cari_id, firma_adi=""):
             _KG_OTOMATIK_HESAPLI_KOLONLAR = {
                 "Kar": "Otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (pozitifse burada görünür)",
                 "Zarar": "Otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (negatifse burada görünür)",
-                "Sigorta %6": "Otomatik hesaplanır: B.Tutar × %6",
-                "Ara Toplam": "Otomatik hesaplanır: B.Tutar + Sigorta %6",
+                "Yekün": "Otomatik hesaplanır: B.Tutar × Adet",
+                "Sigorta %6": "Otomatik hesaplanır: Yekün × %6",
+                "Ara Toplam": "Otomatik hesaplanır: Yekün + Sigorta %6",
                 "Kdv %20": "Otomatik hesaplanır: Ara Toplam × %20",
                 "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
             }
@@ -3205,9 +3218,13 @@ def not_dialog(cari_id, firma_adi=""):
                     _kg_ters_isim = {v: k for k, v in _kg_kolon_isim.items()}
                     _kg_eski_toplam = sum(_kg_efektif_tutar(_k) for _k in _kg_mevcut)
                     _kg_yeni_liste = []
+                    # GÜVENLİK: Kaydet artık "Seç" işaretine bakmadan SADECE
+                    # değerleri günceller — işaretli olsa bile SATIR SİLİNMEZ.
+                    # Silme SADECE aşağıdaki ayrı "Sil" butonuyla yapılır. (Bu
+                    # ayrım olmayınca, "Düzenle" için işaretlenip sonra
+                    # unutulan bir kutu, alakasız bir Kaydet tıklamasında
+                    # kaydı sessizce siliyordu — tehlikeliydi, düzeltildi.)
                     for _, _r in _kg_duzenlenen.iterrows():
-                        if bool(_r.get("Seç")):
-                            continue  # işaretli olanlar siliniyor sayılır
                         _kg_kayit = {}
                         for _kol, _val in _r.items():
                             if _kol == "Seç":
@@ -3631,24 +3648,25 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
 
     _kg_adet = _kgc1.number_input("Adet", min_value=0, step=1, value=int(_kgd_float(_kgd_kayit.get("adet"))), key=f"{_kp}_adet")
     _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, value=_kgd_float(_kgd_kayit.get("tutar")), key=f"{_kp}_tutar",
-                                    help="Sigorta, Ara Toplam, Kdv ve Son Toplam bunun üzerinden otomatik hesaplanır.")
+                                    help="Yekün (B.Tutar × Adet) ve oradan Sigorta, Ara Toplam, Kdv, Son Toplam otomatik hesaplanır.")
     _kg_onizleme = _kg_hesap_zinciri({"tutar": _kg_tutar, "adet": _kg_adet})
-    _kgc3.number_input("Sigorta %6 (₺)", value=_kg_onizleme['sigorta'], format="%.2f", key=f"{_kp}_oniz_sigorta_{_kg_tutar}_{_kg_adet}")
-    _kgc1.number_input("Ara Toplam (₺)", value=_kg_onizleme['ara_toplam'], format="%.2f", key=f"{_kp}_oniz_ara_{_kg_tutar}_{_kg_adet}")
-    _kgc2.number_input("Kdv %20 (₺)", value=_kg_onizleme['kdv'], format="%.2f", key=f"{_kp}_oniz_kdv_{_kg_tutar}_{_kg_adet}")
-    _kgc3.number_input("Son Toplam (₺)", value=_kg_onizleme['toplam_fatura'], format="%.2f", key=f"{_kp}_oniz_son_{_kg_tutar}_{_kg_adet}")
+    _kgc3.number_input("Yekün (₺)", value=_kg_onizleme['yekun'], format="%.2f", key=f"{_kp}_oniz_yekun_{_kg_tutar}_{_kg_adet}", help="B.Tutar × Adet")
+    _kgc1.number_input("Sigorta %6 (₺)", value=_kg_onizleme['sigorta'], format="%.2f", key=f"{_kp}_oniz_sigorta_{_kg_tutar}_{_kg_adet}")
+    _kgc2.number_input("Ara Toplam (₺)", value=_kg_onizleme['ara_toplam'], format="%.2f", key=f"{_kp}_oniz_ara_{_kg_tutar}_{_kg_adet}")
+    _kgc3.number_input("Kdv %20 (₺)", value=_kg_onizleme['kdv'], format="%.2f", key=f"{_kp}_oniz_kdv_{_kg_tutar}_{_kg_adet}")
+    _kgc1.number_input("Son Toplam (₺)", value=_kg_onizleme['toplam_fatura'], format="%.2f", key=f"{_kp}_oniz_son_{_kg_tutar}_{_kg_adet}")
 
-    _kg_yetkili = _kgc1.text_input("Yetkili", value=str(_kgd_kayit.get("yetkili", "")), key=f"{_kp}_yetkili", placeholder="İlgili kişiyi elle yaz")
+    _kg_yetkili = _kgc2.text_input("Yetkili", value=str(_kgd_kayit.get("yetkili", "")), key=f"{_kp}_yetkili", placeholder="İlgili kişiyi elle yaz")
     _kgd_tahsilat_opts = ["", "Evet", "Hayır", "Kısmi"]
     _kgd_tahsilat_mevcut = str(_kgd_kayit.get("tahsilat_durumu", "") or "")
     if _kgd_tahsilat_mevcut and _kgd_tahsilat_mevcut not in _kgd_tahsilat_opts:
         # Eski bir kayıttan kalma (ör. "Bekliyor") olabilir — kaybolmasın diye
         # listeye geçici olarak ekleniyor, kaydedince yine seçtiğin ne olursa o kalır.
         _kgd_tahsilat_opts = _kgd_tahsilat_opts + [_kgd_tahsilat_mevcut]
-    _kg_tahsilat = _kgc2.selectbox("Tahsilat", _kgd_tahsilat_opts,
+    _kg_tahsilat = _kgc3.selectbox("Tahsilat", _kgd_tahsilat_opts,
                                     index=(_kgd_tahsilat_opts.index(_kgd_tahsilat_mevcut) if _kgd_tahsilat_mevcut in _kgd_tahsilat_opts else 0),
                                     key=f"{_kp}_tahsilat")
-    _kg_not = _kgc3.text_input("Not", value=str(_kgd_kayit.get("not", "")), key=f"{_kp}_not", placeholder="Serbest not (opsiyonel)")
+    _kg_not = _kgc1.text_input("Not", value=str(_kgd_kayit.get("not", "")), key=f"{_kp}_not", placeholder="Serbest not (opsiyonel)")
     _kg_odeme_tur = _kgd_kayit.get("odeme_tur", "")
 
     _kg_dis_bolge_mi = (_kg_alici_il != "-- İl seçilir --" and _kg_alici_il not in _KGD_YEREL_ILLER)
@@ -13859,7 +13877,7 @@ elif aktif == "kargolar":
         # ekle — yoksa aşağıdaki filtre/Excel/rapor kodları "sütun yok" hatası
         # verip çökerdi (tam da liste boşken erişilmesi gereken özellikler).
         _KL_BEKLENEN_KOLONLAR = ["tarih", "takip_no", "fatura_no", "gonderen_firma", "alici_firma", "fatura_firma", "yetkili",
-                                  "gonderen_il", "alici_il", "adet", "tur", "tutar", "sigorta", "ara_toplam", "kdv",
+                                  "gonderen_il", "alici_il", "adet", "tur", "tutar", "yekun", "sigorta", "ara_toplam", "kdv",
                                   "toplam_fatura", "odeme_tur", "tahsilat_durumu", "not", "dis_nakliye_firma",
                                   "dis_nakliye_fatura", "dis_nakliye_detay", "dis_nakliye_tutar",
                                   "musteri_tutar", "kar", "zarar", "dis_nakliye_odeme_durumu", "fatura_odeme_sekli",
@@ -14011,7 +14029,7 @@ elif aktif == "kargolar":
         _kl_kolon_isim = {"Müşteri": "Müşteri", "tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No",
                            "gonderen_firma": "Gönderen", "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
                            "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl", "tur": "Tür", "desi": "Desi", "kilo": "Kilo", "adet": "Adet",
-                           "fatura_odeme_sekli": "Fatura Ödeme Şekli", "tutar": "B.Tutar", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam",
+                           "fatura_odeme_sekli": "Fatura Ödeme Şekli", "tutar": "B.Tutar", "yekun": "Yekün", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam",
                            "kdv": "Kdv %20", "toplam_fatura": "Son Toplam", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat", "not": "Not",
                            "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura", "dis_nakliye_detay": "Dış Nakliye Detay",
                            "dis_nakliye_tutar": "Dış Nakliye Tutar", "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar",
@@ -14218,8 +14236,9 @@ elif aktif == "kargolar":
         _KL_OTOMATIK_HESAPLI_KOLONLAR = {
             "Kar": "Otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (pozitifse burada görünür)",
             "Zarar": "Otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (negatifse burada görünür)",
-            "Sigorta %6": "Otomatik hesaplanır: B.Tutar × %6",
-            "Ara Toplam": "Otomatik hesaplanır: B.Tutar + Sigorta %6",
+            "Yekün": "Otomatik hesaplanır: B.Tutar × Adet",
+            "Sigorta %6": "Otomatik hesaplanır: Yekün × %6",
+            "Ara Toplam": "Otomatik hesaplanır: Yekün + Sigorta %6",
             "Kdv %20": "Otomatik hesaplanır: Ara Toplam × %20",
             "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
         }
@@ -14319,6 +14338,10 @@ elif aktif == "kargolar":
                     _kl_duz_idx = _kl_secili_indeksler[0]
                     _kl_duz_cid = int(_kl_df_goster.iloc[_kl_duz_idx]["_cari_id"])
                     _kl_duz_satir = int(_kl_df_goster.iloc[_kl_duz_idx]["_satir_no"])
+                    # Ek güvenlik: pencere kapanınca kutu işaretli kalıp
+                    # unutulmasın diye seçim burada temizleniyor.
+                    st.session_state["_kl_tumu_secili_mod"] = False
+                    st.session_state["_kl_editor_versiyon"] += 1
                     kargo_kaydi_duzenle_dialog(_kl_duz_cid, _kl_duz_satir)
             with _klb1:
                 if st.button("💾 Değişiklikleri Kaydet", key="kargolar_kaydet_btn", type="primary", use_container_width=True):
@@ -14333,13 +14356,16 @@ elif aktif == "kargolar":
                     for _cid_yukle in _kl_etkilenen_cid:
                         _kl_tam_listeler[_cid_yukle] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle}"))
                         _kl_eski_toplamlar[_cid_yukle] = sum(_kg_efektif_tutar(_k) for _k in _kl_tam_listeler[_cid_yukle])
+                    # GÜVENLİK: Kaydet artık "Seç" işaretine bakmadan SADECE
+                    # değerleri günceller — işaretli olsa bile SATIR SİLİNMEZ.
+                    # Silme SADECE aşağıdaki ayrı "Sil" butonuyla yapılır. (Bu
+                    # ayrım olmayınca, "Düzenle" için işaretlenip sonra
+                    # unutulan bir kutu, alakasız bir Kaydet tıklamasında
+                    # kaydı sessizce siliyordu — tehlikeliydi, düzeltildi.)
                     for _idx, _r in _kl_duzenlenen.iterrows():
                         _cid = int(_kl_df_goster.iloc[_idx]["_cari_id"])
                         _satir_no = int(_kl_df_goster.iloc[_idx]["_satir_no"])
                         if _satir_no >= len(_kl_tam_listeler[_cid]):
-                            continue
-                        if bool(_r.get("Seç")):
-                            _kl_tam_listeler[_cid][_satir_no] = None  # işaretliyse sil (aşağıda filtrelenir)
                             continue
                         _kayit = {}
                         for _kol, _val in _r.items():
