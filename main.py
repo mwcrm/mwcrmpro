@@ -14148,64 +14148,64 @@ elif aktif == "kargolar":
                       if st.session_state.get("_kargolar_mukerrer_goster", False) else
                       (f" 🔁 {_kl_mukerrer_toplam} birebir mükerrer kayıt bulundu." if _kl_mukerrer_toplam > 0 else "")))
 
-        # ── TEK SATIRLIK İL ÖZETİ — tek müşteri seçiliyken İl+Tür kırılımında
+        # ── İL ÖZETİ (KUTUCUKLU) — tek müşteri seçiliyken İl+Tür kırılımında
         # detaylı, birden çok müşteri (genel liste) görünüyorken sadece İl
         # bazında (tür ayrımı olmadan, kalabalık olmasın diye) gösterilir.
-        # En yoğun (adedi en yüksek) il soldan başlayıp sağa doğru sıralanır;
-        # taşarsa sağa kaydırılabilir tek satır halinde kalır.
+        # Her il kendi kutucuğunda; tutar olarak YEKÜN (B.Tutar × Adet)
+        # toplamı gösterilir. En yoğun (adedi en yüksek) il soldan başlar.
         if len(_kl_df) > 0 and _kl_df["_cari_id"].nunique() == 1:
             _oz_df = _kl_df.copy()
             _oz_df["_il_norm"] = _oz_df.get("alici_il", "").astype(str).str.strip()
             _oz_df["_tur_norm"] = _oz_df.get("tur", "").astype(str).str.strip()
             _oz_df = _oz_df[_oz_df["_il_norm"] != ""]
             if not _oz_df.empty:
-                _oz_efektif = pd.to_numeric(_oz_df.get("toplam_fatura", 0), errors="coerce").fillna(0)
-                _oz_tutar_num = pd.to_numeric(_oz_df.get("tutar", 0), errors="coerce").fillna(0)
-                _oz_df["_efektif_tutar"] = _oz_efektif.where(_oz_efektif != 0, _oz_tutar_num)
+                _oz_df["_yekun_num"] = pd.to_numeric(_oz_df.get("yekun", 0), errors="coerce").fillna(0)
                 _oz_df["_adet_num"] = pd.to_numeric(_oz_df.get("adet", 0), errors="coerce").fillna(0)
                 _oz_grup = (_oz_df.groupby(["_il_norm", "_tur_norm"])
-                            .agg(Adet=("_adet_num", "sum"), Tutar=("_efektif_tutar", "sum"))
+                            .agg(Adet=("_adet_num", "sum"), Yekun=("_yekun_num", "sum"))
                             .reset_index()
                             .sort_values("Adet", ascending=False))
                 _oz_parcalar = "".join(
-                    f"<span style='display:inline-block;white-space:nowrap;margin-right:22px;'>"
-                    f"<b>{_r['_il_norm']}</b> {int(_r['Adet'])} {_r['_tur_norm'] or 'adet'} — {_r['Tutar']:,.0f} ₺</span>"
+                    f"<span style='display:inline-block;white-space:nowrap;margin:2px 8px 2px 0;padding:6px 14px;"
+                    f"border:1px solid #e0e0e0;border-radius:10px;background:#f7f8fa;'>"
+                    f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} {_r['_tur_norm'] or 'adet'} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
                     for _, _r in _oz_grup.iterrows()
                 )
-                _oz_genel_ciro = float(_oz_df["_efektif_tutar"].sum())
+                _oz_yekun_toplam = float(_oz_df["_yekun_num"].sum())
                 st.markdown(
                     f"<div style='white-space:nowrap;overflow-x:auto;padding:6px 2px;font-size:15px;'>"
                     f"📍 {_oz_parcalar}"
-                    f"<span style='display:inline-block;white-space:nowrap;'>💰 <b>Toplam Ciro: {_oz_genel_ciro:,.0f} ₺</b></span>"
+                    f"<span style='display:inline-block;white-space:nowrap;padding:6px 14px;border-radius:10px;background:#fff4e5;'>"
+                    f"💰 <b>Toplam Yekün: {_kg_tr_format(_oz_yekun_toplam)} ₺</b></span>"
                     f"</div>",
                     unsafe_allow_html=True
                 )
         elif len(_kl_df) > 0:
             # Birden çok müşteri görünüyorken (genel liste) tür kırılımına
             # inmiyoruz (kalabalık/karışık olduğu için) — sadece İL bazında,
-            # tüm türler "PARÇA" olarak toplanmış TEK SATIRLIK özet.
+            # tüm türler "Parça" olarak toplanmış, kutucuklu özet.
             _oz_df2 = _kl_df.copy()
             _oz_df2["_il_norm"] = _oz_df2.get("alici_il", "").astype(str).str.strip()
             _oz_df2 = _oz_df2[_oz_df2["_il_norm"] != ""]
             if not _oz_df2.empty:
-                _oz_efektif2 = pd.to_numeric(_oz_df2.get("toplam_fatura", 0), errors="coerce").fillna(0)
-                _oz_tutar_num2 = pd.to_numeric(_oz_df2.get("tutar", 0), errors="coerce").fillna(0)
-                _oz_df2["_efektif_tutar"] = _oz_efektif2.where(_oz_efektif2 != 0, _oz_tutar_num2)
+                _oz_df2["_yekun_num"] = pd.to_numeric(_oz_df2.get("yekun", 0), errors="coerce").fillna(0)
                 _oz_df2["_adet_num"] = pd.to_numeric(_oz_df2.get("adet", 0), errors="coerce").fillna(0)
                 _oz_grup2 = (_oz_df2.groupby("_il_norm")
-                             .agg(Adet=("_adet_num", "sum"), Tutar=("_efektif_tutar", "sum"))
+                             .agg(Adet=("_adet_num", "sum"), Yekun=("_yekun_num", "sum"))
                              .reset_index()
                              .sort_values("Adet", ascending=False))
                 _oz_parcalar2 = "".join(
-                    f"<span style='display:inline-block;white-space:nowrap;margin-right:22px;'>"
-                    f"<b>{_r['_il_norm']}</b> {int(_r['Adet'])} Parça — {_r['Tutar']:,.0f} ₺</span>"
+                    f"<span style='display:inline-block;white-space:nowrap;margin:2px 8px 2px 0;padding:6px 14px;"
+                    f"border:1px solid #e0e0e0;border-radius:10px;background:#f7f8fa;'>"
+                    f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} Parça — {_kg_tr_format(_r['Yekun'])} ₺</span>"
                     for _, _r in _oz_grup2.iterrows()
                 )
-                _oz_genel_ciro2 = float(_oz_df2["_efektif_tutar"].sum())
+                _oz_yekun_toplam2 = float(_oz_df2["_yekun_num"].sum())
                 st.markdown(
                     f"<div style='white-space:nowrap;overflow-x:auto;padding:6px 2px;font-size:15px;'>"
                     f"📍 {_oz_parcalar2}"
-                    f"<span style='display:inline-block;white-space:nowrap;'>💰 <b>Toplam Ciro: {_oz_genel_ciro2:,.0f} ₺</b></span>"
+                    f"<span style='display:inline-block;white-space:nowrap;padding:6px 14px;border-radius:10px;background:#fff4e5;'>"
+                    f"💰 <b>Toplam Yekün: {_kg_tr_format(_oz_yekun_toplam2)} ₺</b></span>"
                     f"</div>",
                     unsafe_allow_html=True
                 )
