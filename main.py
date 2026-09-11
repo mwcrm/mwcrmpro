@@ -13999,6 +13999,17 @@ elif aktif == "kargolar":
         # Kaydet/Sil işlemine kadar HER render'da yeniden uygulanıyor.
         if st.session_state.get("_kl_tumu_secili_mod", False):
             _kl_df_goster["Seç"] = True
+        # ── "🔄 Hesapla" butonuna basılınca, o an tablodaki TÜM elle yapılmış
+        # düzenlemeler (B.Tutar değişikliği dahil) burada üzerine yazılır —
+        # sadece hesaplanan sütunlar (Sigorta/Ara Toplam/Kdv/Son Toplam/Kar/
+        # Zarar) TAZE değerlerle güncellenmiş olarak geri gelir. Kaydet'e
+        # basmadan önce, tablo üzerinde canlı gibi görünmesini sağlar.
+        if "_kl_hesapla_bekleyen" in st.session_state:
+            _kl_bekleyen = st.session_state.pop("_kl_hesapla_bekleyen")
+            if len(_kl_bekleyen) == len(_kl_df_goster):
+                for _pcol in _kl_bekleyen.columns:
+                    if _pcol in _kl_df_goster.columns:
+                        _kl_df_goster[_pcol] = _kl_bekleyen[_pcol].values
         _kl_editor_key = f"kargolar_editor_{st.session_state['_kl_editor_versiyon']}"
         _kl_duzenlenen = st.data_editor(
             _kl_df_goster.drop(columns=["_cari_id", "_satir_no"]), use_container_width=True, hide_index=True,
@@ -14007,7 +14018,7 @@ elif aktif == "kargolar":
         )
 
         with _kl_btn_kutu:
-            _klb0a, _klb0b, _klb0c, _klb1, _klb2 = st.columns(5)
+            _klb0a, _klb0b, _klb0c, _klb0d, _klb1, _klb2 = st.columns(6)
             with _klb0a:
                 if st.button("☑️ Tümünü Seç", key="kargolar_tumunu_sec_btn", use_container_width=True):
                     st.session_state["_kl_tumu_secili_mod"] = True
@@ -14019,6 +14030,28 @@ elif aktif == "kargolar":
                     st.session_state["_kl_editor_versiyon"] += 1
                     st.rerun()
             with _klb0c:
+                if st.button("🔄 Hesapla", key="kargolar_hesapla_btn", use_container_width=True,
+                             help="B.Tutar / Müşteri Tutar / Dış Nakliye Tutar'ı burada değiştirdiysen, Kaydet'e basmadan ÖNCE Sigorta/Ara Toplam/Kdv/Son Toplam/Kar/Zarar'ı bu tabloda güncellemek için tıkla."):
+                    _kl_yeni_taban = _kl_duzenlenen.copy()
+                    for _hidx in _kl_yeni_taban.index:
+                        _hkayit = {
+                            "tutar": _kl_yeni_taban.at[_hidx, "B.Tutar"] if "B.Tutar" in _kl_yeni_taban.columns else 0,
+                            "musteri_tutar": _kl_yeni_taban.at[_hidx, "Müşteri Tutar"] if "Müşteri Tutar" in _kl_yeni_taban.columns else 0,
+                            "dis_nakliye_tutar": _kl_yeni_taban.at[_hidx, "Dış Nakliye Tutar"] if "Dış Nakliye Tutar" in _kl_yeni_taban.columns else 0,
+                        }
+                        _kg_hesap_zinciri(_hkayit)
+                        _kg_kar_zarar_hesapla(_hkayit)
+                        for _hkol, _hdeger in (("Sigorta %6", _hkayit["sigorta"]), ("Ara Toplam", _hkayit["ara_toplam"]),
+                                                ("Kdv %20", _hkayit["kdv"]), ("Son Toplam", _hkayit["toplam_fatura"])):
+                            if _hkol in _kl_yeni_taban.columns:
+                                _kl_yeni_taban.at[_hidx, _hkol] = _hdeger
+                        for _hkol2, _hdeger2 in (("Kar", _hkayit["kar"]), ("Zarar", _hkayit["zarar"])):
+                            if _hkol2 in _kl_yeni_taban.columns:
+                                _kl_yeni_taban.at[_hidx, _hkol2] = _kg_sifir_tire(_hdeger2)
+                    st.session_state["_kl_hesapla_bekleyen"] = _kl_yeni_taban
+                    st.session_state["_kl_editor_versiyon"] += 1
+                    st.rerun()
+            with _klb0d:
                 _kl_mukerrer_aktif = st.session_state.get("_kargolar_mukerrer_goster", False)
                 _kl_mukerrer_etiket = f"🔁 {_kl_mukerrer_toplam} Mükerrer" if not _kl_mukerrer_aktif else "🔁 Mükerrer — Kapat"
                 if st.button(_kl_mukerrer_etiket, key="kargolar_mukerrer_btn", use_container_width=True,
