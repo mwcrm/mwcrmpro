@@ -14197,7 +14197,7 @@ elif aktif == "kargolar":
                 _oz_parcalar2 = "".join(
                     f"<span style='display:inline-block;white-space:nowrap;margin:2px 8px 2px 0;padding:6px 14px;"
                     f"border:1px solid #e0e0e0;border-radius:10px;background:#f7f8fa;'>"
-                    f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} Parça — {_kg_tr_format(_r['Yekun'])} ₺</span>"
+                    f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
                     for _, _r in _oz_grup2.iterrows()
                 )
                 _oz_yekun_toplam2 = float(_oz_df2["_yekun_num"].sum())
