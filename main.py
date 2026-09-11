@@ -235,9 +235,19 @@ def _kg_efektif_tutar(_kayit):
 def _kg_yuvarla(_deger, _basamak=2):
     """Excel'den veya elle girişten gelen uzun ondalıklı sayıları (ör.
     90.72164948) TÜM parasal alanlarda 2 ondalık haneye indirir — muhasebe
-    kolay olsun diye. Sayıya çevrilemeyen değerler 0 döner."""
+    kolay olsun diye. Hem düz sayıyı hem Türkçe biçimli metni ('1.234,56')
+    doğru okur. Sayıya çevrilemeyen değerler 0 döner."""
+    if _deger is None:
+        return 0.0
+    _s = str(_deger).strip()
+    if not _s:
+        return 0.0
+    if "," in _s and "." in _s:
+        _s = _s.replace(".", "").replace(",", ".")
+    elif "," in _s:
+        _s = _s.replace(",", ".")
     try:
-        return round(float(_deger or 0), _basamak)
+        return round(float(_s), _basamak)
     except Exception:
         return 0.0
 
@@ -250,10 +260,7 @@ def _kg_hesap_zinciri(_kayit):
     gelen uzun ondalıklı sayılar dahil) burada 2 haneye YUVARLANIR.
     _kayit sözlüğünü YERİNDE günceller ve aynı sözlüğü döndürür."""
     _tutar = _kg_yuvarla(_kayit.get("tutar", 0))
-    try:
-        _adet = float(_kayit.get("adet", 0) or 0)
-    except Exception:
-        _adet = 0.0
+    _adet = _kg_yuvarla(_kayit.get("adet", 0))
     _kayit["tutar"] = _tutar
     _kayit["desi"] = _kg_yuvarla(_kayit.get("desi", 0))
     _kayit["kilo"] = _kg_yuvarla(_kayit.get("kilo", 0))
@@ -286,17 +293,49 @@ def _kg_kar_zarar_hesapla(_kayit):
     return _kayit
 
 
+def _kg_tr_format(_deger):
+    """Sayıyı TÜRKÇE biçimde string'e çevirir: 1234.5 -> '1.234,50'
+    (nokta binlik ayracı, virgül ondalık ayracı) — Streamlit'in number_input'u
+    bunu doğal olarak yapamadığı için parasal alanlarda bunu kullanıyoruz."""
+    try:
+        _fv = float(_deger or 0)
+    except Exception:
+        _fv = 0.0
+    _s = f"{_fv:,.2f}"  # ör: '1,234.50' (ABD biçimi)
+    return _s.replace(",", "X").replace(".", ",").replace("X", ".")  # -> '1.234,50'
+
+
+def _kg_tr_parse(_metin):
+    """Türkçe (1.234,56 / 1234,56) ya da ABD (1234.56) biçiminde yazılmış bir
+    sayıyı float'a çevirir — kullanıcı hangi ayracı kullanırsa kullansın
+    doğru okunsun diye. Anlaşılamazsa 0 döner."""
+    if _metin is None:
+        return 0.0
+    _s = str(_metin).strip()
+    if not _s:
+        return 0.0
+    if "," in _s and "." in _s:
+        _s = _s.replace(".", "").replace(",", ".")
+    elif "," in _s:
+        _s = _s.replace(",", ".")
+    try:
+        return float(_s)
+    except Exception:
+        return 0.0
+
+
 def _kg_sifir_tire(_deger):
     """Kar/Zarar gibi 'ya biri ya diğeri dolu' sütunları TABLODA gösterirken
     0 yerine '-' yazsın diye — sadece görünüm; kayıt sırasında zaten
-    _kg_kar_zarar_hesapla ile doğru sayısal değer yeniden yazılır."""
+    _kg_kar_zarar_hesapla ile doğru sayısal değer yeniden yazılır. Türkçe
+    (virgül ondalık, nokta binlik) biçimde gösterir."""
     try:
         _fv = float(_deger)
     except Exception:
         return "-"
     if _fv == 0:
         return "-"
-    return f"{_fv:,.2f}"
+    return _kg_tr_format(_fv)
 
 
 def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
@@ -3028,23 +3067,24 @@ def not_dialog(cari_id, firma_adi=""):
                                                   help="PÖ/CH seçilirse Fatura Ödeyen otomatik Gönderen olur, ÜA seçilirse otomatik Alıcı olur.")
 
         _kg_tur = _kgc1.text_input("Tür", key=f"kg_tur_{cari_id}", placeholder="Koli / Palet / ...")
-        _kg_desi = _kgc2.number_input("Desi", min_value=0.0, step=1.0, key=f"kg_desi_{cari_id}")
-        _kg_kilo = _kgc3.number_input("Kilo", min_value=0.0, step=0.5, key=f"kg_kilo_{cari_id}")
+        _kg_desi = _kg_tr_parse(_kgc2.text_input("Desi", value="0", key=f"kg_desi_{cari_id}", help="Virgülle ondalık yazabilirsin (ör. 12,5)"))
+        _kg_kilo = _kg_tr_parse(_kgc3.text_input("Kilo", value="0", key=f"kg_kilo_{cari_id}", help="Virgülle ondalık yazabilirsin (ör. 12,5)"))
 
         # ── OTOMATİK HESAPLAMA ZİNCİRİ — Yekün (B.Tutar × Adet) → Sigorta %6 →
         # Ara Toplam → Kdv %20 → Son Toplam, hepsi B.Tutar ve Adet'ten
         # türetilir. ELLE YAZILMAZ; burada sadece CANLI ÖNİZLEME gösterilir,
-        # kayıt anında da aynı mantıkla hesaplanır.
+        # kayıt anında da aynı mantıkla hesaplanır. Tüm parasal kutular
+        # Türkçe biçimde (virgül ondalık, nokta binlik) yazılır/gösterilir.
         _kg_adet = _kgc1.number_input("Adet", min_value=0, step=1, key=f"kg_adet_{cari_id}")
-        _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, key=f"kg_tutar_{cari_id}",
-                                        help="Yekün (B.Tutar × Adet) ve oradan Sigorta, Ara Toplam, Kdv, Son Toplam otomatik hesaplanır.")
+        _kg_tutar = _kg_tr_parse(_kgc2.text_input("B.Tutar", value="0", key=f"kg_tutar_{cari_id}",
+                                  help="Virgülle ondalık yaz (ör. 90,72). Yekün, Sigorta, Ara Toplam, Kdv ve Son Toplam bunun üzerinden otomatik hesaplanır."))
         _kg_onizleme = _kg_hesap_zinciri({"tutar": _kg_tutar, "adet": _kg_adet})
-        _kgc3.number_input("Yekün (₺)", value=_kg_onizleme['yekun'], format="%.2f", key=f"kg_onizleme_yekun_{cari_id}_{_kg_tutar}_{_kg_adet}",
-                            help="B.Tutar × Adet")
-        _kgc1.number_input("Sigorta %6 (₺)", value=_kg_onizleme['sigorta'], format="%.2f", key=f"kg_onizleme_sigorta_{cari_id}_{_kg_tutar}_{_kg_adet}")
-        _kgc2.number_input("Ara Toplam (₺)", value=_kg_onizleme['ara_toplam'], format="%.2f", key=f"kg_onizleme_ara_{cari_id}_{_kg_tutar}_{_kg_adet}")
-        _kgc3.number_input("Kdv %20 (₺)", value=_kg_onizleme['kdv'], format="%.2f", key=f"kg_onizleme_kdv_{cari_id}_{_kg_tutar}_{_kg_adet}")
-        _kgc1.number_input("Son Toplam (₺)", value=_kg_onizleme['toplam_fatura'], format="%.2f", key=f"kg_onizleme_son_{cari_id}_{_kg_tutar}_{_kg_adet}")
+        _kgc3.text_input("Yekün (₺)", value=_kg_tr_format(_kg_onizleme['yekun']), key=f"kg_onizleme_yekun_{cari_id}_{_kg_tutar}_{_kg_adet}",
+                          help="B.Tutar × Adet")
+        _kgc1.text_input("Sigorta %6 (₺)", value=_kg_tr_format(_kg_onizleme['sigorta']), key=f"kg_onizleme_sigorta_{cari_id}_{_kg_tutar}_{_kg_adet}")
+        _kgc2.text_input("Ara Toplam (₺)", value=_kg_tr_format(_kg_onizleme['ara_toplam']), key=f"kg_onizleme_ara_{cari_id}_{_kg_tutar}_{_kg_adet}")
+        _kgc3.text_input("Kdv %20 (₺)", value=_kg_tr_format(_kg_onizleme['kdv']), key=f"kg_onizleme_kdv_{cari_id}_{_kg_tutar}_{_kg_adet}")
+        _kgc1.text_input("Son Toplam (₺)", value=_kg_tr_format(_kg_onizleme['toplam_fatura']), key=f"kg_onizleme_son_{cari_id}_{_kg_tutar}_{_kg_adet}")
 
         _kg_yetkili = _kgc2.text_input("Yetkili", key=f"kg_yetkili_{cari_id}", placeholder="İlgili kişiyi elle yaz")
         _kg_tahsilat = _kgc3.selectbox("Tahsilat", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_tahsilat_{cari_id}")
@@ -3063,8 +3103,8 @@ def not_dialog(cari_id, firma_adi=""):
                 _kg_dn_firma_elle = _kgd1.text_input("(Listede yoksa elle yaz)", key=f"kg_dn_firma_elle_{cari_id}", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
                 _kg_dn_fatura = _kgd2.text_input("Dış Nakliye Fatura", key=f"kg_dn_fatura_{cari_id}")
                 _kg_dn_detay = _kgd3.text_input("Dış Nakliye Detay", key=f"kg_dn_detay_{cari_id}", placeholder="Örn: 2 Palet")
-                _kg_dn_tutar = _kgd1.number_input("Dış Nakliye Tutar", min_value=0.0, step=0.01, key=f"kg_dn_tutar_{cari_id}")
-                _kg_musteri_tutar = _kgd2.number_input("Müşteri Tutar", min_value=0.0, step=0.01, key=f"kg_musteri_tutar_{cari_id}")
+                _kg_dn_tutar = _kg_tr_parse(_kgd1.text_input("Dış Nakliye Tutar", value="0", key=f"kg_dn_tutar_{cari_id}", help="Virgülle ondalık yazabilirsin (ör. 3.500,50)"))
+                _kg_musteri_tutar = _kg_tr_parse(_kgd2.text_input("Müşteri Tutar", value="0", key=f"kg_musteri_tutar_{cari_id}", help="Virgülle ondalık yazabilirsin (ör. 3.500,50)"))
                 _kg_dn_odeme = _kgd3.selectbox("İşlendi mi?", ["", "Evet", "Hayır", "Kısmi"], key=f"kg_dn_odeme_{cari_id}")
                 st.caption("🧮 Kar/Zarar, kaydedince otomatik hesaplanır: Müşteri Tutar − Dış Nakliye Tutar (pozitifse Kar, negatifse Zarar)")
                 _kg_dn_firma = _kg_dn_firma_elle.strip() or (_kg_dn_firma_sec if _kg_dn_firma_sec != "-- Seç veya elle yaz --" else "")
@@ -3122,7 +3162,12 @@ def not_dialog(cari_id, firma_adi=""):
                 st.toast("✅ Kargo girişi kaydedildi", icon="🚚")
                 st.rerun()
 
-        _kg_mevcut = _kg_kayitlari_yukle(_kg_anahtar)
+        _kg_mevcut_ham = _kg_kayitlari_yukle(_kg_anahtar)
+        # GÜVENLİK: silinen kayıtlar listeden TAMAMEN çıkarılmıyor, sadece
+        # "silindi" işaretliyse normal görünümden gizleniyor — "🗑️ Silinenler"
+        # bölümünden (Kargolar sayfasında) geri alınabilir.
+        _kg_silinmis_kayitlar = [_k for _k in _kg_mevcut_ham if _k.get("silindi")]
+        _kg_mevcut = [_k for _k in _kg_mevcut_ham if not _k.get("silindi")]
         if _kg_mevcut:
             st.divider()
             st.caption(f"📋 Bu müşteri için {len(_kg_mevcut)} kargo kaydı — düzenleyebilir, seçip silebilirsin:")
@@ -3136,7 +3181,7 @@ def not_dialog(cari_id, firma_adi=""):
                         "dis_nakliye_fatura", "dis_nakliye_detay", "dis_nakliye_tutar", "musteri_tutar", "kar", "zarar",
                         "dis_nakliye_odeme_durumu"]
             _kg_df = _kg_df[["Seç"] + [c for c in _KG_SIRA if c in _kg_df.columns]
-                            + [c for c in _kg_df.columns if c not in (["Seç"] + _KG_SIRA)]]
+                            + [c for c in _kg_df.columns if c not in (["Seç", "silindi", "silinme_tarihi"] + _KG_SIRA)]]
             _kg_kolon_isim = {"tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No",
                                "gonderen_firma": "Gönderen", "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
                                "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl", "tur": "Tür", "desi": "Desi", "kilo": "Kilo", "adet": "Adet",
@@ -3152,6 +3197,14 @@ def not_dialog(cari_id, firma_adi=""):
             for _kg_kz_kol in ("Kar", "Zarar"):
                 if _kg_kz_kol in _kg_df.columns:
                     _kg_df[_kg_kz_kol] = _kg_df[_kg_kz_kol].map(_kg_sifir_tire)
+            # Bunlar salt okunur/otomatik hesaplanan sütunlar olduğu için
+            # Türkçe biçime (virgül ondalık) çevirmek güvenli — Kaydet/Hesapla
+            # bunları B.Tutar'dan (sayısal) yeniden türetiyor, buradaki metin
+            # halini hiç okumuyor.
+            for _kg_hesap_kol in ("B.Tutar", "Desi", "Kilo", "Yekün", "Sigorta %6", "Ara Toplam", "Kdv %20", "Son Toplam",
+                                   "Müşteri Tutar", "Dış Nakliye Tutar"):
+                if _kg_hesap_kol in _kg_df.columns:
+                    _kg_df[_kg_hesap_kol] = _kg_df[_kg_hesap_kol].map(_kg_tr_format)
             # Kolon Ayarları'nda ayarlanan (5-50 arası) genişlikleri burada da uygula —
             # yoksa tablo çok geniş açılıp okunması zorlaşıyordu.
             if "_kargo_kol_genislik" not in st.session_state:
@@ -3233,7 +3286,7 @@ def not_dialog(cari_id, firma_adi=""):
                         _kg_hesap_zinciri(_kg_kayit)
                         _kg_kar_zarar_hesapla(_kg_kayit)
                         _kg_yeni_liste.append(_kg_kayit)
-                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste)
+                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste + _kg_silinmis_kayitlar)
                     _kg_kayitlari_yukle.clear()
                     _kg_yeni_toplam = sum(_kg_efektif_tutar(_k) for _k in _kg_yeni_liste)
                     _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam - _kg_eski_toplam)
@@ -3246,23 +3299,27 @@ def not_dialog(cari_id, firma_adi=""):
                 if st.button(f"🗑️ Seçili {_kg_secili_sayi} Kaydı Sil", key=f"kg_sil_btn_{cari_id}", use_container_width=True, disabled=_kg_secili_sayi == 0):
                     _kg_ters_isim2 = {v: k for k, v in _kg_kolon_isim.items()}
                     _kg_eski_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kg_mevcut)
+                    # GÜVENLİK: YUMUŞAK SİLME — kayıt tamamen kaybolmuyor,
+                    # "silindi" işaretlenip listede kalıyor, "🗑️ Silinenler"den
+                    # geri alınabiliyor.
                     _kg_kalanlar = []
                     for _, _r in _kg_duzenlenen.iterrows():
-                        if bool(_r.get("Seç")):
-                            continue
                         _kg_kayit2 = {}
                         for _kol, _val in _r.items():
                             if _kol == "Seç":
                                 continue
                             _kg_kayit2[_kg_ters_isim2.get(_kol, _kol)] = _val
+                        if bool(_r.get("Seç")):
+                            _kg_kayit2["silindi"] = True
+                            _kg_kayit2["silinme_tarihi"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                         _kg_kalanlar.append(_kg_kayit2)
-                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_kalanlar)
+                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_kalanlar + _kg_silinmis_kayitlar)
                     _kg_kayitlari_yukle.clear()
-                    _kg_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kg_kalanlar)
+                    _kg_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kg_kalanlar if not _k.get("silindi"))
                     _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam2 - _kg_eski_toplam2)
                     st.session_state[_kg_tumu_secili_anahtari] = False
                     st.session_state[_kg_ver_anahtari] += 1
-                    st.toast(f"🗑️ {_kg_secili_sayi} kayıt silindi", icon="🗑️")
+                    st.toast(f"🗑️ {_kg_secili_sayi} kayıt silindi — 'Kargolar' sayfasındaki '🗑️ Silinenler'den geri alabilirsin", icon="🗑️")
                     st.rerun()
         else:
             st.caption("Bu müşteri için henüz kargo kaydı yok.")
@@ -3643,18 +3700,18 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
                                               key=f"{_kp}_fatura_odeme_sekli")
 
     _kg_tur = _kgc1.text_input("Tür", value=str(_kgd_kayit.get("tur", "")), key=f"{_kp}_tur", placeholder="Koli / Palet / ...")
-    _kg_desi = _kgc2.number_input("Desi", min_value=0.0, step=1.0, value=_kgd_float(_kgd_kayit.get("desi")), key=f"{_kp}_desi")
-    _kg_kilo = _kgc3.number_input("Kilo", min_value=0.0, step=0.5, value=_kgd_float(_kgd_kayit.get("kilo")), key=f"{_kp}_kilo")
+    _kg_desi = _kg_tr_parse(_kgc2.text_input("Desi", value=_kg_tr_format(_kgd_kayit.get("desi")), key=f"{_kp}_desi", help="Virgülle ondalık yazabilirsin (ör. 12,5)"))
+    _kg_kilo = _kg_tr_parse(_kgc3.text_input("Kilo", value=_kg_tr_format(_kgd_kayit.get("kilo")), key=f"{_kp}_kilo", help="Virgülle ondalık yazabilirsin (ör. 12,5)"))
 
     _kg_adet = _kgc1.number_input("Adet", min_value=0, step=1, value=int(_kgd_float(_kgd_kayit.get("adet"))), key=f"{_kp}_adet")
-    _kg_tutar = _kgc2.number_input("B.Tutar", min_value=0.0, step=0.01, value=_kgd_float(_kgd_kayit.get("tutar")), key=f"{_kp}_tutar",
-                                    help="Yekün (B.Tutar × Adet) ve oradan Sigorta, Ara Toplam, Kdv, Son Toplam otomatik hesaplanır.")
+    _kg_tutar = _kg_tr_parse(_kgc2.text_input("B.Tutar", value=_kg_tr_format(_kgd_kayit.get("tutar")), key=f"{_kp}_tutar",
+                              help="Virgülle ondalık yaz (ör. 90,72). Yekün ve oradan Sigorta, Ara Toplam, Kdv, Son Toplam otomatik hesaplanır."))
     _kg_onizleme = _kg_hesap_zinciri({"tutar": _kg_tutar, "adet": _kg_adet})
-    _kgc3.number_input("Yekün (₺)", value=_kg_onizleme['yekun'], format="%.2f", key=f"{_kp}_oniz_yekun_{_kg_tutar}_{_kg_adet}", help="B.Tutar × Adet")
-    _kgc1.number_input("Sigorta %6 (₺)", value=_kg_onizleme['sigorta'], format="%.2f", key=f"{_kp}_oniz_sigorta_{_kg_tutar}_{_kg_adet}")
-    _kgc2.number_input("Ara Toplam (₺)", value=_kg_onizleme['ara_toplam'], format="%.2f", key=f"{_kp}_oniz_ara_{_kg_tutar}_{_kg_adet}")
-    _kgc3.number_input("Kdv %20 (₺)", value=_kg_onizleme['kdv'], format="%.2f", key=f"{_kp}_oniz_kdv_{_kg_tutar}_{_kg_adet}")
-    _kgc1.number_input("Son Toplam (₺)", value=_kg_onizleme['toplam_fatura'], format="%.2f", key=f"{_kp}_oniz_son_{_kg_tutar}_{_kg_adet}")
+    _kgc3.text_input("Yekün (₺)", value=_kg_tr_format(_kg_onizleme['yekun']), key=f"{_kp}_oniz_yekun_{_kg_tutar}_{_kg_adet}", help="B.Tutar × Adet")
+    _kgc1.text_input("Sigorta %6 (₺)", value=_kg_tr_format(_kg_onizleme['sigorta']), key=f"{_kp}_oniz_sigorta_{_kg_tutar}_{_kg_adet}")
+    _kgc2.text_input("Ara Toplam (₺)", value=_kg_tr_format(_kg_onizleme['ara_toplam']), key=f"{_kp}_oniz_ara_{_kg_tutar}_{_kg_adet}")
+    _kgc3.text_input("Kdv %20 (₺)", value=_kg_tr_format(_kg_onizleme['kdv']), key=f"{_kp}_oniz_kdv_{_kg_tutar}_{_kg_adet}")
+    _kgc1.text_input("Son Toplam (₺)", value=_kg_tr_format(_kg_onizleme['toplam_fatura']), key=f"{_kp}_oniz_son_{_kg_tutar}_{_kg_adet}")
 
     _kg_yetkili = _kgc2.text_input("Yetkili", value=str(_kgd_kayit.get("yetkili", "")), key=f"{_kp}_yetkili", placeholder="İlgili kişiyi elle yaz")
     _kgd_tahsilat_opts = ["", "Evet", "Hayır", "Kısmi"]
@@ -3679,8 +3736,8 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
             _kg_dn_firma_elle = _kgd1.text_input("(Listede yoksa elle yaz)", value=_kgd_elle_varsayilan(_kgd_tasiyici_opts, _kgd_kayit.get("dis_nakliye_firma", "")), key=f"{_kp}_dn_firma_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz")
             _kg_dn_fatura = _kgd2.text_input("Dış Nakliye Fatura", value=str(_kgd_kayit.get("dis_nakliye_fatura", "")), key=f"{_kp}_dn_fatura")
             _kg_dn_detay = _kgd3.text_input("Dış Nakliye Detay", value=str(_kgd_kayit.get("dis_nakliye_detay", "")), key=f"{_kp}_dn_detay", placeholder="Örn: 2 Palet")
-            _kg_dn_tutar = _kgd1.number_input("Dış Nakliye Tutar", min_value=0.0, step=0.01, value=_kgd_float(_kgd_kayit.get("dis_nakliye_tutar")), key=f"{_kp}_dn_tutar")
-            _kg_musteri_tutar = _kgd2.number_input("Müşteri Tutar", min_value=0.0, step=0.01, value=_kgd_float(_kgd_kayit.get("musteri_tutar")), key=f"{_kp}_musteri_tutar")
+            _kg_dn_tutar = _kg_tr_parse(_kgd1.text_input("Dış Nakliye Tutar", value=_kg_tr_format(_kgd_kayit.get("dis_nakliye_tutar")), key=f"{_kp}_dn_tutar", help="Virgülle ondalık yazabilirsin (ör. 3.500,50)"))
+            _kg_musteri_tutar = _kg_tr_parse(_kgd2.text_input("Müşteri Tutar", value=_kg_tr_format(_kgd_kayit.get("musteri_tutar")), key=f"{_kp}_musteri_tutar", help="Virgülle ondalık yazabilirsin (ör. 3.500,50)"))
             _kgd_dn_odeme_opts = ["", "Evet", "Hayır", "Kısmi"]
             _kgd_dn_odeme_mevcut = str(_kgd_kayit.get("dis_nakliye_odeme_durumu", "") or "")
             if _kgd_dn_odeme_mevcut and _kgd_dn_odeme_mevcut not in _kgd_dn_odeme_opts:
@@ -13857,10 +13914,21 @@ elif aktif == "kargolar":
         except Exception:
             pass
 
-    _kl_tum_kayitlar = _kargolar_tumunu_yukle()
+    _kl_tum_kayitlar_ham = _kargolar_tumunu_yukle()
+    # GÜVENLİK: silinen kayıtlar (yumuşak silme) normal listede GÖRÜNMEZ ama
+    # veri tabanından da silinmez — "🗑️ Silinenler" açıkken SADECE onlar
+    # gösterilir, oradan geri alınabilir ya da kalıcı silinebilir.
+    _kl_silinenler_aktif = st.session_state.get("_kargolar_silinenler_goster", False)
+    if _kl_silinenler_aktif:
+        _kl_tum_kayitlar = [_k for _k in _kl_tum_kayitlar_ham if _k.get("silindi")]
+    else:
+        _kl_tum_kayitlar = [_k for _k in _kl_tum_kayitlar_ham if not _k.get("silindi")]
     if not _kl_tum_kayitlar:
-        st.info("💡 Henüz hiçbir müşteride kargo kaydı yok — ama filtreler ve Excel Yükle yine de aşağıda çalışır, "
-                "istersen doğrudan Excel'den toplu kayıt yükleyebilirsin.")
+        if _kl_silinenler_aktif:
+            st.info("💡 Silinmiş kargo kaydı yok.")
+        else:
+            st.info("💡 Henüz hiçbir müşteride kargo kaydı yok — ama filtreler ve Excel Yükle yine de aşağıda çalışır, "
+                    "istersen doğrudan Excel'den toplu kayıt yükleyebilirsin.")
     # NOT: Önceden burada "else:" vardı ve liste boşken TÜM filtreler/Excel
     # Yükle/Genel Rapor da gizleniyordu — tam da geri yükleme yapman gereken
     # anda erişilemez oluyordu. Artık aşağıdaki blok HER ZAMAN çalışır.
@@ -14034,6 +14102,8 @@ elif aktif == "kargolar":
                            "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura", "dis_nakliye_detay": "Dış Nakliye Detay",
                            "dis_nakliye_tutar": "Dış Nakliye Tutar", "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar",
                            "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme"}
+        if _kl_silinenler_aktif:
+            _kl_kolon_isim["silinme_tarihi"] = "Silinme Tarihi"
         _kl_gorunur_kolonlar = ["Seç", "Müşteri"] + [c for c in _kl_kolon_isim if c in _kl_df.columns and c != "Müşteri"]
         _kl_df = _kl_df.reset_index(drop=True)  # filtrelerden sonra index'ler boşluklu kalmasın (iloc hatası önlenir)
         _kl_df_goster = _kl_df[_kl_gorunur_kolonlar + ["_cari_id", "_satir_no"]].rename(columns=_kl_kolon_isim)
@@ -14043,6 +14113,10 @@ elif aktif == "kargolar":
         for _kl_kz_kol in ("Kar", "Zarar"):
             if _kl_kz_kol in _kl_df_goster.columns:
                 _kl_df_goster[_kl_kz_kol] = _kl_df_goster[_kl_kz_kol].map(_kg_sifir_tire)
+        for _kl_hesap_kol in ("B.Tutar", "Desi", "Kilo", "Yekün", "Sigorta %6", "Ara Toplam", "Kdv %20", "Son Toplam",
+                               "Müşteri Tutar", "Dış Nakliye Tutar"):
+            if _kl_hesap_kol in _kl_df_goster.columns:
+                _kl_df_goster[_kl_hesap_kol] = _kl_df_goster[_kl_hesap_kol].map(_kg_tr_format)
         st.caption(f"Toplam {len(_kl_df)} kargo kaydı, {_kl_df['_cari_id'].nunique()} müşteride."
                    + (f" 🔁 Şu an sadece **birebir mükerrer** ({_kl_mukerrer_toplam} kayıt) gösteriliyor — kapatmak için üstteki butona tekrar bas."
                       if st.session_state.get("_kargolar_mukerrer_goster", False) else
@@ -14286,7 +14360,7 @@ elif aktif == "kargolar":
         )
 
         with _kl_btn_kutu:
-            _klb0a, _klb0b, _klb0c, _klb0d, _klb0e, _klb1, _klb2 = st.columns(7)
+            _klb0a, _klb0b, _klb0c, _klb0d, _klb0e, _klb0f, _klb1, _klb2 = st.columns(8)
             with _klb0a:
                 if st.button("☑️ Tümünü Seç", key="kargolar_tumunu_sec_btn", use_container_width=True):
                     st.session_state["_kl_tumu_secili_mod"] = True
@@ -14343,6 +14417,15 @@ elif aktif == "kargolar":
                     st.session_state["_kl_tumu_secili_mod"] = False
                     st.session_state["_kl_editor_versiyon"] += 1
                     kargo_kaydi_duzenle_dialog(_kl_duz_cid, _kl_duz_satir)
+            with _klb0f:
+                _kl_silinenler_etiket = f"🗑️ Silinenler" if not _kl_silinenler_aktif else "🗑️ Silinenler — Kapat"
+                if st.button(_kl_silinenler_etiket, key="kargolar_silinenler_btn", use_container_width=True,
+                             type="primary" if _kl_silinenler_aktif else "secondary",
+                             help="Silinen kargo kayıtlarını görüp geri alabilir ya da kalıcı olarak silebilirsin."):
+                    st.session_state["_kargolar_silinenler_goster"] = not _kl_silinenler_aktif
+                    st.session_state["_kl_tumu_secili_mod"] = False
+                    st.session_state["_kl_editor_versiyon"] += 1
+                    st.rerun()
             with _klb1:
                 if st.button("💾 Değişiklikleri Kaydet", key="kargolar_kaydet_btn", type="primary", use_container_width=True):
                     _kl_ters = {v: k for k, v in _kl_kolon_isim.items()}
@@ -14396,24 +14479,88 @@ elif aktif == "kargolar":
                     for _cid_yukle2 in _kl_etkilenen_cid2:
                         _kl_tam_listeler2[_cid_yukle2] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle2}"))
                         _kl_eski_toplamlar2[_cid_yukle2] = sum(_kg_efektif_tutar(_k) for _k in _kl_tam_listeler2[_cid_yukle2])
+                    # GÜVENLİK: YUMUŞAK SİLME — kayıt listeden ÇIKARILMIYOR,
+                    # sadece "silindi" olarak işaretlenip normal görünümden
+                    # gizleniyor. "🗑️ Silinenler" görünümünden geri alınabilir.
                     for _idx2, _r2 in _kl_duzenlenen.iterrows():
                         if not bool(_r2.get("Seç")):
                             continue
                         _cid2 = int(_kl_df_goster.iloc[_idx2]["_cari_id"])
                         _satir_no2 = int(_kl_df_goster.iloc[_idx2]["_satir_no"])
                         if _cid2 in _kl_tam_listeler2 and _satir_no2 < len(_kl_tam_listeler2[_cid2]):
-                            _kl_tam_listeler2[_cid2][_satir_no2] = None
+                            _kl_tam_listeler2[_cid2][_satir_no2]["silindi"] = True
+                            _kl_tam_listeler2[_cid2][_satir_no2]["silinme_tarihi"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     for _cid_kaydet2, _liste_kaydet2 in _kl_tam_listeler2.items():
-                        _kl_liste_temiz2 = [x for x in _liste_kaydet2 if x is not None]
-                        _kargolar_yaz(_cid_kaydet2, _kl_liste_temiz2)
-                        _kl_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kl_liste_temiz2)
+                        _kargolar_yaz(_cid_kaydet2, _liste_kaydet2)
+                        _kl_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _liste_kaydet2 if not _k.get("silindi"))
                         _cari_gerceklesen_ciro_ekle(_cid_kaydet2, _kl_yeni_toplam2 - _kl_eski_toplamlar2.get(_cid_kaydet2, 0))
                     _kargolar_tumunu_yukle.clear()
                     _kg_kayitlari_yukle.clear()
                     st.session_state["_kl_tumu_secili_mod"] = False
                     st.session_state["_kl_editor_versiyon"] += 1
-                    st.toast(f"🗑️ {_kl_secili_sayi} kayıt silindi (filtre dışındaki kayıtlara dokunulmadı)", icon="🗑️")
+                    st.toast(f"🗑️ {_kl_secili_sayi} kayıt silindi — '🗑️ Silinenler'den geri alabilirsin", icon="🗑️")
                     st.rerun()
+
+            if _kl_silinenler_aktif:
+                st.caption("🗑️ Şu an sadece **silinmiş** kayıtlar gösteriliyor. Seçip geri alabilir ya da kalıcı olarak silebilirsin (kalıcı silme geri alınamaz).")
+                _klg1, _klg2 = st.columns(2)
+                with _klg1:
+                    if st.button("↩️ Seçilenleri Geri Al", key="kargolar_geri_al_btn", use_container_width=True,
+                                 disabled=_kl_secili_sayi == 0):
+                        _kl_etkilenen_cid3 = set(int(_kl_df_goster.iloc[_idx3]["_cari_id"])
+                                                  for _idx3, _r3 in _kl_duzenlenen.iterrows() if bool(_r3.get("Seç")))
+                        _kl_tam_listeler3 = {}
+                        for _cid_yukle3 in _kl_etkilenen_cid3:
+                            _kl_tam_listeler3[_cid_yukle3] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle3}"))
+                        _kl_geri_alinan_tutar = {}
+                        for _idx3, _r3 in _kl_duzenlenen.iterrows():
+                            if not bool(_r3.get("Seç")):
+                                continue
+                            _cid3 = int(_kl_df_goster.iloc[_idx3]["_cari_id"])
+                            _satir_no3 = int(_kl_df_goster.iloc[_idx3]["_satir_no"])
+                            if _cid3 in _kl_tam_listeler3 and _satir_no3 < len(_kl_tam_listeler3[_cid3]):
+                                _kl_tam_listeler3[_cid3][_satir_no3]["silindi"] = False
+                                _kl_tam_listeler3[_cid3][_satir_no3].pop("silinme_tarihi", None)
+                                _kl_geri_alinan_tutar[_cid3] = _kl_geri_alinan_tutar.get(_cid3, 0.0) + _kg_efektif_tutar(_kl_tam_listeler3[_cid3][_satir_no3])
+                        for _cid_kaydet3, _liste_kaydet3 in _kl_tam_listeler3.items():
+                            _kargolar_yaz(_cid_kaydet3, _liste_kaydet3)
+                            if _cid_kaydet3 in _kl_geri_alinan_tutar:
+                                # Not: geri alınca ciro tekrar eklenir — Sil'de düşülen tutar geri gelir.
+                                _cari_gerceklesen_ciro_ekle(_cid_kaydet3, _kl_geri_alinan_tutar[_cid_kaydet3])
+                        _kargolar_tumunu_yukle.clear()
+                        _kg_kayitlari_yukle.clear()
+                        st.session_state["_kl_tumu_secili_mod"] = False
+                        st.session_state["_kl_editor_versiyon"] += 1
+                        st.toast("↩️ Seçili kayıtlar geri alındı", icon="↩️")
+                        st.rerun()
+                with _klg2:
+                    _kl_kalici_onay = st.checkbox("Eminim, kalıcı olarak sil (geri alınamaz)", key="kargolar_kalici_sil_onay")
+                    if st.button(f"❌ Kalıcı Olarak Sil (Seçili {_kl_secili_sayi})", key="kargolar_kalici_sil_btn", use_container_width=True,
+                                 disabled=(_kl_secili_sayi == 0 or not _kl_kalici_onay),
+                                 help="DİKKAT: bu işlem geri alınamaz, kayıt tamamen silinir."):
+                        _kl_etkilenen_cid4 = set(int(_kl_df_goster.iloc[_idx4]["_cari_id"])
+                                                  for _idx4, _r4 in _kl_duzenlenen.iterrows() if bool(_r4.get("Seç")))
+                        _kl_tam_listeler4 = {}
+                        for _cid_yukle4 in _kl_etkilenen_cid4:
+                            _kl_tam_listeler4[_cid_yukle4] = list(_kg_kayitlari_yukle(f"_kargo_kayitlari_{_cid_yukle4}"))
+                        _kl_silinecek_satirlar = {}
+                        for _idx4, _r4 in _kl_duzenlenen.iterrows():
+                            if not bool(_r4.get("Seç")):
+                                continue
+                            _cid4 = int(_kl_df_goster.iloc[_idx4]["_cari_id"])
+                            _satir_no4 = int(_kl_df_goster.iloc[_idx4]["_satir_no"])
+                            _kl_silinecek_satirlar.setdefault(_cid4, set()).add(_satir_no4)
+                        for _cid_kaydet4, _liste_kaydet4 in _kl_tam_listeler4.items():
+                            _silinecekler4 = _kl_silinecek_satirlar.get(_cid_kaydet4, set())
+                            _kl_liste_temiz4 = [_k for _i5, _k in enumerate(_liste_kaydet4) if _i5 not in _silinecekler4]
+                            _kargolar_yaz(_cid_kaydet4, _kl_liste_temiz4)
+                        _kargolar_tumunu_yukle.clear()
+                        _kg_kayitlari_yukle.clear()
+                        st.session_state["_kl_tumu_secili_mod"] = False
+                        st.session_state["_kl_editor_versiyon"] += 1
+                        st.session_state["kargolar_kalici_sil_onay"] = False
+                        st.toast(f"❌ {_kl_secili_sayi} kayıt kalıcı olarak silindi", icon="❌")
+                        st.rerun()
 
 elif aktif == "bolgeler":
     sayfa_log("bolgeler")
