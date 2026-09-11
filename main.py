@@ -3112,14 +3112,21 @@ def not_dialog(cari_id, firma_adi=""):
             _kg_df = _kg_pd.DataFrame(_kg_mevcut)
             _kg_df = _kg_df.fillna("")  # eski kayıtlarda olmayan alanlar "None" değil boş görünsün
             _kg_df.insert(0, "Seç", False)
-            _kg_kolon_isim = {"tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No", "gonderen_firma": "Gönderen",
-                               "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
-                               "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl",
-                               "adet": "Adet", "tur": "Tür", "tutar": "B.Tutar", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam", "kdv": "Kdv %20",
-                               "toplam_fatura": "Son Toplam", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat", "not": "Not",
-                               "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura",
-                               "dis_nakliye_detay": "Dış Nakliye Detay", "dis_nakliye_tutar": "Dış Nakliye Tutar",
-                               "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar", "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme", "fatura_odeme_sekli": "Fatura Ödeme Şekli", "desi": "Desi", "kilo": "Kilo"}
+            _KG_SIRA = ["tarih", "takip_no", "fatura_no", "gonderen_firma", "alici_firma", "fatura_firma", "yetkili",
+                        "gonderen_il", "alici_il", "tur", "desi", "kilo", "adet", "fatura_odeme_sekli", "tutar", "sigorta",
+                        "ara_toplam", "kdv", "toplam_fatura", "odeme_tur", "tahsilat_durumu", "not", "dis_nakliye_firma",
+                        "dis_nakliye_fatura", "dis_nakliye_detay", "dis_nakliye_tutar", "musteri_tutar", "kar", "zarar",
+                        "dis_nakliye_odeme_durumu"]
+            _kg_df = _kg_df[["Seç"] + [c for c in _KG_SIRA if c in _kg_df.columns]
+                            + [c for c in _kg_df.columns if c not in (["Seç"] + _KG_SIRA)]]
+            _kg_kolon_isim = {"tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No",
+                               "gonderen_firma": "Gönderen", "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
+                               "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl", "tur": "Tür", "desi": "Desi", "kilo": "Kilo", "adet": "Adet",
+                               "fatura_odeme_sekli": "Fatura Ödeme Şekli", "tutar": "B.Tutar", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam",
+                               "kdv": "Kdv %20", "toplam_fatura": "Son Toplam", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat", "not": "Not",
+                               "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura", "dis_nakliye_detay": "Dış Nakliye Detay",
+                               "dis_nakliye_tutar": "Dış Nakliye Tutar", "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar",
+                               "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme"}
             _kg_df = _kg_df.rename(columns=_kg_kolon_isim)
             # Kar/Zarar'da ikisinden sadece biri dolu olur — 0 yerine "-"
             # göstersin diye biçimlendiriliyor (kayıt sırasında gerçek sayısal
@@ -13752,14 +13759,14 @@ elif aktif == "kargolar":
         _kl_df = _kl_df.drop(columns=[c for c in ["_mukerrer_anahtar", "_mukerrer_mi"] if c in _kl_df.columns])
 
         _kl_df.insert(0, "Seç", False)
-        _kl_kolon_isim = {"Müşteri": "Müşteri", "tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No", "gonderen_firma": "Gönderen",
-                           "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
-                           "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl",
-                           "adet": "Adet", "tur": "Tür", "tutar": "B.Tutar", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam", "kdv": "Kdv %20",
-                           "toplam_fatura": "Son Toplam", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat", "not": "Not",
-                           "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura",
-                           "dis_nakliye_detay": "Dış Nakliye Detay", "dis_nakliye_tutar": "Dış Nakliye Tutar",
-                           "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar", "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme", "fatura_odeme_sekli": "Fatura Ödeme Şekli", "desi": "Desi", "kilo": "Kilo"}
+        _kl_kolon_isim = {"Müşteri": "Müşteri", "tarih": "Tarih", "takip_no": "Takip No", "fatura_no": "Fatura No",
+                           "gonderen_firma": "Gönderen", "alici_firma": "Alıcı", "fatura_firma": "Fatura Ödeyen", "yetkili": "Yetkili",
+                           "gonderen_il": "Gönderen İl", "alici_il": "Alıcı İl", "tur": "Tür", "desi": "Desi", "kilo": "Kilo", "adet": "Adet",
+                           "fatura_odeme_sekli": "Fatura Ödeme Şekli", "tutar": "B.Tutar", "sigorta": "Sigorta %6", "ara_toplam": "Ara Toplam",
+                           "kdv": "Kdv %20", "toplam_fatura": "Son Toplam", "odeme_tur": "Ödeme Türü", "tahsilat_durumu": "Tahsilat", "not": "Not",
+                           "dis_nakliye_firma": "Dış Nakliye Firma", "dis_nakliye_fatura": "Dış Nakliye Fatura", "dis_nakliye_detay": "Dış Nakliye Detay",
+                           "dis_nakliye_tutar": "Dış Nakliye Tutar", "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar",
+                           "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme"}
         _kl_gorunur_kolonlar = ["Seç", "Müşteri"] + [c for c in _kl_kolon_isim if c in _kl_df.columns and c != "Müşteri"]
         _kl_df = _kl_df.reset_index(drop=True)  # filtrelerden sonra index'ler boşluklu kalmasın (iloc hatası önlenir)
         _kl_df_goster = _kl_df[_kl_gorunur_kolonlar + ["_cari_id", "_satir_no"]].rename(columns=_kl_kolon_isim)
