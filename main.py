@@ -523,6 +523,22 @@ def _kg_sifir_tire(_deger):
     return _kg_tr_format(_fv)
 
 
+def _kg_referans_no_temizle(_deger):
+    """Takip No / Fatura No gibi PARASAL OLMAYAN referans numaraları içindir.
+    Excel'den okunurken sayı olarak algılanıp '1910372.0' gibi gereksiz '.0'
+    kuyruğuyla kaydedilmiş/gösterilmiş değerleri '1910372' olarak temizler
+    (kullanıcı isteği: bu alan parasal değil, tam sayı gibi görünmeli).
+    Gerçekten ondalıklı bir değer varsa (ör. '1910372.5') ya da sayısal
+    değilse (harf/tire vb. içeriyorsa) OLDUĞU GİBİ bırakılır — sadece tam
+    sayıya denk gelen '.0' kuyruğu kaldırılır, başka hiçbir şey değişmez."""
+    _s = str(_deger if _deger is not None else "").strip()
+    if _s.endswith(".0"):
+        _govde = _s[:-2]
+        if _govde and _govde.lstrip("-").isdigit():
+            return _govde
+    return _s
+
+
 def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
     """Kargo kaydı eklenince/düzenlenince/silinince, ana Cari Liste'deki
     müşterinin 'gerçekleşen ciro' alanını otomatik günceller — _miktar
@@ -3471,6 +3487,13 @@ def not_dialog(cari_id, firma_adi=""):
                                "dis_nakliye_tutar": "Dış Nakliye Tutar", "musteri_tutar": "Müşteri Tutar", "kar": "Kar", "zarar": "Zarar",
                                "dis_nakliye_odeme_durumu": "Dış Nak. Ödeme"}
             _kg_df = _kg_df.rename(columns=_kg_kolon_isim)
+            # Takip No / Fatura No PARASAL DEĞİL — geçmişte Excel'den sayı
+            # olarak okunup '1910372.0' gibi gereksiz '.0' kuyruğuyla
+            # kaydedilmiş kayıtlar burada temizlenip düz '1910372' gösterilir
+            # (kullanıcı isteği). Kaydedince bu temiz hâliyle kalıcı olur.
+            for _kg_ref_kol in ("Takip No", "Fatura No"):
+                if _kg_ref_kol in _kg_df.columns:
+                    _kg_df[_kg_ref_kol] = _kg_df[_kg_ref_kol].map(_kg_referans_no_temizle)
             # Kar/Zarar'da ikisinden sadece biri dolu olur — 0 yerine "-"
             # göstersin diye biçimlendiriliyor (kayıt sırasında gerçek sayısal
             # değer zaten otomatik yeniden hesaplanıp yazılıyor).
@@ -3987,8 +4010,8 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
 
     _kgc1, _kgc2, _kgc3 = st.columns(3)
     _kg_tarih = _kgc1.date_input("Tarih *", value=_kgd_tarih_val, key=f"{_kp}_tarih")
-    _kg_takip = _kgc2.text_input("Takip No", value=str(_kgd_kayit.get("takip_no", "")), key=f"{_kp}_takip")
-    _kg_fatura_no = _kgc3.text_input("Fatura No", value=str(_kgd_kayit.get("fatura_no", "")), key=f"{_kp}_fatura_no")
+    _kg_takip = _kgc2.text_input("Takip No", value=_kg_referans_no_temizle(_kgd_kayit.get("takip_no", "")), key=f"{_kp}_takip")
+    _kg_fatura_no = _kgc3.text_input("Fatura No", value=_kg_referans_no_temizle(_kgd_kayit.get("fatura_no", "")), key=f"{_kp}_fatura_no")
 
     _kg_gonderen_sec = _kgc1.selectbox("Gönderen Firma", _kgd_musteri_opts, index=_kgd_idx(_kgd_musteri_opts, _kgd_kayit.get("gonderen_firma", "")), key=f"{_kp}_gonderen_sec")
     _kg_gonderen_elle = _kgc1.text_area("(Listede yoksa elle yaz)", value=_kgd_elle_varsayilan(_kgd_musteri_opts, _kgd_kayit.get("gonderen_firma", "")), key=f"{_kp}_gonderen_elle", label_visibility="collapsed", placeholder="Listede yoksa buraya elle yaz", height=68)
@@ -14448,6 +14471,13 @@ elif aktif == "kargolar":
         _kl_gorunur_kolonlar = ["Seç", "Müşteri"] + [c for c in _kl_kolon_isim if c in _kl_df.columns and c != "Müşteri"]
         _kl_df = _kl_df.reset_index(drop=True)  # filtrelerden sonra index'ler boşluklu kalmasın (iloc hatası önlenir)
         _kl_df_goster = _kl_df[_kl_gorunur_kolonlar + ["_cari_id", "_satir_no"]].rename(columns=_kl_kolon_isim)
+        # Takip No / Fatura No PARASAL DEĞİL — geçmişte Excel'den sayı olarak
+        # okunup '1910372.0' gibi gereksiz '.0' kuyruğuyla kaydedilmiş kayıtlar
+        # burada temizlenip düz '1910372' gösterilir (kullanıcı isteği).
+        # Kaydedince ya da Excel İndir'e basılınca bu temiz hâliyle kalıcı olur.
+        for _kl_ref_kol in ("Takip No", "Fatura No"):
+            if _kl_ref_kol in _kl_df_goster.columns:
+                _kl_df_goster[_kl_ref_kol] = _kl_df_goster[_kl_ref_kol].map(_kg_referans_no_temizle)
         # Kar/Zarar'da ikisinden sadece biri dolu olur — 0 yerine "-"
         # göstersin diye biçimlendiriliyor (kayıt sırasında gerçek sayısal
         # değer zaten otomatik yeniden hesaplanıp yazılıyor).
@@ -14606,7 +14636,21 @@ elif aktif == "kargolar":
                                 if _yr_kol == "Müşteri":
                                     continue
                                 _yr_anahtar = _kl_ters_yukle.get(_yr_kol, _yr_kol)
-                                _yr_kayit[_yr_anahtar] = "" if pd.isna(_yr_val) else (str(_yr_val) if _yr_kol != "Tarih" else str(_yr_val)[:10])
+                                # ÖNEMLİ: Excel'de "Takip No"/"Fatura No" gibi sütunlar
+                                # sayı olarak algılanınca pandas bunları float (1910372.0)
+                                # okur — düz str() bu ".0" kuyruğunu KALICI olarak veriye
+                                # işlerdi (parasal olmayan bir alanda anlamsız/yanlış
+                                # görünüyordu). Tam sayıya denk gelen float'lar burada
+                                # ".0" eklenmeden tam sayı metnine çevrilir; gerçek
+                                # ondalıklı değerler ve Tarih olduğu gibi bırakılır.
+                                if pd.isna(_yr_val):
+                                    _yr_kayit[_yr_anahtar] = ""
+                                elif _yr_kol == "Tarih":
+                                    _yr_kayit[_yr_anahtar] = str(_yr_val)[:10]
+                                elif isinstance(_yr_val, float) and _yr_val.is_integer():
+                                    _yr_kayit[_yr_anahtar] = str(int(_yr_val))
+                                else:
+                                    _yr_kayit[_yr_anahtar] = str(_yr_val)
                             _kg_hesap_zinciri(_yr_kayit)
                             _kg_kar_zarar_hesapla(_yr_kayit)
                             _kl_yeni_gruplar.setdefault(_yr_cid, []).append(_yr_kayit)
