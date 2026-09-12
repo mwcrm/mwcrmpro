@@ -617,6 +617,49 @@ def _hic_none_gosterme(_df):
             return _df
 
 
+_CARI_RUT_ANAHTAR = "_cari_rut_atamalari"
+
+
+def _cari_rut_yukle_ham():
+    """Müşteri (cari) -> Rut ataması sözlüğünü döndürür: {"123": "Rut A", ...}.
+    ÖNEMLİ: cari_kartlar tablosuna yeni bir 'rut' SÜTUNU eklenmedi (proje
+    kuralı: yeni SQL migration yok) — bunun yerine mevcut kullanici_tercih
+    tablosunda TEK bir JSON blob olarak saklanıyor (kargo/tedarikçi
+    listeleriyle aynı, kanıtlanmış desen). Okuma başarısız olursa (bağlantı
+    sorunu) BOŞ SÖZLÜK yerine None döner — çağıran taraf bunu "veri yok"
+    ile "okunamadı" ayrımı için kullanabilir."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return {}
+        r = sb.table("kullanici_tercih").select("deger").eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _CARI_RUT_ANAHTAR).execute()
+        if r.data:
+            return json.loads(r.data[0]["deger"])
+        return {}
+    except Exception:
+        return {}
+
+
+def _cari_rut_kaydet(_sozluk):
+    """GÜVENLİ (bkz. _tedarikci_kaydet ile aynı desen) — SİLME YOK, satır
+    varsa UPDATE, yoksa INSERT."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return False
+        _deger = json.dumps(_sozluk, ensure_ascii=False)
+        _guncelle = sb.table("kullanici_tercih").update({"deger": _deger}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _CARI_RUT_ANAHTAR).execute()
+        if not _guncelle.data:
+            sb.table("kullanici_tercih").insert({
+                "kullanici": "__liste_ui__", "anahtar": _CARI_RUT_ANAHTAR, "deger": _deger
+            }).execute()
+        return True
+    except Exception:
+        return False
+
+
 def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
     """Kargo kaydı eklenince/düzenlenince/silinince, ana Cari Liste'deki
     müşterinin 'gerçekleşen ciro' alanını otomatik günceller — _miktar
@@ -5565,10 +5608,17 @@ section[data-testid="stSidebar"] { display: none !important; }
                 _analiz_set = set(_nm(x.get("firma","")) for x in _an_r if x.get("firma"))
         except: pass
 
-        # Arama & filtre
-        _mc1, _mc2 = st.columns([3,1])
+        # Rut ataması — yeni SQL sütunu açmadan (proje kuralı) mevcut
+        # kullanici_tercih tablosunda saklanan {cari_id: "Rut Adı"} sözlüğü.
+        _cari_rut_map = _cari_rut_yukle_ham()
+        if not _df_m.empty:
+            _df_m["rut"] = _df_m["id"].astype(str).map(lambda _i: _cari_rut_map.get(_i, ""))
+
+        # Arama & filtre — "Rut" filtresi kullanıcı isteğiyle "Ara"nın SAĞINDA.
+        _mc1, _mc2, _mc3 = st.columns([2.2, 1.3, 1])
         _mob_ara = _mc1.text_input("🔍 Ara", placeholder="Firma, yetkili, il...", key="mob_ara", label_visibility="collapsed")
-        _mob_durum = _mc2.selectbox("Durum", ["Tümü","Portföy","Özel Müşteri","Randevu","Tekrar Ara","Fiyat Hazırla","Teklif","Pasif"], key="mob_dur", label_visibility="collapsed")
+        _mob_rut = _mc2.text_input("🛣️ Rut", placeholder="🛣️ Rut...", key="mob_rut_filtre", label_visibility="collapsed")
+        _mob_durum = _mc3.selectbox("Durum", ["Tümü","Portföy","Özel Müşteri","Randevu","Tekrar Ara","Fiyat Hazırla","Teklif","Pasif"], key="mob_dur", label_visibility="collapsed")
 
         # Filtrele
         _df_mob = _df_m.copy() if not _df_m.empty else pd.DataFrame()
@@ -5580,11 +5630,36 @@ section[data-testid="stSidebar"] { display: none !important; }
                     _df_mob.get("il", pd.Series()).astype(str).str.contains(_mob_ara, case=False, na=False)
                 )
                 _df_mob = _df_mob[_mask]
+            if _mob_rut:
+                _df_mob = _df_mob[_df_mob.get("rut", pd.Series()).astype(str).str.contains(_mob_rut, case=False, na=False)]
             if _mob_durum != "Tümü":
                 if "durum" in _df_mob.columns:
                     _df_mob = _df_mob[_df_mob["durum"].astype(str).str.contains(_mob_durum, case=False, na=False)]
 
         st.caption(f"{len(_df_mob)} müşteri")
+
+        # ── RUT ATA/DEĞİŞTİR — filtrelemenin işe yaraması için önce bir
+        # müşteriye Rut atanabilmesi gerekiyor. Tek tek, güvenli (pozisyona
+        # değil cari_id'ye göre eşleşen) manuel atama.
+        with st.expander("🛣️ Bir Müşteriye Rut Ata / Değiştir"):
+            if not _df_m.empty and "firma" in _df_m.columns:
+                _rut_secenekler = [f"[{int(_r['id'])}] {_r['firma']}" for _, _r in _df_m.iterrows() if str(_r.get('firma','')).strip()]
+                _rut_secili = st.selectbox("Müşteri", _rut_secenekler, key="_rut_atama_musteri_sec")
+                if _rut_secili:
+                    _rut_secili_id = _rut_secili.split("]")[0].replace("[", "").strip()
+                    _rut_mevcut_deger = _cari_rut_map.get(_rut_secili_id, "")
+                    _rut_yeni_deger = st.text_input("Rut adı", value=_rut_mevcut_deger, key=f"_rut_atama_deger_{_rut_secili_id}")
+                    if st.button("💾 Kaydet", key=f"_rut_atama_kaydet_{_rut_secili_id}"):
+                        _rut_taze = _cari_rut_yukle_ham()
+                        if _rut_yeni_deger.strip():
+                            _rut_taze[_rut_secili_id] = _rut_yeni_deger.strip()
+                        else:
+                            _rut_taze.pop(_rut_secili_id, None)
+                        _cari_rut_kaydet(_rut_taze)
+                        st.toast("✅ Rut kaydedildi", icon="🛣️")
+                        st.rerun()
+            else:
+                st.caption("Henüz müşteri kaydı yok.")
 
         # Durum renk & badge
         _DURUM_RENK = {
@@ -5611,6 +5686,7 @@ section[data-testid="stSidebar"] { display: none !important; }
                 _bek     = float(_row.get("beklenen_ciro",0) or 0)
                 _ger     = float(_row.get("gerceklesen_ciro",0) or 0)
                 _seg     = str(_row.get("segment","") or "")
+                _rut     = str(_row.get("rut","") or "")
                 _cari_id = _row.get("id","")
 
                 # Segment dot
@@ -5632,6 +5708,8 @@ section[data-testid="stSidebar"] { display: none !important; }
                     _meta_html += f"  👤 {_yetkili}"
                 if _asama and _asama not in ["nan","None",""]:
                     _meta_html += f"  🏭 {_asama}"
+                if _rut and _rut not in ["nan","None",""]:
+                    _meta_html += f"  🛣️ {_rut}"
                 _analiz_html = "<span class='mw-analiz-tag'>✅</span>" if _analiz_var else ""
                 _tel_html = f"<a class='mw-act-btn' href='tel:{_gsm_clean}'>📞</a>" if _gsm_clean else ""
                 _wa_html  = f"<span class='mw-act-btn' style='opacity:0.35;cursor:not-allowed' title='Geçici devre dışı'>💬</span>" if _gsm_clean else ""
