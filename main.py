@@ -24,6 +24,23 @@ import streamlit as st
 # onayıyla (ör. "Silinenler" ekranındaki ayrı "Kalıcı Sil" butonu) yapılabilir.
 # ═══════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 🚨 KALICI KURAL 2 (kullanıcı talimatı, 2026-09): Sistemde HİÇBİR YERDE
+# kullanıcıya teknik boşluk göstergesi ("None", "NaN", "nan", "null", "NAT")
+# YAZI OLARAK gösterilmeyecek. Kök neden genelde `sozluk.get("alan", "")`
+# kalıbının, anahtar SÖZLÜKTE VARSA ama değeri gerçekten None ise varsayılanı
+# DEVREYE SOKMAMASIDIR — dict.get'in ikinci parametresi SADECE anahtar hiç
+# yokken kullanılır; değer None olsa bile anahtar varsa None döner. `str(None)`
+# de "None" metnini üretir ve bu bazen kalıcı olarak veriye yazılabilir (normal
+# pd.fillna("") bunu YAKALAYAMAZ, çünkü ortada geçerli bir string vardır,
+# NaN/None değil). Yeni kod yazarken: (1) `sozluk.get("alan") or ""` kullan
+# (None VE eksik anahtarın ikisini de yakalar), asla sadece
+# `sozluk.get("alan", "")` yazma; (2) kullanıcıya gösterilecek HER
+# DataFrame'de son adım olarak bu teknik metinleri temizle (bkz.
+# `_hic_none_gosterme` yardımcı fonksiyonu, tabloyu render etmeden hemen önce
+# çağrılır).
+# ═══════════════════════════════════════════════════════════════════════════
+
 # ── İL SÜTUNLARI — GLOBAL sabit (birden fazla sayfadan erişilir: Cari Liste
 # tablosunda kolon olarak, Kullanıcılar sayfasındaki Kolon Ayarları'nda genişlik
 # ayarı olarak). Tek bir sayfanın içinde tanımlanırsa diğer sayfa NameError alır.
@@ -201,6 +218,13 @@ durumlar dahil.
   (`_kg_kayitlari_kaydet`) ve tedarikçi (`_tedarikci_kaydet`) için kullanılan
   UPDATE-yoksa-INSERT deseni birebir kopyalanır; DELETE içeren bir "kaydet"
   fonksiyonu yazılmaz.
+
+### 3c) Hiçbir Yerde "None" Yazısı Gösterilmeyecek — KALICI (2026-09)
+Kullanıcıya hiçbir tabloda/alanda teknik boşluk göstergesi ("None", "NaN",
+"nan", "null") YAZI olarak gösterilmez. `sozluk.get("alan", "")` yerine
+`sozluk.get("alan") or ""` kullanılır (anahtar var ama değeri None ise ilki
+bunu YAKALAMAZ). Kullanıcıya gösterilecek her DataFrame, render edilmeden
+hemen önce `_hic_none_gosterme(df)` içinden geçirilir.
 
 ### 4) MacroDroid Entegrasyonu
 - Supabase proje: `asinwzxwmkkrcbtjrkoq.supabase.co` — tablolar: `islem_kaydi`, `cari_kartlar`, `kisiler`
@@ -537,6 +561,35 @@ def _kg_referans_no_temizle(_deger):
         if _govde and _govde.lstrip("-").isdigit():
             return _govde
     return _s
+
+
+def _gecerli_metin(_v):
+    """Bir değerin GERÇEKTEN dolu, kullanılabilir bir metin olup olmadığını
+    kontrol eder — boş string VEYA 'None'/'NaN'/'null' gibi teknik boşluk
+    göstergelerinden biriyse False döner. Tedarikçi/Dış Nakliye Firma gibi
+    seçim listelerinde bozuk eski kayıtların ('None' metni olarak kaydedilmiş
+    firma adı gibi) seçeneklere karışmaması için kullanılır."""
+    _s = str(_v if _v is not None else "").strip()
+    return bool(_s) and _s not in ("None", "none", "NONE", "NaN", "nan", "NAN", "null", "NULL", "<NA>")
+
+
+_NONE_METIN_LISTESI = [None, "None", "none", "NONE", "NaN", "nan", "NAN", "NAT", "nat", "null", "NULL", "<NA>"]
+
+
+def _hic_none_gosterme(_df):
+    """KALICI KURAL (kullanıcı talimatı, 2026-09): sistemde hiçbir yerde
+    kullanıcıya 'None'/'NaN'/'null' gibi teknik boşluk göstergeleri YAZI
+    olarak gösterilmez. Bazı eski kayıtlarda `sozluk.get("alan", "")`
+    kalıbının None değerleri yakalayamaması yüzünden bu metinler KALICI
+    olarak veriye yazılmış olabilir — normal pd.fillna("") bunu YAKALAMAZ
+    (ortada geçerli bir string vardır, gerçek NaN/None değil). Kullanıcıya
+    gösterilecek HER DataFrame, render edilmeden hemen önce bu fonksiyondan
+    geçirilir; birebir eşleşen (parça/alt-metin değil, TAM hücre) değerler
+    boş metne çevrilir."""
+    try:
+        return _df.replace(to_replace=_NONE_METIN_LISTESI, value="")
+    except Exception:
+        return _df
 
 
 def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
@@ -3303,7 +3356,7 @@ def not_dialog(cari_id, firma_adi=""):
         _kg_il_opts = ["-- İl seçilir --"] + [_tr_buyuk(a) for a in (_IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI)]
         try:
             _kg_tasiyici_opts = ["-- Seç veya elle yaz --"] + sorted(set(
-                _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and _t.get("firma_adi", "").strip()))
+                _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and _gecerli_metin(_t.get("firma_adi", ""))))
         except Exception:
             _kg_tasiyici_opts = ["-- Seç veya elle yaz --"]
         # Bu iller "yakın/yerel" sayılır — Alıcı İl bunlardan biriyse Dış Nakliye
@@ -3535,7 +3588,7 @@ def not_dialog(cari_id, firma_adi=""):
             # kargo kayıtlarındaki (bazen bozuk/uzun/"None" gibi) elle
             # yazılmış değerler seçeneklere KARIŞTIRILMAZ (kullanıcı isteği).
             _kg_dnf_opts = sorted(set(
-                _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()
+                _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and _gecerli_metin(_t.get("firma_adi", ""))
             ))
             for _kg_kol_ad in _kg_df.columns:
                 if _kg_kol_ad == "Seç":
@@ -3564,6 +3617,7 @@ def not_dialog(cari_id, firma_adi=""):
             # Kaydet/Sil işlemine kadar her render'da yeniden uygulanıyor.
             if st.session_state.get(_kg_tumu_secili_anahtari, False):
                 _kg_df["Seç"] = True
+            _kg_df = _hic_none_gosterme(_kg_df)
             _kg_editor_key = f"kg_editor_{cari_id}_{st.session_state[_kg_ver_anahtari]}"
             _kg_duzenlenen = st.data_editor(_kg_df, use_container_width=True, hide_index=True,
                                              key=_kg_editor_key,
@@ -3970,7 +4024,7 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
     _kgd_il_opts = ["-- İl seçilir --"] + [_tr_buyuk(a) for a in (_IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI)]
     try:
         _kgd_tasiyici_opts = ["-- Seç veya elle yaz --"] + sorted(set(
-            _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and _t.get("firma_adi", "").strip()))
+            _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and _gecerli_metin(_t.get("firma_adi", ""))))
     except Exception:
         _kgd_tasiyici_opts = ["-- Seç veya elle yaz --"]
     _KGD_YEREL_ILLER = [_tr_buyuk(a) for a in ["İzmir", "Bursa", "Kocaeli", "Tekirdağ", "İstanbul", "Manisa"]]
@@ -14745,7 +14799,7 @@ elif aktif == "kargolar":
         # kayıtlarındaki (bazen bozuk/uzun/"None" gibi) elle yazılmış
         # değerler seçeneklere KARIŞTIRILMAZ (kullanıcı isteği).
         _kl_dnf_opts = sorted(set(
-            _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()
+            _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and _gecerli_metin(_t.get("firma_adi", ""))
         ))
         _kl_col_config = {"Seç": st.column_config.CheckboxColumn("Seç", default=False)}
         for _kl_kol_ad in _kl_df_goster.columns:
@@ -14787,6 +14841,7 @@ elif aktif == "kargolar":
                 for _pcol in _kl_bekleyen.columns:
                     if _pcol in _kl_df_goster.columns:
                         _kl_df_goster[_pcol] = _kl_bekleyen[_pcol].values
+        _kl_df_goster = _hic_none_gosterme(_kl_df_goster)
         _kl_editor_key = f"kargolar_editor_{st.session_state['_kl_editor_versiyon']}"
         _kl_duzenlenen = st.data_editor(
             _kl_df_goster.drop(columns=["_cari_id", "_satir_no"]), use_container_width=True, hide_index=True,
@@ -15229,6 +15284,7 @@ elif aktif == "tedarikci":
 
         if st.session_state.get("_td_tumu_secili_mod", False):
             _td_df["Seç"] = True
+        _td_df = _hic_none_gosterme(_td_df)
         _td_editor_key = f"tedarikci_editor_{st.session_state['_td_editor_versiyon']}"
         # GÖRÜNÜM: yükseklik sabit/küçük bırakılmıyor — kayıt sayısına göre
         # otomatik hesaplanıyor ki hepsi TEK SEFERDE (iç kaydırma olmadan)
