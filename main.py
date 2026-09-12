@@ -574,6 +574,26 @@ def _gecerli_metin(_v):
 
 
 _NONE_METIN_LISTESI = [None, "None", "none", "NONE", "NaN", "nan", "NAN", "NAT", "nat", "null", "NULL", "<NA>"]
+_NONE_KELIME_KUCUK = {"none", "nan", "null", "nat", "<na>"}
+
+
+def _hic_none_hucre_temizle(_v):
+    """Tek bir hücreyi kontrol eder: None/NaN ise VEYA (baştaki/sondaki
+    boşluklar temizlendikten ve küçük harfe çevrildikten sonra) 'none',
+    'nan', 'null' gibi bir teknik boşluk göstergesine eşitse boş metin
+    döner. Böylece '  None', 'None ', 'NONE', 'nan' gibi varyasyonların
+    hepsi yakalanır — sadece BİREBİR eşleşen (Series.replace ile
+    yakalanamayan boşluklu/karışık büyük-küçük harf durumları dahil)."""
+    if _v is None:
+        return ""
+    try:
+        if isinstance(_v, float) and pd.isna(_v):
+            return ""
+    except Exception:
+        pass
+    if isinstance(_v, str) and _v.strip().lower() in _NONE_KELIME_KUCUK:
+        return ""
+    return _v
 
 
 def _hic_none_gosterme(_df):
@@ -584,12 +604,17 @@ def _hic_none_gosterme(_df):
     olarak veriye yazılmış olabilir — normal pd.fillna("") bunu YAKALAMAZ
     (ortada geçerli bir string vardır, gerçek NaN/None değil). Kullanıcıya
     gösterilecek HER DataFrame, render edilmeden hemen önce bu fonksiyondan
-    geçirilir; birebir eşleşen (parça/alt-metin değil, TAM hücre) değerler
-    boş metne çevrilir."""
+    geçirilir. Series.map (applymap DEĞİL — yeni pandas sürümlerinde
+    kaldırıldı) ile HÜCRE HÜCRE kontrol eder; böylece baştaki/sondaki
+    boşluklu ('None ') veya farklı büyük-küçük harfli ('NONE') varyasyonlar
+    da (basit birebir .replace()'in kaçırabileceği durumlar) yakalanır."""
     try:
-        return _df.replace(to_replace=_NONE_METIN_LISTESI, value="")
+        return _df.apply(lambda _kol: _kol.map(_hic_none_hucre_temizle))
     except Exception:
-        return _df
+        try:
+            return _df.replace(to_replace=_NONE_METIN_LISTESI, value="")
+        except Exception:
+            return _df
 
 
 def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
