@@ -4039,16 +4039,20 @@ def not_dialog(cari_id, firma_adi=""):
             return (str(_s or "").strip().upper().replace("İ", "I").replace("Ş", "S")
                     .replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C"))
 
-        _fy_sira_liste = [a.upper() for a in _IL_SUTUN_LISTESI[:-1]] + [a.upper() for a in _IL_DIGER_LISTESI]
+        _fy_sira_liste = [_fy_norm(a) for a in _IL_SUTUN_LISTESI[:-1]] + [_fy_norm(a) for a in _IL_DIGER_LISTESI]
 
         def _fy_sira_no(_giris):
             # ARTIK TAM EŞLEŞME değil — şehir metni "İSTANBUL ANADOLU" gibi
             # ek kelimeler içerebileceğinden, bilinen il adı bu metnin
             # İÇİNDE mi diye bakılır (sıralama için); GÖSTERİM metni
-            # (_giris[0]) hiç değiştirilmez.
-            _sehir_metni_fy = _giris[0]
-            for _i_fy, _il_fy in enumerate(_fy_sira_liste):
-                if _il_fy in _sehir_metni_fy:
+            # (_giris[0]) hiç değiştirilmez. ÖNEMLİ: karşılaştırma HER İKİ
+            # tarafta da _fy_norm ile yapılır — Python'un standart .upper()
+            # fonksiyonu Türkçe "i" harfini yanlış büyütüyor (İZMİR yerine
+            # İZMIR gibi), bu da "İZMİR"in tanınmayıp gruplanamadan
+            # dağılmasına yol açıyordu. _fy_norm bu farkı ortadan kaldırır.
+            _sehir_metni_fy_norm = _fy_norm(_giris[0])
+            for _i_fy, _il_fy_norm in enumerate(_fy_sira_liste):
+                if _il_fy_norm in _sehir_metni_fy_norm:
                     return _i_fy
             return 999
 
@@ -4074,7 +4078,7 @@ def not_dialog(cari_id, firma_adi=""):
             _satirlar = ["FİYAT İNCELE", _ayrac, "", _baslik, _ayrac]
             _onceki_sehir = None
             for _i, _g in enumerate(_girisler):
-                if _onceki_sehir is not None and _g[0] != _onceki_sehir:
+                if _onceki_sehir is not None and _fy_norm(_g[0]) != _fy_norm(_onceki_sehir):
                     _satirlar.append(_ayrac)
                 _satirlar.append(f"{_g[0].ljust(_sehir_w)}   {_tur_metinleri[_i].ljust(_tur_w)}   {_desi_metinleri[_i].ljust(_desi_w)}   "
                                   f"{_toplam_metinleri[_i].ljust(_toplam_w)}")
