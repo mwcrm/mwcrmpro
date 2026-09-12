@@ -4448,6 +4448,7 @@ button[data-testid="manage-app-button"] { display: none !important; }
 
     _MENU_GRUPLARI = [
         ("🧾 Cari işlemleri",    ["yeni", "liste", "kargolar", "excel", "mukerrer"]),
+        ("🚛 Tedarikçi",         ["tedarikci"]),
         ("📅 Randevu ve teklif", ["randevu", "ozel_teklif", "sozlesme", "kayitli_teklifler"]),
         ("🚚 Saha",              ["harita"]),
         ("⚙️ Yönetim",          ["kullanici"]),
