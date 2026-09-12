@@ -14567,10 +14567,10 @@ elif aktif == "kargolar":
                                "Müşteri Tutar", "Dış Nakliye Tutar"):
             if _kl_hesap_kol in _kl_df_goster.columns:
                 _kl_df_goster[_kl_hesap_kol] = _kl_df_goster[_kl_hesap_kol].map(_kg_tr_format)
-        st.caption(f"Toplam {len(_kl_df)} kargo kaydı, {_kl_df['_cari_id'].nunique()} müşteride."
-                   + (f" 🔁 Şu an sadece **birebir mükerrer** ({_kl_mukerrer_toplam} kayıt) gösteriliyor — kapatmak için üstteki butona tekrar bas."
-                      if st.session_state.get("_kargolar_mukerrer_goster", False) else
-                      (f" 🔁 {_kl_mukerrer_toplam} birebir mükerrer kayıt bulundu." if _kl_mukerrer_toplam > 0 else "")))
+        if _kl_mukerrer_toplam > 0:
+            st.caption(f"🔁 Şu an sadece **birebir mükerrer** ({_kl_mukerrer_toplam} kayıt) gösteriliyor — kapatmak için üstteki butona tekrar bas."
+                       if st.session_state.get("_kargolar_mukerrer_goster", False) else
+                       f"🔁 {_kl_mukerrer_toplam} birebir mükerrer kayıt bulundu.")
 
         # ── ÖZET ROZETLERİ — kullanıcı isteği: İl kırılımı, Toplam Yekün, Dış
         # Nakliye Tutarı, Müşteri Tutarı ve Kar/Zarar HEPSİ aynı görünümde,
@@ -14582,6 +14582,14 @@ elif aktif == "kargolar":
                            "border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;")
         _OZ_SATIR_STIL = ("display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;align-items:center;"
                            "padding:6px 2px 14px 2px;font-size:clamp(9px,1.05vw,11px);")
+
+        # "Toplam X kargo kaydı, Y müşteride" — kullanıcı isteği: satırın EN
+        # BAŞINDA, kırmızı ve belirgin (kalın) yazıyla.
+        _oz_toplam_rozeti = (
+            f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;"
+            f"border:2px solid #d64545;border-radius:6px;background:#ffffff;'>"
+            f"<b style='color:#d64545;'>Toplam {len(_kl_df)} kargo kaydı, {_kl_df['_cari_id'].nunique()} müşteride.</b></span>"
+        )
 
         # Dış Nakliye / Müşteri Tutarı / Kar-Zarar — hem tek müşteri hem tüm
         # müşteriler görünümünde ORTAK (branch'e bağlı değil).
@@ -14610,62 +14618,61 @@ elif aktif == "kargolar":
         # bazında (tür ayrımı olmadan, kalabalık olmasın diye) gösterilir.
         # Her il kendi kutucuğunda; tutar olarak YEKÜN (B.Tutar × Adet)
         # toplamı gösterilir. En yoğun (adedi en yüksek) il soldan başlar.
-        if len(_kl_df) > 0 and _kl_df["_cari_id"].nunique() == 1:
-            _oz_df = _kl_df.copy()
-            _oz_df["_il_norm"] = _oz_df.get("alici_il", "").astype(str).str.strip()
-            _oz_df["_tur_norm"] = _oz_df.get("tur", "").astype(str).str.strip()
-            _oz_df = _oz_df[_oz_df["_il_norm"] != ""]
-            if not _oz_df.empty:
-                _oz_df["_yekun_num"] = pd.to_numeric(_oz_df.get("yekun", 0), errors="coerce").fillna(0)
-                _oz_df["_adet_num"] = pd.to_numeric(_oz_df.get("adet", 0), errors="coerce").fillna(0)
-                _oz_grup = (_oz_df.groupby(["_il_norm", "_tur_norm"])
-                            .agg(Adet=("_adet_num", "sum"), Yekun=("_yekun_num", "sum"))
-                            .reset_index()
-                            .sort_values("Adet", ascending=False))
-                _oz_parcalar = "".join(
-                    f"<span style='{_OZ_ROZET_STIL}'>"
-                    f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} {_r['_tur_norm'] or 'adet'} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
-                    for _, _r in _oz_grup.iterrows()
-                )
-                _oz_yekun_toplam = float(_oz_df["_yekun_num"].sum())
-                st.markdown(
-                    f"<div style='{_OZ_SATIR_STIL}'>"
-                    f"<span>📍</span>{_oz_parcalar}"
-                    f"<span style='{_OZ_ROZET_STIL}'>"
-                    f"💰 <b>Toplam Yekün: {_kg_tr_format(_oz_yekun_toplam)} ₺</b></span>"
-                    f"{_oz_kar_zarar_rozeti}"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
-        elif len(_kl_df) > 0:
-            # Birden çok müşteri görünüyorken (genel liste) tür kırılımına
-            # inmiyoruz (kalabalık/karışık olduğu için) — sadece İL bazında,
-            # tüm türler "Parça" olarak toplanmış, kutucuklu özet.
-            _oz_df2 = _kl_df.copy()
-            _oz_df2["_il_norm"] = _oz_df2.get("alici_il", "").astype(str).str.strip()
-            _oz_df2 = _oz_df2[_oz_df2["_il_norm"] != ""]
-            if not _oz_df2.empty:
-                _oz_df2["_yekun_num"] = pd.to_numeric(_oz_df2.get("yekun", 0), errors="coerce").fillna(0)
-                _oz_df2["_adet_num"] = pd.to_numeric(_oz_df2.get("adet", 0), errors="coerce").fillna(0)
-                _oz_grup2 = (_oz_df2.groupby("_il_norm")
-                             .agg(Adet=("_adet_num", "sum"), Yekun=("_yekun_num", "sum"))
-                             .reset_index()
-                             .sort_values("Adet", ascending=False))
-                _oz_parcalar2 = "".join(
-                    f"<span style='{_OZ_ROZET_STIL}'>"
-                    f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
-                    for _, _r in _oz_grup2.iterrows()
-                )
-                _oz_yekun_toplam2 = float(_oz_df2["_yekun_num"].sum())
-                st.markdown(
-                    f"<div style='{_OZ_SATIR_STIL}'>"
-                    f"<span>📍</span>{_oz_parcalar2}"
-                    f"<span style='{_OZ_ROZET_STIL}'>"
-                    f"💰 <b>Toplam Yekün: {_kg_tr_format(_oz_yekun_toplam2)} ₺</b></span>"
-                    f"{_oz_kar_zarar_rozeti}"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
+        # NOT: "Toplam X kargo kaydı..." ve Kar/Zarar rozetleri, il verisi
+        # (Alıcı İl doldurulmuş kayıt) olmasa bile HER ZAMAN gösterilir —
+        # sadece il kutucukları ve Toplam Yekün, il verisi varsa eklenir.
+        if len(_kl_df) > 0:
+            _oz_il_parcalari = ""
+            _oz_yekun_rozeti = ""
+            if _kl_df["_cari_id"].nunique() == 1:
+                _oz_df = _kl_df.copy()
+                _oz_df["_il_norm"] = _oz_df.get("alici_il", "").astype(str).str.strip()
+                _oz_df["_tur_norm"] = _oz_df.get("tur", "").astype(str).str.strip()
+                _oz_df = _oz_df[_oz_df["_il_norm"] != ""]
+                if not _oz_df.empty:
+                    _oz_df["_yekun_num"] = pd.to_numeric(_oz_df.get("yekun", 0), errors="coerce").fillna(0)
+                    _oz_df["_adet_num"] = pd.to_numeric(_oz_df.get("adet", 0), errors="coerce").fillna(0)
+                    _oz_grup = (_oz_df.groupby(["_il_norm", "_tur_norm"])
+                                .agg(Adet=("_adet_num", "sum"), Yekun=("_yekun_num", "sum"))
+                                .reset_index()
+                                .sort_values("Adet", ascending=False))
+                    _oz_il_parcalari = "".join(
+                        f"<span style='{_OZ_ROZET_STIL}'>"
+                        f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} {_r['_tur_norm'] or 'adet'} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
+                        for _, _r in _oz_grup.iterrows()
+                    )
+                    _oz_yekun_rozeti = (f"<span style='{_OZ_ROZET_STIL}'>"
+                                         f"💰 <b>Toplam Yekün: {_kg_tr_format(float(_oz_df['_yekun_num'].sum()))} ₺</b></span>")
+            else:
+                # Birden çok müşteri görünüyorken (genel liste) tür kırılımına
+                # inmiyoruz (kalabalık/karışık olduğu için) — sadece İL bazında,
+                # tüm türler "Parça" olarak toplanmış, kutucuklu özet.
+                _oz_df2 = _kl_df.copy()
+                _oz_df2["_il_norm"] = _oz_df2.get("alici_il", "").astype(str).str.strip()
+                _oz_df2 = _oz_df2[_oz_df2["_il_norm"] != ""]
+                if not _oz_df2.empty:
+                    _oz_df2["_yekun_num"] = pd.to_numeric(_oz_df2.get("yekun", 0), errors="coerce").fillna(0)
+                    _oz_df2["_adet_num"] = pd.to_numeric(_oz_df2.get("adet", 0), errors="coerce").fillna(0)
+                    _oz_grup2 = (_oz_df2.groupby("_il_norm")
+                                 .agg(Adet=("_adet_num", "sum"), Yekun=("_yekun_num", "sum"))
+                                 .reset_index()
+                                 .sort_values("Adet", ascending=False))
+                    _oz_il_parcalari = "".join(
+                        f"<span style='{_OZ_ROZET_STIL}'>"
+                        f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
+                        for _, _r in _oz_grup2.iterrows()
+                    )
+                    _oz_yekun_rozeti = (f"<span style='{_OZ_ROZET_STIL}'>"
+                                         f"💰 <b>Toplam Yekün: {_kg_tr_format(float(_oz_df2['_yekun_num'].sum()))} ₺</b></span>")
+            st.markdown(
+                f"<div style='{_OZ_SATIR_STIL}'>"
+                f"{_oz_toplam_rozeti}"
+                + (f"<span>📍</span>{_oz_il_parcalari}" if _oz_il_parcalari else "")
+                + _oz_yekun_rozeti
+                + _oz_kar_zarar_rozeti
+                + f"</div>",
+                unsafe_allow_html=True
+            )
 
         # ── EXCEL İNDİR — tek sayfalık, bölünmemiş tam liste. Buton satırdaki
         # rezerve edilmiş kutunun İÇİNE konur (yukarıda "_kl_excel_indir_kutu").
