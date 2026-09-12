@@ -14450,6 +14450,39 @@ elif aktif == "kargolar":
                       if st.session_state.get("_kargolar_mukerrer_goster", False) else
                       (f" 🔁 {_kl_mukerrer_toplam} birebir mükerrer kayıt bulundu." if _kl_mukerrer_toplam > 0 else "")))
 
+        # ── ÖZET ROZETLERİ — kullanıcı isteği: İl kırılımı, Toplam Yekün, Dış
+        # Nakliye Tutarı, Müşteri Tutarı ve Kar/Zarar HEPSİ aynı görünümde,
+        # TEK SATIRDA gösterilir. Satır asla alt satıra kaymaz (flex-wrap:
+        # nowrap); sığmazsa yazı boyutu görünürlük genişliğine göre otomatik
+        # küçülür (font-size: clamp), yine de sığmazsa yatay kaydırılabilir
+        # (overflow-x:auto) — böylece hep tek satırda, hep okunur kalır.
+        _OZ_ROZET_STIL = ("display:inline-block;white-space:nowrap;padding:3px 8px;"
+                           "border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;")
+        _OZ_SATIR_STIL = ("display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;align-items:center;"
+                           "padding:6px 2px 14px 2px;font-size:clamp(9px,1.05vw,11px);")
+
+        # Dış Nakliye / Müşteri Tutarı / Kar-Zarar — hem tek müşteri hem tüm
+        # müşteriler görünümünde ORTAK (branch'e bağlı değil).
+        _kzo_dn_toplam = float(pd.to_numeric(_kl_df.get("dis_nakliye_tutar", 0), errors="coerce").fillna(0).sum()) if len(_kl_df) > 0 else 0.0
+        _kzo_mt_toplam = float(pd.to_numeric(_kl_df.get("musteri_tutar", 0), errors="coerce").fillna(0).sum()) if len(_kl_df) > 0 else 0.0
+        _kzo_kar = _kzo_mt_toplam - _kzo_dn_toplam
+        _kzo_yuzde = (_kzo_kar / _kzo_mt_toplam * 100) if _kzo_mt_toplam else 0.0
+        _kzo_renk_kenar = "#8fce9b" if _kzo_kar >= 0 else "#e5a3a3"
+        _kzo_renk_zemin = "#e9f7ec" if _kzo_kar >= 0 else "#fbeaea"
+        _kzo_etiket = "Kar" if _kzo_kar >= 0 else "Zarar"
+        _kzo_ikon = "📈" if _kzo_kar >= 0 else "📉"
+        _kzo_yuzde_str = f"{abs(_kzo_yuzde):.1f}".replace(".", ",")
+        _oz_kar_zarar_rozeti = (
+            f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;"
+            f"border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;'>"
+            f"🚚 <b>Dış Nakliye Tutarı Toplamı: {_kg_tr_format(_kzo_dn_toplam)} ₺</b></span>"
+            f"<span style='{_OZ_ROZET_STIL}'>"
+            f"👤 <b>Müşteri Tutarı Toplamı: {_kg_tr_format(_kzo_mt_toplam)} ₺</b></span>"
+            f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;"
+            f"border:1px solid {_kzo_renk_kenar};border-radius:6px;background:{_kzo_renk_zemin};'>"
+            f"{_kzo_ikon} <b>{_kzo_etiket}: {_kg_tr_format(abs(_kzo_kar))} ₺ (%{_kzo_yuzde_str})</b></span>"
+        )
+
         # ── İL ÖZETİ (KUTUCUKLU) — tek müşteri seçiliyken İl+Tür kırılımında
         # detaylı, birden çok müşteri (genel liste) görünüyorken sadece İl
         # bazında (tür ayrımı olmadan, kalabalık olmasın diye) gösterilir.
@@ -14468,17 +14501,17 @@ elif aktif == "kargolar":
                             .reset_index()
                             .sort_values("Adet", ascending=False))
                 _oz_parcalar = "".join(
-                    f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;"
-                    f"border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;'>"
+                    f"<span style='{_OZ_ROZET_STIL}'>"
                     f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} {_r['_tur_norm'] or 'adet'} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
                     for _, _r in _oz_grup.iterrows()
                 )
                 _oz_yekun_toplam = float(_oz_df["_yekun_num"].sum())
                 st.markdown(
-                    f"<div style='display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:6px 2px 14px 2px;font-size:11px;'>"
+                    f"<div style='{_OZ_SATIR_STIL}'>"
                     f"<span>📍</span>{_oz_parcalar}"
-                    f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border:1px solid #f0c987;border-radius:6px;background:#fff0d9;'>"
+                    f"<span style='{_OZ_ROZET_STIL}'>"
                     f"💰 <b>Toplam Yekün: {_kg_tr_format(_oz_yekun_toplam)} ₺</b></span>"
+                    f"{_oz_kar_zarar_rozeti}"
                     f"</div>",
                     unsafe_allow_html=True
                 )
@@ -14497,48 +14530,20 @@ elif aktif == "kargolar":
                              .reset_index()
                              .sort_values("Adet", ascending=False))
                 _oz_parcalar2 = "".join(
-                    f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;"
-                    f"border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;'>"
+                    f"<span style='{_OZ_ROZET_STIL}'>"
                     f"<b>{_r['_il_norm']}</b> — {int(_r['Adet'])} — {_kg_tr_format(_r['Yekun'])} ₺</span>"
                     for _, _r in _oz_grup2.iterrows()
                 )
                 _oz_yekun_toplam2 = float(_oz_df2["_yekun_num"].sum())
                 st.markdown(
-                    f"<div style='display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:6px 2px 14px 2px;font-size:11px;'>"
+                    f"<div style='{_OZ_SATIR_STIL}'>"
                     f"<span>📍</span>{_oz_parcalar2}"
-                    f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border:1px solid #f0c987;border-radius:6px;background:#fff0d9;'>"
+                    f"<span style='{_OZ_ROZET_STIL}'>"
                     f"💰 <b>Toplam Yekün: {_kg_tr_format(_oz_yekun_toplam2)} ₺</b></span>"
+                    f"{_oz_kar_zarar_rozeti}"
                     f"</div>",
                     unsafe_allow_html=True
                 )
-
-        # ── DIŞ NAKLİYE / MÜŞTERİ TUTARI / KAR-ZARAR ÖZETİ — kullanıcı isteği:
-        # tek müşteri ya da tüm müşteriler görünümü fark etmeksizin, filtrede
-        # o an görünen kayıtlar üzerinden toplam Dış Nakliye Tutarı, toplam
-        # Müşteri Tutarı ve aradaki Kar/Zarar (+ Müşteri Tutarı'na göre yüzdesi)
-        # gösterilir. Üstteki İl/Toplam Yekün özeti KALDIRILMADI, bunun yanına
-        # ek olarak eklendi.
-        if len(_kl_df) > 0:
-            _kzo_dn_toplam = float(pd.to_numeric(_kl_df.get("dis_nakliye_tutar", 0), errors="coerce").fillna(0).sum())
-            _kzo_mt_toplam = float(pd.to_numeric(_kl_df.get("musteri_tutar", 0), errors="coerce").fillna(0).sum())
-            _kzo_kar = _kzo_mt_toplam - _kzo_dn_toplam
-            _kzo_yuzde = (_kzo_kar / _kzo_mt_toplam * 100) if _kzo_mt_toplam else 0.0
-            _kzo_renk_kenar = "#8fce9b" if _kzo_kar >= 0 else "#e5a3a3"
-            _kzo_renk_zemin = "#e9f7ec" if _kzo_kar >= 0 else "#fbeaea"
-            _kzo_etiket = "Kar" if _kzo_kar >= 0 else "Zarar"
-            _kzo_ikon = "📈" if _kzo_kar >= 0 else "📉"
-            _kzo_yuzde_str = f"{abs(_kzo_yuzde):.1f}".replace(".", ",")
-            st.markdown(
-                f"<div style='display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:0px 2px 14px 2px;font-size:11px;'>"
-                f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;'>"
-                f"🚚 <b>Dış Nakliye Tutarı Toplamı: {_kg_tr_format(_kzo_dn_toplam)} ₺</b></span>"
-                f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;'>"
-                f"👤 <b>Müşteri Tutarı Toplamı: {_kg_tr_format(_kzo_mt_toplam)} ₺</b></span>"
-                f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border:1px solid {_kzo_renk_kenar};border-radius:6px;background:{_kzo_renk_zemin};'>"
-                f"{_kzo_ikon} <b>{_kzo_etiket}: {_kg_tr_format(abs(_kzo_kar))} ₺ (%{_kzo_yuzde_str})</b></span>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
 
         # ── EXCEL İNDİR — tek sayfalık, bölünmemiş tam liste. Buton satırdaki
         # rezerve edilmiş kutunun İÇİNE konur (yukarıda "_kl_excel_indir_kutu").
