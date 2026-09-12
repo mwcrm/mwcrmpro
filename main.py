@@ -32,6 +32,93 @@ _IL_DIGER_LISTESI = ["Adıyaman","Afyonkarahisar","Ağrı","Aksaray","Amasya","A
                      "Muş","Nevşehir","Niğde","Osmaniye","Rize","Siirt","Sinop","Sivas",
                      "Şırnak","Tokat","Tunceli","Uşak","Yalova","Yozgat","Zonguldak"]
 
+# İl seçilince ilçe açılır listesinin dolması için kullanılıyor.
+# Kaynak: NVI/resmi il-ilçe listesi (81 il, 973 ilçe).
+_IL_ILCE_HARITASI = {
+    "Adana": ["Aladağ", "Ceyhan", "Feke", "Karaisalı", "Karataş", "Kozan", "Pozantı", "Saimbeyli", "Sarıçam", "Seyhan", "Tufanbeyli", "Yumurtalık", "Yüreğir", "Çukurova", "İmamoğlu"],
+    "Adıyaman": ["Merkez", "Besni", "Gerger", "Gölbaşı", "Kahta", "Samsat", "Sincik", "Tut", "Çelikhan"],
+    "Afyonkarahisar": ["Merkez", "Bayat", "Başmakçı", "Bolvadin", "Dazkırı", "Dinar", "Emirdağ", "Evciler", "Hocalar", "Kızılören", "Sandıklı", "Sinanpaşa", "Sultandağı", "Çay", "Çobanlar", "İhsaniye", "İscehisar", "Şuhut"],
+    "Aksaray": ["Merkez", "Ağaçören", "Eskil", "Gülağaç", "Güzelyurt", "Ortaköy", "Sarıyahşi", "Sultanhanı"],
+    "Amasya": ["Merkez", "Göynücek", "Gümüşhacıköy", "Hamamözü", "Merzifon", "Suluova", "Taşova"],
+    "Ankara": ["Akyurt", "Altındağ", "Ayaş", "Bala", "Beypazarı", "Elmadağ", "Etimesgut", "Evren", "Gölbaşı", "Güdül", "Haymana", "Kahramankazan", "Kalecik", "Keçiören", "Kızılcahamam", "Mamak", "Nallıhan", "Polatlı", "Pursaklar", "Sincan", "Yenimahalle", "Çamlıdere", "Çankaya", "Çubuk", "Şereflikoçhisar"],
+    "Antalya": ["Akseki", "Aksu", "Alanya", "Demre", "Döşemealtı", "Elmalı", "Finike", "Gazipaşa", "Gündoğmuş", "Kaş", "Kemer", "Kepez", "Konyaaltı", "Korkuteli", "Kumluca", "Manavgat", "Muratpaşa", "Serik", "İbradı"],
+    "Ardahan": ["Merkez", "Damal", "Göle", "Hanak", "Posof", "Çıldır"],
+    "Artvin": ["Merkez", "Ardanuç", "Arhavi", "Borçka", "Hopa", "Kemalpaşa", "Murgul", "Yusufeli", "Şavşat"],
+    "Aydın": ["Bozdoğan", "Buharkent", "Didim", "Efeler", "Germencik", "Karacasu", "Karpuzlu", "Koçarlı", "Kuyucak", "Kuşadası", "Köşk", "Nazilli", "Sultanhisar", "Söke", "Yenipazar", "Çine", "İncirliova"],
+    "Ağrı": ["Merkez", "Diyadin", "Doğubayazıt", "Eleşkirt", "Hamur", "Patnos", "Taşlıçay", "Tutak"],
+    "Balıkesir": ["Altıeylül", "Ayvalık", "Balya", "Bandırma", "Bigadiç", "Burhaniye", "Dursunbey", "Edremit", "Erdek", "Gömeç", "Gönen", "Havran", "Karesi", "Kepsut", "Manyas", "Marmara", "Savaştepe", "Susurluk", "Sındırgı", "İvrindi"],
+    "Bartın": ["Merkez", "Amasra", "Kurucaşile", "Ulus"],
+    "Batman": ["Merkez", "Beşiri", "Gercüş", "Hasankeyf", "Kozluk", "Sason"],
+    "Bayburt": ["Merkez", "Aydıntepe", "Demirözü"],
+    "Bilecik": ["Merkez", "Bozüyük", "Gölpazarı", "Osmaneli", "Pazaryeri", "Söğüt", "Yenipazar", "İnhisar"],
+    "Bingöl": ["Merkez", "Adaklı", "Genç", "Karlıova", "Kiğı", "Solhan", "Yayladere", "Yedisu"],
+    "Bitlis": ["Merkez", "Adilcevaz", "Ahlat", "Güroymak", "Hizan", "Mutki", "Tatvan"],
+    "Bolu": ["Merkez", "Dörtdivan", "Gerede", "Göynük", "Kıbrıscık", "Mengen", "Mudurnu", "Seben", "Yeniçağa"],
+    "Burdur": ["Merkez", "Altınyayla", "Ağlasun", "Bucak", "Gölhisar", "Karamanlı", "Kemer", "Tefenni", "Yeşilova", "Çavdır", "Çeltikçi"],
+    "Bursa": ["Büyükorhan", "Gemlik", "Gürsu", "Harmancık", "Karacabey", "Keles", "Kestel", "Mudanya", "Mustafakemalpaşa", "Nilüfer", "Orhaneli", "Orhangazi", "Osmangazi", "Yenişehir", "Yıldırım", "İnegöl", "İznik"],
+    "Denizli": ["Acıpayam", "Babadağ", "Baklan", "Bekilli", "Beyağaç", "Bozkurt", "Buldan", "Güney", "Honaz", "Kale", "Merkezefendi", "Pamukkale", "Sarayköy", "Serinhisar", "Tavas", "Çal", "Çameli", "Çardak", "Çivril"],
+    "Diyarbakır": ["Bağlar", "Bismil", "Dicle", "Ergani", "Eğil", "Hani", "Hazro", "Kayapınar", "Kocaköy", "Kulp", "Lice", "Silvan", "Sur", "Yenişehir", "Çermik", "Çüngüş", "Çınar"],
+    "Düzce": ["Merkez", "Akçakoca", "Cumayeri", "Gölyaka", "Gümüşova", "Kaynaşlı", "Yığılca", "Çilimli"],
+    "Edirne": ["Merkez", "Enez", "Havsa", "Keşan", "Lalapaşa", "Meriç", "Süloğlu", "Uzunköprü", "İpsala"],
+    "Elazığ": ["Merkez", "Alacakaya", "Arıcak", "Ağın", "Baskil", "Karakoçan", "Keban", "Kovancılar", "Maden", "Palu", "Sivrice"],
+    "Erzincan": ["Merkez", "Kemah", "Kemaliye", "Otlukbeli", "Refahiye", "Tercan", "Çayırlı", "Üzümlü", "İliç"],
+    "Erzurum": ["Aziziye", "Aşkale", "Horasan", "Hınıs", "Karayazı", "Karaçoban", "Köprüköy", "Narman", "Oltu", "Olur", "Palandöken", "Pasinler", "Pazaryolu", "Tekman", "Tortum", "Uzundere", "Yakutiye", "Çat", "İspir", "Şenkaya"],
+    "Eskişehir": ["Alpu", "Beylikova", "Günyüzü", "Han", "Mahmudiye", "Mihalgazi", "Mihalıççık", "Odunpazarı", "Sarıcakaya", "Seyitgazi", "Sivrihisar", "Tepebaşı", "Çifteler", "İnönü"],
+    "Gaziantep": ["Araban", "Karkamış", "Nizip", "Nurdağı", "Oğuzeli", "Yavuzeli", "İslahiye", "Şahinbey", "Şehitkamil"],
+    "Giresun": ["Merkez", "Alucra", "Bulancak", "Dereli", "Doğankent", "Espiye", "Eynesil", "Görele", "Güce", "Keşap", "Piraziz", "Tirebolu", "Yağlıdere", "Çamoluk", "Çanakçı", "Şebinkarahisar"],
+    "Gümüşhane": ["Merkez", "Kelkit", "Köse", "Kürtün", "Torul", "Şiran"],
+    "Hakkari": ["Merkez", "Derecik", "Yüksekova", "Çukurca", "Şemdinli"],
+    "Hatay": ["Altınözü", "Antakya", "Arsuz", "Belen", "Defne", "Dörtyol", "Erzin", "Hassa", "Kumlu", "Kırıkhan", "Payas", "Reyhanlı", "Samandağ", "Yayladağı", "İskenderun"],
+    "Isparta": ["Merkez", "Aksu", "Atabey", "Eğirdir", "Gelendost", "Gönen", "Keçiborlu", "Senirkent", "Sütçüler", "Uluborlu", "Yalvaç", "Yenişarbademli", "Şarkikaraağaç"],
+    "Iğdır": ["Merkez", "Aralık", "Karakoyunlu", "Tuzluca"],
+    "Kahramanmaraş": ["Afşin", "Andırın", "Dulkadiroğlu", "Ekinözü", "Elbistan", "Göksun", "Nurhak", "Onikişubat", "Pazarcık", "Türkoğlu", "Çağlayancerit"],
+    "Karabük": ["Merkez", "Eflani", "Eskipazar", "Ovacık", "Safranbolu", "Yenice"],
+    "Karaman": ["Merkez", "Ayrancı", "Başyayla", "Ermenek", "Kazımkarabekir", "Sarıveliler"],
+    "Kars": ["Merkez", "Akyaka", "Arpaçay", "Digor", "Kağızman", "Sarıkamış", "Selim", "Susuz"],
+    "Kastamonu": ["Merkez", "Abana", "Araç", "Azdavay", "Ağlı", "Bozkurt", "Cide", "Daday", "Devrekani", "Doğanyurt", "Hanönü", "Küre", "Pınarbaşı", "Seydiler", "Taşköprü", "Tosya", "Çatalzeytin", "İhsangazi", "İnebolu", "Şenpazar"],
+    "Kayseri": ["Akkışla", "Bünyan", "Develi", "Felahiye", "Hacılar", "Kocasinan", "Melikgazi", "Pınarbaşı", "Sarıoğlan", "Sarız", "Talas", "Tomarza", "Yahyalı", "Yeşilhisar", "Özvatan", "İncesu"],
+    "Kilis": ["Merkez", "Elbeyli", "Musabeyli", "Polateli"],
+    "Kocaeli": ["Başiskele", "Darıca", "Derince", "Dilovası", "Gebze", "Gölcük", "Kandıra", "Karamürsel", "Kartepe", "Körfez", "Çayırova", "İzmit"],
+    "Konya": ["Ahırlı", "Akören", "Akşehir", "Altınekin", "Beyşehir", "Bozkır", "Cihanbeyli", "Derbent", "Derebucak", "Doğanhisar", "Emirgazi", "Ereğli", "Güneysınır", "Hadim", "Halkapınar", "Hüyük", "Ilgın", "Kadınhanı", "Karapınar", "Karatay", "Kulu", "Meram", "Sarayönü", "Selçuklu", "Seydişehir", "Taşkent", "Tuzlukçu", "Yalıhüyük", "Yunak", "Çeltik", "Çumra"],
+    "Kütahya": ["Merkez", "Altıntaş", "Aslanapa", "Domaniç", "Dumlupınar", "Emet", "Gediz", "Hisarcık", "Pazarlar", "Simav", "Tavşanlı", "Çavdarhisar", "Şaphane"],
+    "Kırklareli": ["Merkez", "Babaeski", "Demirköy", "Kofçaz", "Lüleburgaz", "Pehlivanköy", "Pınarhisar", "Vize"],
+    "Kırıkkale": ["Merkez", "Bahşili", "Balışeyh", "Delice", "Karakeçili", "Keskin", "Sulakyurt", "Yahşihan", "Çelebi"],
+    "Kırşehir": ["Merkez", "Akpınar", "Akçakent", "Boztepe", "Kaman", "Mucur", "Çiçekdağı"],
+    "Malatya": ["Akçadağ", "Arapgir", "Arguvan", "Battalgazi", "Darende", "Doğanyol", "Doğanşehir", "Hekimhan", "Kale", "Kuluncak", "Pütürge", "Yazıhan", "Yeşilyurt"],
+    "Manisa": ["Ahmetli", "Akhisar", "Alaşehir", "Demirci", "Gölmarmara", "Gördes", "Kula", "Köprübaşı", "Kırkağaç", "Salihli", "Saruhanlı", "Sarıgöl", "Selendi", "Soma", "Turgutlu", "Yunusemre", "Şehzadeler"],
+    "Mardin": ["Artuklu", "Dargeçit", "Derik", "Kızıltepe", "Mazıdağı", "Midyat", "Nusaybin", "Savur", "Yeşilli", "Ömerli"],
+    "Mersin": ["Akdeniz", "Anamur", "Aydıncık", "Bozyazı", "Erdemli", "Gülnar", "Mezitli", "Mut", "Silifke", "Tarsus", "Toroslar", "Yenişehir", "Çamlıyayla"],
+    "Muğla": ["Bodrum", "Dalaman", "Datça", "Fethiye", "Kavaklıdere", "Köyceğiz", "Marmaris", "Menteşe", "Milas", "Ortaca", "Seydikemer", "Ula", "Yatağan"],
+    "Muş": ["Merkez", "Bulanık", "Hasköy", "Korkut", "Malazgirt", "Varto"],
+    "Nevşehir": ["Merkez", "Acıgöl", "Avanos", "Derinkuyu", "Gülşehir", "Hacıbektaş", "Kozaklı", "Ürgüp"],
+    "Niğde": ["Merkez", "Altunhisar", "Bor", "Ulukışla", "Çamardı", "Çiftlik"],
+    "Ordu": ["Akkuş", "Altınordu", "Aybastı", "Fatsa", "Gölköy", "Gülyalı", "Gürgentepe", "Kabadüz", "Kabataş", "Korgan", "Kumru", "Mesudiye", "Perşembe", "Ulubey", "Çamaş", "Çatalpınar", "Çaybaşı", "Ünye", "İkizce"],
+    "Osmaniye": ["Merkez", "Bahçe", "Düziçi", "Hasanbeyli", "Kadirli", "Sumbas", "Toprakkale"],
+    "Rize": ["Merkez", "Ardeşen", "Derepazarı", "Fındıklı", "Güneysu", "Hemşin", "Kalkandere", "Pazar", "Çamlıhemşin", "Çayeli", "İkizdere", "İyidere"],
+    "Sakarya": ["Adapazarı", "Akyazı", "Arifiye", "Erenler", "Ferizli", "Geyve", "Hendek", "Karapürçek", "Karasu", "Kaynarca", "Kocaali", "Pamukova", "Sapanca", "Serdivan", "Söğütlü", "Taraklı"],
+    "Samsun": ["19 mayıs", "Alaçam", "Asarcık", "Atakum", "Ayvacık", "Bafra", "Canik", "Havza", "Kavak", "Ladik", "Salıpazarı", "Tekkeköy", "Terme", "Vezirköprü", "Yakakent", "Çarşamba", "İlkadım"],
+    "Siirt": ["Merkez", "Baykan", "Eruh", "Kurtalan", "Pervari", "Tillo", "Şirvan"],
+    "Sinop": ["Merkez", "Ayancık", "Boyabat", "Dikmen", "Durağan", "Erfelek", "Gerze", "Saraydüzü", "Türkeli"],
+    "Sivas": ["Merkez", "Akıncılar", "Altınyayla", "Divriği", "Doğanşar", "Gemerek", "Gölova", "Gürün", "Hafik", "Kangal", "Koyulhisar", "Suşehri", "Ulaş", "Yıldızeli", "Zara", "İmranlı", "Şarkışla"],
+    "Tekirdağ": ["Ergene", "Hayrabolu", "Kapaklı", "Malkara", "Marmaraereğlisi", "Muratlı", "Saray", "Süleymanpaşa", "Çerkezköy", "Çorlu", "Şarköy"],
+    "Tokat": ["Merkez", "Almus", "Artova", "Başçiftlik", "Erbaa", "Niksar", "Pazar", "Reşadiye", "Sulusaray", "Turhal", "Yeşilyurt", "Zile"],
+    "Trabzon": ["Akçaabat", "Araklı", "Arsin", "Beşikdüzü", "Dernekpazarı", "Düzköy", "Hayrat", "Köprübaşı", "Maçka", "Of", "Ortahisar", "Sürmene", "Tonya", "Vakfıkebir", "Yomra", "Çarşıbaşı", "Çaykara", "Şalpazarı"],
+    "Tunceli": ["Merkez", "Hozat", "Mazgirt", "Nazımiye", "Ovacık", "Pertek", "Pülümür", "Çemişgezek"],
+    "Uşak": ["Merkez", "Banaz", "Eşme", "Karahallı", "Sivaslı", "Ulubey"],
+    "Van": ["Bahçesaray", "Başkale", "Edremit", "Erciş", "Gevaş", "Gürpınar", "Muradiye", "Saray", "Tuşba", "Çaldıran", "Çatak", "Özalp", "İpekyolu"],
+    "Yalova": ["Merkez", "Altınova", "Armutlu", "Termal", "Çiftlikköy", "Çınarcık"],
+    "Yozgat": ["Merkez", "Akdağmadeni", "Aydıncık", "Boğazlıyan", "Kadışehri", "Saraykent", "Sarıkaya", "Sorgun", "Yenifakılı", "Yerköy", "Çandır", "Çayıralan", "Çekerek", "Şefaatli"],
+    "Zonguldak": ["Merkez", "Alaplı", "Devrek", "Ereğli", "Gökçebey", "Kilimli", "Kozlu", "Çaycuma"],
+    "Çanakkale": ["Merkez", "Ayvacık", "Bayramiç", "Biga", "Bozcaada", "Eceabat", "Ezine", "Gelibolu", "Gökçeada", "Lapseki", "Yenice", "Çan"],
+    "Çankırı": ["Merkez", "Atkaracalar", "Bayramören", "Eldivan", "Ilgaz", "Korgun", "Kurşunlu", "Kızılırmak", "Orta", "Yapraklı", "Çerkeş", "Şabanözü"],
+    "Çorum": ["Merkez", "Alaca", "Bayat", "Boğazkale", "Dodurga", "Kargı", "Laçin", "Mecitözü", "Ortaköy", "Osmancık", "Oğuzlar", "Sungurlu", "Uğurludağ", "İskilip"],
+    "İstanbul": ["Adalar", "Arnavutköy", "Ataşehir", "Avcılar", "Bahçelievler", "Bakırköy", "Bayrampaşa", "Bağcılar", "Başakşehir", "Beykoz", "Beylikdüzü", "Beyoğlu", "Beşiktaş", "Büyükçekmece", "Esenler", "Esenyurt", "Eyüpsultan", "Fatih", "Gaziosmanpaşa", "Güngören", "Kadıköy", "Kartal", "Kağıthane", "Küçükçekmece", "Maltepe", "Pendik", "Sancaktepe", "Sarıyer", "Silivri", "Sultanbeyli", "Sultangazi", "Tuzla", "Zeytinburnu", "Çatalca", "Çekmeköy", "Ümraniye", "Üsküdar", "Şile", "Şişli"],
+    "İzmir": ["Aliağa", "Balçova", "Bayraklı", "Bayındır", "Bergama", "Beydağ", "Bornova", "Buca", "Dikili", "Foça", "Gaziemir", "Güzelbahçe", "Karabağlar", "Karaburun", "Karşıyaka", "Kemalpaşa", "Kiraz", "Konak", "Kınık", "Menderes", "Menemen", "Narlıdere", "Seferihisar", "Selçuk", "Tire", "Torbalı", "Urla", "Çeşme", "Çiğli", "Ödemiş"],
+    "Şanlıurfa": ["Akçakale", "Birecik", "Bozova", "Ceylanpınar", "Eyyübiye", "Halfeti", "Haliliye", "Harran", "Hilvan", "Karaköprü", "Siverek", "Suruç", "Viranşehir"],
+    "Şırnak": ["Merkez", "Beytüşşebap", "Cizre", "Güçlükonak", "Silopi", "Uludere", "İdil"],
+}
+
+
 def _tr_buyuk(_s):
     """Türkçe karakterleri doğru büyüten upper() — Python'un varsayılan .upper()
     fonksiyonu 'i' harfini 'İ' değil 'I' yapar, bu yanlış Türkçe büyük harfe
@@ -3310,6 +3397,13 @@ def not_dialog(cari_id, firma_adi=""):
                 "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
             }
             _kg_col_config = {"Seç": st.column_config.CheckboxColumn("Seç", default=False, width=40)}
+            # Dış Nakliye Firma artık Tedarikçi listesinden seçilen bir açılır
+            # liste — mevcut hücrede zaten yazılı olan (listede olmayan) bir
+            # değer varsa o da seçenekler arasına eklenir, kaybolmasın diye.
+            _kg_dnf_opts = sorted(set(
+                [_t.get("firma_adi", "") for _t in _tedarikci_yukle() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()]
+                + ([str(_v) for _v in _kg_df["Dış Nakliye Firma"].dropna().unique().tolist() if str(_v).strip()] if "Dış Nakliye Firma" in _kg_df.columns else [])
+            ))
             for _kg_kol_ad in _kg_df.columns:
                 if _kg_kol_ad == "Seç":
                     continue
@@ -3320,6 +3414,10 @@ def not_dialog(cari_id, firma_adi=""):
                     _kg_col_config[_kg_kol_ad] = st.column_config.Column(
                         _kg_kol_ad, width=int(_kg_gen) * 8, disabled=True,
                         help=_KG_OTOMATIK_HESAPLI_KOLONLAR[_kg_kol_ad])
+                elif _kg_kol_ad == "Dış Nakliye Firma":
+                    _kg_col_config[_kg_kol_ad] = st.column_config.SelectboxColumn(
+                        _kg_kol_ad, width=int(_kg_gen) * 8, options=[""] + _kg_dnf_opts,
+                        help="Tedarikçi sayfasından eklediğin firmalar burada listelenir.")
                 else:
                     _kg_col_config[_kg_kol_ad] = st.column_config.Column(_kg_kol_ad, width=int(_kg_gen) * 8)
             _kg_ver_anahtari = f"_kg_editor_versiyon_{cari_id}"
@@ -14381,6 +14479,10 @@ elif aktif == "kargolar":
             "Kdv %20": "Otomatik hesaplanır: Ara Toplam × %20",
             "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
         }
+        _kl_dnf_opts = sorted(set(
+            [_t.get("firma_adi", "") for _t in _tedarikci_yukle() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()]
+            + ([str(_v) for _v in _kl_df_goster["Dış Nakliye Firma"].dropna().unique().tolist() if str(_v).strip()] if "Dış Nakliye Firma" in _kl_df_goster.columns else [])
+        ))
         _kl_col_config = {"Seç": st.column_config.CheckboxColumn("Seç", default=False)}
         for _kl_kol_ad in _kl_df_goster.columns:
             if _kl_kol_ad in ("Seç", "_cari_id", "_satir_no"):
@@ -14392,6 +14494,10 @@ elif aktif == "kargolar":
                 _kl_col_config[_kl_kol_ad] = st.column_config.Column(
                     _kl_kol_ad, width=(int(_kl_gen) * 8 if _kl_gen else None), disabled=True,
                     help=_KL_OTOMATIK_HESAPLI_KOLONLAR[_kl_kol_ad])
+            elif _kl_kol_ad == "Dış Nakliye Firma":
+                _kl_col_config[_kl_kol_ad] = st.column_config.SelectboxColumn(
+                    _kl_kol_ad, width=(int(_kl_gen) * 8 if _kl_gen else None), options=[""] + _kl_dnf_opts,
+                    help="Tedarikçi sayfasından eklediğin firmalar burada listelenir.")
             elif _kl_gen:
                 _kl_col_config[_kl_kol_ad] = st.column_config.Column(_kl_kol_ad, width=int(_kl_gen) * 8)
         if "_kl_editor_versiyon" not in st.session_state:
@@ -14640,21 +14746,35 @@ elif aktif == "tedarikci":
 
     if not _td_silinenler_aktif:
         with st.expander("➕ Yeni Tedarikçi Ekle", expanded=not _td_liste_goster):
-            _tdc1, _tdc2, _tdc3 = st.columns(3)
-            _td_tarih = _tdc1.date_input("Tarih", key="td_yeni_tarih")
-            _td_firma = _tdc2.text_input("Firma Adı", key="td_yeni_firma")
-            _td_gsm = _tdc3.text_input("GSM", key="td_yeni_gsm")
-            _td_sabit = _tdc1.text_input("Sabit Tel", key="td_yeni_sabit")
-            _td_email = _tdc2.text_input("Email", key="td_yeni_email")
-            _td_il_opts = ["-- İl seçilir --"] + [_tr_buyuk(a) for a in (_IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI)]
-            _td_il = _tdc3.selectbox("İl", _td_il_opts, key="td_yeni_il")
-            _td_ilce = _tdc1.text_input("İlçe", key="td_yeni_ilce")
-            _td_adres = _tdc2.text_input("Adres", key="td_yeni_adres")
-            _td_tur = _tdc3.text_input("Tür", key="td_yeni_tur", placeholder="Koli / Palet / ...")
-            _td_yuk_aciklama = _tdc1.text_input("Verdiğimiz Yük Açıklaması", key="td_yeni_yuk")
-            _td_adet = _tdc2.number_input("Adet", min_value=0, step=1, key="td_yeni_adet")
-            _td_tutar = _kg_tr_parse(_tdc3.text_input("Tutar", value="0", key="td_yeni_tutar", help="Virgülle ondalık yazabilirsin (ör. 3.500,50)"))
-            if st.button("💾 Tedarikçiyi Kaydet", type="primary", key="td_yeni_kaydet_btn"):
+            st.markdown("**📋 Firma Bilgileri**")
+            with st.container(border=True):
+                _tdc1, _tdc2, _tdc3 = st.columns(3)
+                _td_firma = _tdc1.text_input("Firma Adı", key="td_yeni_firma")
+                _td_yetkili = _tdc2.text_input("Yetkili", key="td_yeni_yetkili")
+                _td_tarih = _tdc3.date_input("Tarih", key="td_yeni_tarih")
+                _td_gsm = _tdc1.text_input("GSM", key="td_yeni_gsm")
+                _td_sabit = _tdc2.text_input("Sabit Tel", key="td_yeni_sabit")
+                _td_email = _tdc3.text_input("Email", key="td_yeni_email")
+
+            st.markdown("**📍 Adres**")
+            with st.container(border=True):
+                _tda1, _tda2, _tda3 = st.columns(3)
+                _td_il_opts = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
+                _td_il = _tda1.selectbox("İl", _td_il_opts, key="td_yeni_il")
+                # İlçe listesi seçilen İl'e göre otomatik doluyor.
+                _td_ilce_opts = _IL_ILCE_HARITASI.get(_td_il, []) if _td_il != "-- İl seçilir --" else []
+                _td_ilce = _tda2.selectbox("İlçe", (["-- Önce il seç --"] if not _td_ilce_opts else _td_ilce_opts), key="td_yeni_ilce")
+                _td_adres = _tda3.text_input("Adres", key="td_yeni_adres")
+
+            st.markdown("**📦 Yük Bilgisi**")
+            with st.container(border=True):
+                _tdy1, _tdy2, _tdy3 = st.columns(3)
+                _td_tur = _tdy1.text_input("Tür", key="td_yeni_tur", placeholder="Koli / Palet / ...")
+                _td_adet = _tdy2.number_input("Adet", min_value=0, step=1, key="td_yeni_adet")
+                _td_tutar = _kg_tr_parse(_tdy3.text_input("Tutar", value="0", key="td_yeni_tutar", help="Virgülle ondalık yazabilirsin (ör. 3.500,50)"))
+                _td_yuk_aciklama = st.text_input("Verdiğimiz Yük Açıklaması", key="td_yeni_yuk")
+
+            if st.button("💾 Tedarikçiyi Kaydet", type="primary", key="td_yeni_kaydet_btn", use_container_width=True):
                 if not _td_firma.strip():
                     st.error("⚠️ Firma Adı zorunlu.")
                 else:
@@ -14662,10 +14782,12 @@ elif aktif == "tedarikci":
                     if _td_tum_taze is None:
                         _td_tum_taze = []
                     _td_tum_taze.append({
-                        "tarih": str(_td_tarih), "firma_adi": _tr_buyuk(_td_firma), "gsm": _td_gsm, "sabit_tel": _td_sabit,
-                        "email": _td_email, "adres": _tr_buyuk(_td_adres), "ilce": _tr_buyuk(_td_ilce),
-                        "il": (_td_il if _td_il != "-- İl seçilir --" else ""), "yuk_aciklamasi": _tr_buyuk(_td_yuk_aciklama),
-                        "tur": _tr_buyuk(_td_tur), "adet": _td_adet, "tutar": _td_tutar, "yetkili": "", "silindi": False,
+                        "tarih": str(_td_tarih), "firma_adi": _tr_buyuk(_td_firma), "yetkili": _tr_buyuk(_td_yetkili),
+                        "gsm": _td_gsm, "sabit_tel": _td_sabit, "email": _td_email,
+                        "il": (_td_il if _td_il != "-- İl seçilir --" else ""),
+                        "ilce": (_td_ilce if _td_ilce != "-- Önce il seç --" else ""),
+                        "adres": _tr_buyuk(_td_adres), "yuk_aciklamasi": _tr_buyuk(_td_yuk_aciklama),
+                        "tur": _tr_buyuk(_td_tur), "adet": _td_adet, "tutar": _td_tutar, "silindi": False,
                     })
                     _tedarikci_kaydet(_td_tum_taze)
                     st.toast("✅ Tedarikçi eklendi", icon="🚛")
@@ -14679,11 +14801,11 @@ elif aktif == "tedarikci":
     else:
         if _td_silinenler_aktif:
             st.caption(f"🗑️ {len(_td_liste_goster)} silinmiş tedarikçi gösteriliyor. Seçip geri alabilir ya da kalıcı silebilirsin.")
-        _TD_SIRA = ["tarih", "firma_adi", "gsm", "sabit_tel", "email", "adres", "ilce", "il",
-                    "yuk_aciklamasi", "tur", "adet", "tutar", "yetkili"]
-        _TD_ISIM = {"tarih": "Tarih", "firma_adi": "Firma Adı", "gsm": "GSM", "sabit_tel": "Sabit Tel", "email": "Email",
+        _TD_SIRA = ["tarih", "firma_adi", "yetkili", "gsm", "sabit_tel", "email", "il", "ilce", "adres",
+                    "yuk_aciklamasi", "tur", "adet", "tutar"]
+        _TD_ISIM = {"tarih": "Tarih", "firma_adi": "Firma Adı", "yetkili": "Yetkili", "gsm": "GSM", "sabit_tel": "Sabit Tel", "email": "Email",
                     "adres": "Adres", "ilce": "İlçe", "il": "İl", "yuk_aciklamasi": "Verdiğimiz Yük Açıklaması",
-                    "tur": "Tür", "adet": "Adet", "tutar": "Tutar", "yetkili": "Yetkili (eski kayıt)"}
+                    "tur": "Tür", "adet": "Adet", "tutar": "Tutar"}
         _td_df = pd.DataFrame(_td_liste_goster)
         for _c in _TD_SIRA:
             if _c not in _td_df.columns:
