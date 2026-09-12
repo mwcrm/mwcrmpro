@@ -7546,7 +7546,7 @@ function kartSec(id){
                       "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
                       "🧾 Teklif":"🧾 Teklif","💬 Mesaj":"💬 Mesaj","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
-                      "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem"}
+                      "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem","rut":"rut"}
     col_order = [c for c in col_order if not any(c == _kol_gizli_map.get(g,g) for g in _GIZLI_KOLONLAR)]
 
     # ── SAYFALAMA KALDIRILDI — kullanıcı isteği üzerine, liste artık her zaman
@@ -9660,7 +9660,7 @@ function updateBot(v){{
             "firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,
-            "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,
+            "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
             "🧾 Teklif":70,"💬 Mesaj":70
         }
@@ -9672,7 +9672,7 @@ function updateBot(v){{
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
             "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
-            "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem",
+            "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
             "🧾 Teklif":"Teklif","💬 Mesaj":"Mesaj"
         }
