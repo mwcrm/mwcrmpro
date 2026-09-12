@@ -595,11 +595,14 @@ def _muh_token_oku():
 def _muh_token_yaz(token_dict):
     try:
         sb = get_sb_client()
-        if sb:
-            deger = json.dumps(token_dict)
-            sb.table("kullanici_tercih").delete().eq("kullanici", "_sistem").eq("anahtar", "_muh_token").execute()
+        if not sb:
+            return False
+        deger = json.dumps(token_dict)
+        _guncelle = sb.table("kullanici_tercih").update({"deger": deger}).eq(
+            "kullanici", "_sistem").eq("anahtar", "_muh_token").execute()
+        if not _guncelle.data:
             sb.table("kullanici_tercih").insert({"kullanici": "_sistem", "anahtar": "_muh_token", "deger": deger}).execute()
-            return True
+        return True
     except:
         pass
     return False
@@ -3841,9 +3844,12 @@ textarea[aria-label="Koli/Palet önizleme"] { font-family: 'Courier New', monosp
                     _kp_map2 = _kpoj2.loads(_r_kpo2.data[0]["deger"]) if _r_kpo2.data else {}
                     _kp_id_str2 = str(int(cari_id))
                     _kp_map2[_kp_id_str2] = _fy_son_metin.strip()
-                    _vd_sb.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
-                    _vd_sb.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel",
-                                                              "deger": _kpoj2.dumps(_kp_map2, ensure_ascii=False)}).execute()
+                    _kpo_deger2 = _kpoj2.dumps(_kp_map2, ensure_ascii=False)
+                    _kpo_guncelle2 = _vd_sb.table("kullanici_tercih").update({"deger": _kpo_deger2}).eq(
+                        "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                    if not _kpo_guncelle2.data:
+                        _vd_sb.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel",
+                                                                  "deger": _kpo_deger2}).execute()
                     st.session_state["_koli_palet_manuel"] = _kp_map2
                     st.session_state.pop(f"_fy_hazir_{cari_id}", None)
                     st.toast("✅ Koli/Palet güncellendi", icon="📦")
@@ -6764,15 +6770,20 @@ function kartSec(id){
                 if _sb_tsk1:
                     import json as _tskj1
                     _deger_tsk1 = _tskj1.dumps(st.session_state["_cok_firma_taslaklar"], ensure_ascii=False)
-                    # NOT: upsert(on_conflict=...) kullanılmıyor — "kullanici_tercih" tablosunda
-                    # (kullanici, anahtar) için unique constraint olmadığından upsert sessizce
-                    # başarısız olabiliyor. Bunun yerine önce sil, sonra ekle (diğer modüllerdeki
-                    # _muh_token deseniyle aynı, kanıtlanmış yöntem).
-                    _sb_tsk1.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", "_cok_firma_taslaklar").execute()
-                    _sb_tsk1.table("kullanici_tercih").insert({
-                        "kullanici": "__liste_ui__", "anahtar": "_cok_firma_taslaklar",
-                        "deger": _deger_tsk1
-                    }).execute()
+                    # GÜVENLİ (2026-09): "kullanici_tercih" tablosunda (kullanici, anahtar)
+                    # için unique constraint olmadığı için upsert(on_conflict=...)
+                    # güvenilir değil — ama bunun çözümü "önce sil sonra ekle" DEĞİL,
+                    # çünkü o sırada silme başarılı olup ekleme başarısız kalırsa veri
+                    # TAMAMEN kaybolur. Bunun yerine: satır varsa UPDATE (unique
+                    # constraint'e ihtiyaç duymaz, sadece eşleşeni günceller), yoksa
+                    # INSERT edilir.
+                    _tsk_guncelle1 = _sb_tsk1.table("kullanici_tercih").update({"deger": _deger_tsk1}).eq(
+                        "kullanici", "__liste_ui__").eq("anahtar", "_cok_firma_taslaklar").execute()
+                    if not _tsk_guncelle1.data:
+                        _sb_tsk1.table("kullanici_tercih").insert({
+                            "kullanici": "__liste_ui__", "anahtar": "_cok_firma_taslaklar",
+                            "deger": _deger_tsk1
+                        }).execute()
             except Exception as _tsk_db_hata:
                 st.error(f"⚠️ Taslak veritabanına kaydedilemedi: {_tsk_db_hata}")
 
@@ -9491,11 +9502,13 @@ function updateBot(v){{
                     # için upsert sessizce başarısız oluyordu, ayarlar hiç
                     # kalıcı olmuyordu).
                     try:
-                        _sb_kg_ui.table("kullanici_tercih").delete().eq("kullanici","__liste_ui__").eq("anahtar","_kol_gizli").execute()
-                        _sb_kg_ui.table("kullanici_tercih").insert({
-                            "kullanici":"__liste_ui__","anahtar":"_kol_gizli",
-                            "deger":_kguj.dumps(_gizli_ui, ensure_ascii=False)
-                        }).execute()
+                        _kguj_deger = _kguj.dumps(_gizli_ui, ensure_ascii=False)
+                        _kgui_guncelle = _sb_kg_ui.table("kullanici_tercih").update({"deger": _kguj_deger}).eq(
+                            "kullanici", "__liste_ui__").eq("anahtar", "_kol_gizli").execute()
+                        if not _kgui_guncelle.data:
+                            _sb_kg_ui.table("kullanici_tercih").insert({
+                                "kullanici": "__liste_ui__", "anahtar": "_kol_gizli", "deger": _kguj_deger
+                            }).execute()
                     except Exception as _kgize:
                         st.toast(f"⚠️ Gizle/Göster kaydedilemedi: {_kgize}", icon="⚠️")
                     st.rerun()
@@ -9522,18 +9535,23 @@ function updateBot(v){{
                 _sb_kg_s = get_sb_client()
                 if _sb_kg_s:
                     import json as _kgsj2
-                    # NOT: upsert(on_conflict=...) yerine sil+ekle — aynı bilinen
-                    # kısıt sorununu (sessiz başarısızlık) önlemek için.
-                    _sb_kg_s.table("kullanici_tercih").delete().eq("kullanici","__liste_ui__").eq("anahtar","_kol_genislik").execute()
-                    _sb_kg_s.table("kullanici_tercih").insert({
-                        "kullanici":"__liste_ui__","anahtar":"_kol_genislik",
-                        "deger":_kgsj2.dumps(_yeni_kg_ui, ensure_ascii=False)
-                    }).execute()
-                    _sb_kg_s.table("kullanici_tercih").delete().eq("kullanici","__liste_ui__").eq("anahtar","_kol_gizli").execute()
-                    _sb_kg_s.table("kullanici_tercih").insert({
-                        "kullanici":"__liste_ui__","anahtar":"_kol_gizli",
-                        "deger":_kgsj2.dumps(_gizli_ui, ensure_ascii=False)
-                    }).execute()
+                    # GÜVENLİ (2026-09): satır varsa UPDATE (unique constraint
+                    # gerektirmez), yoksa INSERT — "önce sil sonra ekle" ARTIK
+                    # KULLANILMIYOR (ağ kopmasında veri kaybı riski taşıyordu).
+                    _kg_genislik_deger = _kgsj2.dumps(_yeni_kg_ui, ensure_ascii=False)
+                    _kg_genislik_guncelle = _sb_kg_s.table("kullanici_tercih").update({"deger": _kg_genislik_deger}).eq(
+                        "kullanici", "__liste_ui__").eq("anahtar", "_kol_genislik").execute()
+                    if not _kg_genislik_guncelle.data:
+                        _sb_kg_s.table("kullanici_tercih").insert({
+                            "kullanici": "__liste_ui__", "anahtar": "_kol_genislik", "deger": _kg_genislik_deger
+                        }).execute()
+                    _kg_gizli_deger = _kgsj2.dumps(_gizli_ui, ensure_ascii=False)
+                    _kg_gizli_guncelle = _sb_kg_s.table("kullanici_tercih").update({"deger": _kg_gizli_deger}).eq(
+                        "kullanici", "__liste_ui__").eq("anahtar", "_kol_gizli").execute()
+                    if not _kg_gizli_guncelle.data:
+                        _sb_kg_s.table("kullanici_tercih").insert({
+                            "kullanici": "__liste_ui__", "anahtar": "_kol_gizli", "deger": _kg_gizli_deger
+                        }).execute()
                 st.session_state["_kol_genislik"] = _yeni_kg_ui
                 st.session_state["_kol_gizli"] = _gizli_ui
                 st.session_state.pop("_kol_genislik_init", None)
@@ -9582,11 +9600,13 @@ function updateBot(v){{
                 _sb_kg3 = get_sb_client()
                 if _sb_kg3:
                     import json as _kkgj2
-                    _sb_kg3.table("kullanici_tercih").delete().eq("kullanici","__liste_ui__").eq("anahtar","_kargo_kol_genislik").execute()
-                    _sb_kg3.table("kullanici_tercih").insert({
-                        "kullanici":"__liste_ui__","anahtar":"_kargo_kol_genislik",
-                        "deger":_kkgj2.dumps(_yeni_kargo_kg, ensure_ascii=False)
-                    }).execute()
+                    _kkg_deger = _kkgj2.dumps(_yeni_kargo_kg, ensure_ascii=False)
+                    _kkg_guncelle = _sb_kg3.table("kullanici_tercih").update({"deger": _kkg_deger}).eq(
+                        "kullanici", "__liste_ui__").eq("anahtar", "_kargo_kol_genislik").execute()
+                    if not _kkg_guncelle.data:
+                        _sb_kg3.table("kullanici_tercih").insert({
+                            "kullanici": "__liste_ui__", "anahtar": "_kargo_kol_genislik", "deger": _kkg_deger
+                        }).execute()
                 st.session_state["_kargo_kol_genislik"] = _yeni_kargo_kg
                 st.toast("✅ Kargo kolon ayarları kaydedildi!", icon="✅")
                 st.rerun()
@@ -13929,10 +13949,15 @@ elif aktif == "harita":
         def _harita_geo_cache_kaydet(_cache):
             try:
                 _sb_g2 = get_sb_client()
-                if _sb_g2:
-                    _deger = _hj.dumps(_cache, ensure_ascii=False)
-                    _sb_g2.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", "_harita_geocode_cache").execute()
-                    _sb_g2.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": "_harita_geocode_cache", "deger": _deger}).execute()
+                if not _sb_g2:
+                    return
+                _deger = _hj.dumps(_cache, ensure_ascii=False)
+                _hg_guncelle = _sb_g2.table("kullanici_tercih").update({"deger": _deger}).eq(
+                    "kullanici", "__liste_ui__").eq("anahtar", "_harita_geocode_cache").execute()
+                if not _hg_guncelle.data:
+                    _sb_g2.table("kullanici_tercih").insert(
+                        {"kullanici": "__liste_ui__", "anahtar": "_harita_geocode_cache", "deger": _deger}
+                    ).execute()
             except Exception:
                 pass
 
@@ -14175,16 +14200,29 @@ elif aktif == "kargolar":
             return []
 
     def _kargolar_yaz(_cari_id, _yeni_liste_o_musteri):
+        """GÜVENLİ (2026-09) — bkz. _tedarikci_kaydet ile aynı gerekçe. SİLME
+        YOK: satır zaten varsa doğrudan UPDATE edilir, yoksa INSERT edilir.
+        Eski 'önce sil sonra ekle' sırası, 'Değişiklikleri Kaydet' her
+        tıklandığında etkilenen HER müşteri için ayrı ayrı çalıştığından,
+        aralarından biri ağ kopmasına denk gelirse o müşterinin TÜM kargo
+        geçmişi sıfırlanabiliyordu — kullanıcının bildirdiği 'kayıtlar
+        kendiliğinden siliniyor' sorununun kök nedeni buydu."""
         try:
             _sb_kt2 = get_sb_client()
-            if _sb_kt2:
-                import json as _ktj2
-                _anahtar = f"_kargo_kayitlari_{int(_cari_id)}"
-                _deger = _ktj2.dumps(_yeni_liste_o_musteri, ensure_ascii=False)
-                _sb_kt2.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
-                _sb_kt2.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}).execute()
+            if not _sb_kt2:
+                return False
+            import json as _ktj2
+            _anahtar = f"_kargo_kayitlari_{int(_cari_id)}"
+            _deger = _ktj2.dumps(_yeni_liste_o_musteri, ensure_ascii=False)
+            _guncelle_sonuc = _sb_kt2.table("kullanici_tercih").update({"deger": _deger}).eq(
+                "kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
+            if not _guncelle_sonuc.data:
+                _sb_kt2.table("kullanici_tercih").insert(
+                    {"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}
+                ).execute()
+            return True
         except Exception:
-            pass
+            return False
 
     if "_kargo_kol_genislik" not in st.session_state:
         try:
