@@ -10,6 +10,18 @@ import streamlit as st
 # Bu kural 2026'da bir Kargolar sayfası hatası yüzünden 94 kargo kaydının
 # kalıcı olarak kaybolmasına neden oldu. BİR DAHA ASLA OLMAYACAK.
 # Yeni bir toplu kaydet/sil özelliği yazmadan önce bu yorumu tekrar oku.
+#
+# 🚨 GENİŞLETME (kullanıcı talimatı): Bu kural SADECE Kargolar'a özel değil,
+# SİSTEMİN TAMAMINA (Kargo, Tedarikçi, Müşteri/Cari, ve bundan sonra eklenecek
+# HER modül) geçerlidir. YENİ KOD YAZARKEN veya MEVCUT bir özelliği
+# GÜNCELLERKEN DAHİ — yani "sadece yeni özellik eklüyorum, eski koda
+# dokunmuyorum" denilen durumlarda BİLE — bu kurala aykırı bir kaydetme/silme
+# deseni (delete-then-insert, "görünenle tüm listeyi değiştir" vb.) asla
+# yazılmaz. Kayıt gerçekten silinecekse bile fiziksel olarak yok edilmez;
+# Müşteri (cari_kartlar → "silindi" bayrağı) ve Tedarikçi'de zaten yapıldığı
+# gibi "silindi" bayrağıyla işaretlenip listede kalır ve "🗑️ Silinenler"den
+# geri alınabilir. Kalıcı/fiziksel silme sadece kullanıcının AÇIK ve TEKİL
+# onayıyla (ör. "Silinenler" ekranındaki ayrı "Kalıcı Sil" butonu) yapılabilir.
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── İL SÜTUNLARI — GLOBAL sabit (birden fazla sayfadan erişilir: Cari Liste
@@ -163,6 +175,31 @@ git push
 ### 3) Veri Güvenliği — KRİTİK
 Asla veri silinmeyecek/kaybolmayacak. Silme gerektiren hiçbir işlem (toplu silme dahil) önce açık kullanıcı onayı olmadan YAPILMAZ.
 
+### 3b) Kargo / Tedarikçi / Sistem Geneli Veri Kaybı Yasağı — KRİTİK (2026-09)
+Kullanıcı bunu bizzat yaşayıp bildirdi: Kargo listesinde, Tedarikçi listesinde
+ve genel olarak SİSTEMİN HERHANGİ BİR YERİNDE **asla ve asla** veri/bilgi kaybı
+olmayacak — bu kural **yeni kod yazılırken veya mevcut bir özellik
+güncellenirken dahi** geçerlidir, "sadece ekliyorum eskiyi bozmuyorum" denilen
+durumlar dahil.
+- Kayıt "silinecekse" bile fiziksel olarak yok edilmez; Müşteri'de (cari_kartlar
+  → `silindi` bayrağı) ve Tedarikçi'de zaten yapıldığı gibi **soft-delete**
+  (`silindi` bayrağı + `silinme_tarihi`) ile işaretlenip listede kalır,
+  "🗑️ Silinenler" ekranından geri alınabilir. Kargo kayıtları da aynı deseni
+  kullanır — bu davranış korunacak, asla hard-delete'e çevrilmeyecek.
+- Supabase'e yazılan her "tam liste" (kargo, tedarikçi, il gönderim matrisi,
+  manuel alıcı hafızası vb. `kullanici_tercih` tablosundaki JSON blob'lar) için:
+  ÖNCE yeni veri eklenir/doğrulanır, SADECE ekleme kesin başarılı olduktan
+  SONRA eski satır silinir — asla önce sil sonra ekle sırası kullanılmaz (ağ
+  kopmasında ekleme başarısız kalırsa o anahtardaki TÜM veri sıfırlanır; 94
+  kargo kaydının ve tedarikçi listesinin kaybının kök nedeni buydu).
+- Okuma başarısız olduğunda (bağlantı sorunu) asla `[]` (boş) dönülüp "kayıt
+  yokmuş" gibi davranılmaz — `_OKUMA_BASARISIZ` sinyali kullanılır ve çağıran
+  taraf işlemi iptal eder.
+- Yeni bir modül/özellik için kaydetme fonksiyonu yazılacaksa, kargo
+  (`_kg_kayitlari_kaydet`) ve tedarikçi (`_tedarikci_kaydet`) için kullanılan
+  güvenli desen birebir kopyalanır; sıfırdan, bu deseni atlayan bir "kaydet"
+  fonksiyonu yazılmaz.
+
 ### 4) MacroDroid Entegrasyonu
 - Supabase proje: `asinwzxwmkkrcbtjrkoq.supabase.co` — tablolar: `islem_kaydi`, `cari_kartlar`, `kisiler`
 - Amaç: Gelen/Giden Arama & SMS'te arayan/gönderen adını rehberden bulup CRM'e (`musteri_adi`) otomatik yazdırmak.
@@ -232,15 +269,30 @@ def _il_gonderim_matrisi_yukle():
     return {}
 
 def _il_gonderim_matrisi_kaydet(_matris):
+    """GÜVENLİ SIRA — bkz. _kg_kayitlari_kaydet: önce ekle+doğrula, sonra eskiyi sil."""
     try:
         _sb_ilm2 = get_sb_client()
-        if _sb_ilm2:
-            import json as _ilmj2
-            _deger = _ilmj2.dumps(_matris, ensure_ascii=False)
-            _sb_ilm2.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", "_il_gonderim_matrisi").execute()
-            _sb_ilm2.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": "_il_gonderim_matrisi", "deger": _deger}).execute()
+        if not _sb_ilm2:
+            return False
+        import json as _ilmj2
+        _deger = _ilmj2.dumps(_matris, ensure_ascii=False)
+        _ekle_sonuc = _sb_ilm2.table("kullanici_tercih").insert(
+            {"kullanici": "__liste_ui__", "anahtar": "_il_gonderim_matrisi", "deger": _deger}
+        ).execute()
+        try:
+            _yeni_id = _ekle_sonuc.data[0].get("id") if _ekle_sonuc.data else None
+        except Exception:
+            _yeni_id = None
+        if _yeni_id is None:
+            return True
+        try:
+            _sb_ilm2.table("kullanici_tercih").delete().eq(
+                "kullanici", "__liste_ui__").eq("anahtar", "_il_gonderim_matrisi").neq("id", _yeni_id).execute()
+        except Exception:
+            pass
+        return True
     except Exception:
-        pass
+        return False
 
 
 # ── MANUEL ALICI FİRMA HAFIZASI — Kargo Girişi'nde elle yazılan Alıcı Firma
@@ -262,15 +314,30 @@ def _kg_manuel_alici_yukle():
     return {}
 
 def _kg_manuel_alici_kaydet(_sozluk):
+    """GÜVENLİ SIRA — bkz. _kg_kayitlari_kaydet: önce ekle+doğrula, sonra eskiyi sil."""
     try:
         _sb_ma2 = get_sb_client()
-        if _sb_ma2:
-            import json as _maj2
-            _deger = _maj2.dumps(_sozluk, ensure_ascii=False)
-            _sb_ma2.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", "_kargo_manuel_alici_firmalar").execute()
-            _sb_ma2.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": "_kargo_manuel_alici_firmalar", "deger": _deger}).execute()
+        if not _sb_ma2:
+            return False
+        import json as _maj2
+        _deger = _maj2.dumps(_sozluk, ensure_ascii=False)
+        _ekle_sonuc = _sb_ma2.table("kullanici_tercih").insert(
+            {"kullanici": "__liste_ui__", "anahtar": "_kargo_manuel_alici_firmalar", "deger": _deger}
+        ).execute()
+        try:
+            _yeni_id = _ekle_sonuc.data[0].get("id") if _ekle_sonuc.data else None
+        except Exception:
+            _yeni_id = None
+        if _yeni_id is None:
+            return True
+        try:
+            _sb_ma2.table("kullanici_tercih").delete().eq(
+                "kullanici", "__liste_ui__").eq("anahtar", "_kargo_manuel_alici_firmalar").neq("id", _yeni_id).execute()
+        except Exception:
+            pass
+        return True
     except Exception:
-        pass
+        return False
 
 
 # ── KARGO KAYITLARI (müşteriye özel) — GLOBAL. Hem Notlar&Randevu dialog'undaki
@@ -325,15 +392,39 @@ def _kg_kayitlari_yukle_taze(_anahtar):
         return _OKUMA_BASARISIZ
 
 def _kg_kayitlari_kaydet(_anahtar, _liste):
+    """GÜVENLİ SIRA (2026-09 veri kaybı düzeltmesi): eskiden ÖNCE SİL SONRA
+    EKLE yapılıyordu — silme başarılı olup hemen ardından ekleme ağ
+    kopması/geçici hata yüzünden BAŞARISIZ olursa, o anahtardaki TÜM kargo
+    verisi kalıcı olarak sıfırlanıyordu (94 kayıtlık kaybın kök nedeni).
+    Şimdi: ÖNCE yeni veri eklenir ve eklemenin GERÇEKTEN başarılı olduğu
+    (dönen id ile) doğrulanır, SADECE O ZAMAN eski satır(lar) — yeni eklenen
+    HARİÇ — silinir. id doğrulanamazsa eski satır silinmez (en kötü ihtimalle
+    fazladan bir kopya kalır — ama veri ASLA kaybolmaz)."""
     try:
         _sb_kg2 = get_sb_client()
-        if _sb_kg2:
-            import json as _kgj2
-            _deger = _kgj2.dumps(_liste, ensure_ascii=False)
-            _sb_kg2.table("kullanici_tercih").delete().eq("kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
-            _sb_kg2.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}).execute()
+        if not _sb_kg2:
+            return False
+        import json as _kgj2
+        _deger = _kgj2.dumps(_liste, ensure_ascii=False)
+        _ekle_sonuc = _sb_kg2.table("kullanici_tercih").insert(
+            {"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}
+        ).execute()
+        try:
+            _yeni_id = _ekle_sonuc.data[0].get("id") if _ekle_sonuc.data else None
+        except Exception:
+            _yeni_id = None
+        if _yeni_id is None:
+            # Ekleme yapıldı ama id doğrulanamadı — güvenlik için eski satırı
+            # SİLMİYORUZ (veri kaybı riskine girmektense fazladan kopya kalsın).
+            return True
+        try:
+            _sb_kg2.table("kullanici_tercih").delete().eq(
+                "kullanici", "__liste_ui__").eq("anahtar", _anahtar).neq("id", _yeni_id).execute()
+        except Exception:
+            pass  # eski kopya silinemedi ama yeni veri zaten güvende — veri kaybı yok
+        return True
     except Exception:
-        pass
+        return False  # ekleme başarısız oldu — eski veriye HİÇ dokunulmadı
 
 
 def _kg_efektif_tutar(_kayit):
@@ -2786,19 +2877,35 @@ def _tedarikci_yukle_ham_guvenli():
 
 
 def _tedarikci_kaydet(liste):
+    """GÜVENLİ SIRA (2026-09 veri kaybı düzeltmesi) — bkz. _kg_kayitlari_kaydet
+    ile birebir aynı gerekçe: ÖNCE yeni veri eklenir ve id ile doğrulanır,
+    SADECE O ZAMAN eski satır silinir. Asla önce sil sonra ekle sırası
+    kullanılmaz — bu sıra, tedarikçi listesinin ağ kopmasında sıfırlanmasına
+    (yeni eklenen tedarikçilerin kaybolmasına) yol açan geçmiş hatanın kök
+    nedeniydi."""
     try:
         _sb_td2 = get_sb_client()
-        if _sb_td2:
-            _sb_td2.table("kullanici_tercih").delete().eq(
-                "kullanici", "__liste_ui__").eq("anahtar", _TEDARIKCI_ANAHTAR).execute()
-            _sb_td2.table("kullanici_tercih").insert({
-                "kullanici": "__liste_ui__", "anahtar": _TEDARIKCI_ANAHTAR,
-                "deger": json.dumps(liste, ensure_ascii=False)
-            }).execute()
+        if not _sb_td2:
+            return False
+        _ekle_sonuc = _sb_td2.table("kullanici_tercih").insert({
+            "kullanici": "__liste_ui__", "anahtar": _TEDARIKCI_ANAHTAR,
+            "deger": json.dumps(liste, ensure_ascii=False)
+        }).execute()
+        try:
+            _yeni_id = _ekle_sonuc.data[0].get("id") if _ekle_sonuc.data else None
+        except Exception:
+            _yeni_id = None
+        if _yeni_id is None:
+            # id doğrulanamadı — güvenlik için eski satırı SİLMİYORUZ.
             return True
+        try:
+            _sb_td2.table("kullanici_tercih").delete().eq(
+                "kullanici", "__liste_ui__").eq("anahtar", _TEDARIKCI_ANAHTAR).neq("id", _yeni_id).execute()
+        except Exception:
+            pass  # eski kopya silinemedi ama yeni veri zaten güvende
+        return True
     except Exception:
-        pass
-    return False
+        return False
 
 
 def _tedarikci_migrasyon_yapildi_mi():
