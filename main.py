@@ -5804,6 +5804,12 @@ section[data-testid="stSidebar"] { display: none !important; }
     # temizleniyor; salt düzenleme sırasında 60 saniyelik önbellek kullanılıyor.
     df = get_cari_listesi()
 
+    # Rut ataması — mobil listeyle aynı kaynak (yeni SQL sütunu açılmadı,
+    # kullanici_tercih'te saklanıyor). Masaüstü filtre satırında da kullanılır.
+    _cari_rut_map_masaustu = _cari_rut_yukle_ham()
+    if not df.empty and "id" in df.columns:
+        df["rut"] = df["id"].astype(str).map(lambda _i: _cari_rut_map_masaustu.get(_i, ""))
+
     # ── Güncelleme Tarihi ön-hesabı — ÇOKLU TARİH filtre kutusu için burada
     # (filtrelemeden önce) hesaplanmalı. ÖNEMLİ: bir müşterinin sadece "EN SON"
     # tarihine bakılmıyor — o müşteriye ait HER işlemin (her not, her teklif,
@@ -6754,7 +6760,7 @@ function kartSec(id){
 
         # ── TEK SATIR — hepsi aynı hizada, eşit genişlikte: Yeni firma kontrol,
         # Özel, Aşama, Durum, İl, İlçe, Çoklu firma, Güncelleme Tarihi ─────────
-        _fc = st.columns(8)
+        _fc = st.columns(9)
 
         # ── YENİ FİRMA KONTROLÜ — "Satır Ekle" ile elle firma adı yazmadan önce,
         # aynı/benzer isimde zaten kayıtlı müşteri var mı diye anlık arama.
@@ -6763,9 +6769,12 @@ function kartSec(id){
         # bakılır. Örn. "KAPKA HEDİ" yazınca sadece "KAPKA HEDİYELİK..." gibi bu ifadeyi
         # ard arda içeren firmalar gelir; sadece "HEDİ" geçen alakasız firmalar gelmez.
         _yf_ara = _fc[0].text_input("yf", placeholder="🔍 Yeni firma kontrol...", key="_cl_yeni_firma_ara", label_visibility="collapsed")
+        # "Rut" filtresi — kullanıcı isteğiyle "Ara/Yeni firma kontrol"ün SAĞINDA.
+        # Yazılan metin, o müşteriye atanmış Rut adında GEÇİYORSA eşleşir.
+        _rut_ara = _fc[1].text_input("rut", placeholder="🛣️ Rut...", key="_cl_fil_rut_ara", label_visibility="collapsed")
         _ozel_opts = sorted(df["rakip_firma"].dropna().astype(str).unique().tolist()) if "rakip_firma" in df.columns else []
         _ozel_opts = [x for x in _ozel_opts if x not in ["", "nan", "None"]]
-        _ozel_sec = _fc[1].multiselect("oz", _ozel_opts, key="_cl_fil_ozel_multi", placeholder="🔍 Özel filtrele...", label_visibility="collapsed")
+        _ozel_sec = _fc[2].multiselect("oz", _ozel_opts, key="_cl_fil_ozel_multi", placeholder="🔍 Özel filtrele...", label_visibility="collapsed")
 
         # "Müşteri Seçin" kutusu kullanıcı isteğiyle kaldırıldı — sabit nötr
         # değerde tutuluyor (aşağıdaki tekli-müşteri seçim mantığı bu değere
@@ -6778,7 +6787,7 @@ function kartSec(id){
 
         _fk_sfx = st.session_state.get("_filtre_reset_sayac", 0)
         _asama_def = [] if st.session_state.get("_filtre_sifirla_flag") else [x for x in st.session_state.get("_cl_fil_asama_multi",[]) if x in tum_asama_opts]
-        _asama_sec = _fc[2].multiselect("a", tum_asama_opts, default=_asama_def, key=f"_cl_fil_asama_multi_{_fk_sfx}", placeholder="Aşama...", label_visibility="collapsed")
+        _asama_sec = _fc[3].multiselect("a", tum_asama_opts, default=_asama_def, key=f"_cl_fil_asama_multi_{_fk_sfx}", placeholder="Aşama...", label_visibility="collapsed")
         st.session_state["_cl_fil_asama_multi"] = _asama_sec
         # Kutudan çıkarılmış/değiştirilmiş bir değer için eski tekli-kolon yedeği (asama1/2/3/sonuc) takılı kalmasın
         for _fk_stale in ["_cl_fil_asama1", "_cl_fil_asama2", "_cl_fil_asama3", "_cl_fil_sonuc"]:
@@ -6789,7 +6798,7 @@ function kartSec(id){
         _fk_sfx = st.session_state.get("_filtre_reset_sayac", 0)
         _durum_opts_tumu = [x for x in tum_durum_opts if str(x).upper() not in ["NONE","NAN",""]]
         _durum_def = [] if st.session_state.get("_filtre_sifirla_flag") else [x for x in st.session_state.get("_cl_fil_durum_multi",[]) if x in _durum_opts_tumu]
-        _durum_sec_raw = _fc[3].multiselect("d", _durum_opts_tumu, default=_durum_def, key=f"_cl_fil_durum_multi_{_fk_sfx}", placeholder="Durum...", label_visibility="collapsed")
+        _durum_sec_raw = _fc[4].multiselect("d", _durum_opts_tumu, default=_durum_def, key=f"_cl_fil_durum_multi_{_fk_sfx}", placeholder="Durum...", label_visibility="collapsed")
         st.session_state["_cl_fil_durum_multi"] = _durum_sec_raw
         _durum_sec = _durum_sec_raw
 
@@ -6797,11 +6806,11 @@ function kartSec(id){
 
         _il_opts = sorted(df["il"].dropna().astype(str).unique().tolist()) if "il" in df.columns else []
         _il_def  = [x for x in st.session_state.get("_cl_fil_il_multi",[]) if x in _il_opts]
-        _il_sec  = _fc[4].multiselect("i", _il_opts, default=_il_def, key="_cl_fil_il_multi", placeholder="İl...", label_visibility="collapsed")
+        _il_sec  = _fc[5].multiselect("i", _il_opts, default=_il_def, key="_cl_fil_il_multi", placeholder="İl...", label_visibility="collapsed")
 
         _ilce_opts = sorted((df[df["il"].astype(str).isin(_il_sec)] if _il_sec else df)["ilce"].dropna().astype(str).unique().tolist()) if "ilce" in df.columns else []
         _ilce_opts = [x for x in _ilce_opts if x not in ["nan","None",""]]
-        _ilce_sec  = _fc[5].multiselect("ilce", _ilce_opts, default=[x for x in st.session_state.get("_cl_fil_ilce_multi",[]) if x in _ilce_opts], key="_cl_fil_ilce_multi", placeholder="İlçe...", label_visibility="collapsed")
+        _ilce_sec  = _fc[6].multiselect("ilce", _ilce_opts, default=[x for x in st.session_state.get("_cl_fil_ilce_multi",[]) if x in _ilce_opts], key="_cl_fil_ilce_multi", placeholder="İlçe...", label_visibility="collapsed")
 
         _tem_sec = []
         siralama_kol = "Tarih↓"
@@ -6809,14 +6818,14 @@ function kartSec(id){
         # ── Güncelleme Tarihi filtresi — ÇOKLU seçim, saatsiz (sadece gün).
         # "Çoklu firma" ile aynı mantık: seçenekler alt alta açılır, birden
         # fazla tarih seçilebilir. Filtre satırının en sonunda. ──────────────
-        _guncelleme_tarih_sec = _fc[7].multiselect(
+        _guncelleme_tarih_sec = _fc[8].multiselect(
             "gt", _guncelleme_tarih_opts_str, key="_cl_fil_guncelleme_tarih_multi",
             placeholder="🔍 Güncelleme Tarihi...", label_visibility="collapsed"
         )
 
         # Manuel filtre kutularından biri (Aşama, Durum, Arama, İl, İlçe, Tarih) kullanıldıysa
         # 'Toplam' modu otomatik kapanır — aksi halde seçim görünür ama uygulanmaz
-        if ara_txt or _asama_sec or _durum_sec or _il_sec or _ilce_sec or _guncelleme_tarih_sec or _ozel_sec:
+        if ara_txt or _asama_sec or _durum_sec or _il_sec or _ilce_sec or _guncelleme_tarih_sec or _ozel_sec or _rut_ara:
             st.session_state["_toplam_aktif"] = False
 
         # Çoklu firma seçimi — filtre satırında son sütun
@@ -6826,7 +6835,7 @@ function kartSec(id){
         if "_cok_tsk_bekleyen" in st.session_state:
             _bekleyen_idler = set(st.session_state.pop("_cok_tsk_bekleyen"))
             st.session_state["_cl_cok_secim"] = [o for o in _cok_sec_opts if int(o.split("]")[0].replace("[","").strip()) in _bekleyen_idler]
-        _cok_secili_ham = _fc[6].multiselect("c", _cok_sec_opts, key="_cl_cok_secim", placeholder="🔍 Çoklu firma...", label_visibility="collapsed")
+        _cok_secili_ham = _fc[7].multiselect("c", _cok_sec_opts, key="_cl_cok_secim", placeholder="🔍 Çoklu firma...", label_visibility="collapsed")
         _cok_secili_idler = set()
         for _cs in _cok_secili_ham:
             try: _cok_secili_idler.add(int(_cs.split("]")[0].replace("[","").strip()))
@@ -7005,14 +7014,15 @@ function kartSec(id){
        not st.session_state.get("_cl_fil_il_multi") and \
        not st.session_state.get("_cl_fil_ilce_multi") and \
        not st.session_state.get("_cl_fil_ozel_multi") and \
-       not st.session_state.get("_cl_fil_guncelleme_tarih_multi"):
+       not st.session_state.get("_cl_fil_guncelleme_tarih_multi") and \
+       not st.session_state.get("_cl_fil_rut_ara"):
         st.session_state["_toplam_aktif"] = True
 
     # Filtre uygula
     df_f = df.copy()
     # Toplam aktifse tüm filtreleri zorla sıfırla
     if st.session_state.get("_toplam_aktif", False):
-        ara_txt = ""; _asama_sec = []; _durum_sec = []; _il_sec = []; _ilce_sec = []; _tem_sec = []; filtre_seg = "Tümü"; _guncelleme_tarih_sec = []; _ozel_sec = []
+        ara_txt = ""; _asama_sec = []; _durum_sec = []; _il_sec = []; _ilce_sec = []; _tem_sec = []; filtre_seg = "Tümü"; _guncelleme_tarih_sec = []; _ozel_sec = []; _rut_ara = ""
         for _fk in ["_cl_fil_asama1","_cl_fil_asama2","_cl_fil_asama3","_cl_fil_sonuc"]:
             st.session_state.pop(_fk, None)
     # Aşamasız filtresi
@@ -7080,6 +7090,8 @@ function kartSec(id){
             df_f = df_f[df_f["il"].astype(str).isin(_il_sec)]
         if _ilce_sec:
             df_f = df_f[df_f["ilce"].astype(str).isin(_ilce_sec)]
+        if _rut_ara:
+            df_f = df_f[df_f.get("rut", pd.Series(dtype=str)).astype(str).str.contains(_rut_ara, case=False, na=False)]
         if _ozel_sec and "rakip_firma" in df_f.columns:
             df_f = df_f[df_f["rakip_firma"].astype(str).isin(_ozel_sec)]
         if _tem_sec:
@@ -7218,7 +7230,7 @@ function kartSec(id){
                        "muhtemelen arşivlenmiş/silinmiş ya da başka bir kullanıcı tarafından kaldırılmış. "
                        "Bu bir gösterim sınırı değil, o kayıtlar artık mevcut değil.")
 
-    _aktif_fil_sayisi = sum([bool(ara_txt),bool(_asama_sec),bool(_durum_sec),filtre_seg!="Tümü",bool(_il_sec),bool(_ilce_sec),bool(_tem_sec),bool(_guncelleme_tarih_sec),bool(_ozel_sec)])
+    _aktif_fil_sayisi = sum([bool(ara_txt),bool(_asama_sec),bool(_durum_sec),filtre_seg!="Tümü",bool(_il_sec),bool(_ilce_sec),bool(_tem_sec),bool(_guncelleme_tarih_sec),bool(_ozel_sec),bool(_rut_ara)])
     if secili_kart != "-- Müşteri Seçin --" and "[" in secili_kart:
         try:
             kart_id = int(secili_kart.split("]")[0].replace("[","").strip())
