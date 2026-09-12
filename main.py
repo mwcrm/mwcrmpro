@@ -4042,7 +4042,15 @@ def not_dialog(cari_id, firma_adi=""):
         _fy_sira_liste = [a.upper() for a in _IL_SUTUN_LISTESI[:-1]] + [a.upper() for a in _IL_DIGER_LISTESI]
 
         def _fy_sira_no(_giris):
-            return _fy_sira_liste.index(_giris[0]) if _giris[0] in _fy_sira_liste else 999
+            # ARTIK TAM EŞLEŞME değil — şehir metni "İSTANBUL ANADOLU" gibi
+            # ek kelimeler içerebileceğinden, bilinen il adı bu metnin
+            # İÇİNDE mi diye bakılır (sıralama için); GÖSTERİM metni
+            # (_giris[0]) hiç değiştirilmez.
+            _sehir_metni_fy = _giris[0]
+            for _i_fy, _il_fy in enumerate(_fy_sira_liste):
+                if _il_fy in _sehir_metni_fy:
+                    return _i_fy
+            return 999
 
         # ── Hizalı TABLO formatı — en uzun değere göre tüm sütunlar aynı hizada,
         # şehir grupları arasında ayraç çizgisi.
@@ -4101,15 +4109,34 @@ def not_dialog(cari_id, firma_adi=""):
                     _s_norm = _fy_norm(_s)
                     if "SEHIRICI" in _s_norm:
                         _s_norm = _s_norm.replace("SEHIRICI", "ISTANBUL")
-                    # Şehir bul
+                    # Şehir bul — TESPİT için bilinen il listesi kullanılır,
+                    # ama GÖSTERİM için satırın kendi ham metni (kullanıcının
+                    # birebir yazdığı gibi — "ANADOLU"/"VARUPA" gibi ek
+                    # kelimeler dahil) korunur. Bilinen ana il ismine asla
+                    # İNDİRGENMEZ — kullanıcı ne yazdıysa o gösterilir.
                     _sehir_bulundu = None
                     for _il_norm_fy, _il_ad_fy in _fy_il_norm_map.items():
                         if _il_norm_fy in _s_norm:
                             _sehir_bulundu = _il_ad_fy
                             break
                     if _sehir_bulundu:
-                        _fy_son_sehir = _sehir_bulundu
-                    _sehir = _sehir_bulundu or _fy_son_sehir
+                        if "\t" in _s:
+                            _sehir_ham_fy = _s.split("\t")[0].strip()
+                        else:
+                            _m_sehir_ham_fy = _fy_re.match(r"^(\D+)", _s)
+                            _sehir_ham_fy = _m_sehir_ham_fy.group(1).strip() if _m_sehir_ham_fy else ""
+                        _sehir_ham_fy_norm = _fy_norm(_sehir_ham_fy)
+                        # KULLANICI İSTEĞİ: "ANADOLU"/"AVRUPA" (Avrupa yakası)
+                        # gibi İstanbul'un yaka bilgisi görülürse, sadece
+                        # düz "İSTANBUL" yazılır — yaka bilgisi metne
+                        # eklenmez. Diğer tüm iller için ham metin (yazıldığı
+                        # gibi) korunmaya devam eder.
+                        if _sehir_bulundu == "İSTANBUL" and (
+                                "ANADOLU" in _sehir_ham_fy_norm or "AVRUPA" in _sehir_ham_fy_norm or "VARUPA" in _sehir_ham_fy_norm):
+                            _fy_son_sehir = "İSTANBUL"
+                        else:
+                            _fy_son_sehir = _tr_buyuk(_sehir_ham_fy) if _sehir_ham_fy else _sehir_bulundu
+                    _sehir = _fy_son_sehir
                     if not _sehir:
                         continue  # bu satırda ve öncesinde hiç şehir yoksa atla (muhtemelen başlık satırı)
                     # Sayıları bul — ARTIK ondalık olup olmamasına bakılmaz:
@@ -4122,12 +4149,15 @@ def not_dialog(cari_id, firma_adi=""):
                         continue  # hem desi hem birim fiyat yoksa (örn. sadece şehir adı yazılan satır) atla
                     try:
                         _desi = int(round(float(_tum_sayi_m[0].replace(",", "."))))
-                        _birim_fiyat = float(_tum_sayi_m[1].replace(",", "."))
+                        _ikinci_sayi = float(_tum_sayi_m[1].replace(",", "."))
                     except Exception:
                         continue
-                    _toplam = round(_desi * _birim_fiyat, 2)
+                    # KULLANICI İSTEĞİ (2026-09): ÇARPMA YAPILMAZ — TOPLAM,
+                    # satırdaki İKİNCİ sayının KENDİSİDİR (yazdığın veri
+                    # dışında, hesaplanmış/uydurma bir tutar üretilmez).
+                    _toplam = round(_ikinci_sayi, 2)
                     _tip = "KOLİ" if _desi <= 100 else "PALET"
-                    _fy_yeni_girisler.append((_sehir, _tip, _desi, _birim_fiyat, _toplam))
+                    _fy_yeni_girisler.append((_sehir, _tip, _desi, _ikinci_sayi, _toplam))
 
                 if not _fy_yeni_girisler:
                     st.warning("Yazdığın metinde tanınan bir il ismi + desi + birim fiyat bulunamadı.")
