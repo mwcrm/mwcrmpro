@@ -14512,6 +14512,34 @@ elif aktif == "kargolar":
                     unsafe_allow_html=True
                 )
 
+        # ── DIŞ NAKLİYE / MÜŞTERİ TUTARI / KAR-ZARAR ÖZETİ — kullanıcı isteği:
+        # tek müşteri ya da tüm müşteriler görünümü fark etmeksizin, filtrede
+        # o an görünen kayıtlar üzerinden toplam Dış Nakliye Tutarı, toplam
+        # Müşteri Tutarı ve aradaki Kar/Zarar (+ Müşteri Tutarı'na göre yüzdesi)
+        # gösterilir. Üstteki İl/Toplam Yekün özeti KALDIRILMADI, bunun yanına
+        # ek olarak eklendi.
+        if len(_kl_df) > 0:
+            _kzo_dn_toplam = float(pd.to_numeric(_kl_df.get("dis_nakliye_tutar", 0), errors="coerce").fillna(0).sum())
+            _kzo_mt_toplam = float(pd.to_numeric(_kl_df.get("musteri_tutar", 0), errors="coerce").fillna(0).sum())
+            _kzo_kar = _kzo_mt_toplam - _kzo_dn_toplam
+            _kzo_yuzde = (_kzo_kar / _kzo_mt_toplam * 100) if _kzo_mt_toplam else 0.0
+            _kzo_renk_kenar = "#8fce9b" if _kzo_kar >= 0 else "#e5a3a3"
+            _kzo_renk_zemin = "#e9f7ec" if _kzo_kar >= 0 else "#fbeaea"
+            _kzo_etiket = "Kar" if _kzo_kar >= 0 else "Zarar"
+            _kzo_ikon = "📈" if _kzo_kar >= 0 else "📉"
+            _kzo_yuzde_str = f"{abs(_kzo_yuzde):.1f}".replace(".", ",")
+            st.markdown(
+                f"<div style='display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:0px 2px 14px 2px;font-size:11px;'>"
+                f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;'>"
+                f"🚚 <b>Dış Nakliye Tutarı Toplamı: {_kg_tr_format(_kzo_dn_toplam)} ₺</b></span>"
+                f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border:1px solid #c9d3e0;border-radius:6px;background:#eef1f5;'>"
+                f"👤 <b>Müşteri Tutarı Toplamı: {_kg_tr_format(_kzo_mt_toplam)} ₺</b></span>"
+                f"<span style='display:inline-block;white-space:nowrap;padding:3px 8px;border:1px solid {_kzo_renk_kenar};border-radius:6px;background:{_kzo_renk_zemin};'>"
+                f"{_kzo_ikon} <b>{_kzo_etiket}: {_kg_tr_format(abs(_kzo_kar))} ₺ (%{_kzo_yuzde_str})</b></span>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
         # ── EXCEL İNDİR — tek sayfalık, bölünmemiş tam liste. Buton satırdaki
         # rezerve edilmiş kutunun İÇİNE konur (yukarıda "_kl_excel_indir_kutu").
         _kl_excel_buf = io.BytesIO()
