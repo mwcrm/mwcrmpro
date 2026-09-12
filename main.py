@@ -292,24 +292,37 @@ def _kg_kayitlari_yukle(_anahtar):
     return []
 
 
+# ── KRİTİK GÜVENLİK SİNYALİ ─────────────────────────────────────────────────
+# "Tam listeyi yükle → değiştir → tamamını üzerine yaz" işlemlerinde, okuma
+# BAŞARISIZ olduğunda (ağ sorunu, geçici bağlantı kopması vb.) ASLA [] (boş)
+# döndürülmez — çünkü bu, "veri gerçekten yok" ile "şu an okunamadı" ayrımını
+# kaybettirip, üzerine yazma sırasında GERÇEK VERİYİ SİLİYORDU (109 kargo
+# kaydının 102'ye, yeni eklenen 3 tedarikçinin 0'a inmesinin kök nedeni buydu).
+# Bu sinyal döndüğünde çağıran taraf İŞLEMİ İPTAL ETMELİ, boşmuş gibi devam
+# ETMEMELİ.
+_OKUMA_BASARISIZ = object()
+
+
 def _kg_kayitlari_yukle_taze(_anahtar):
     """_kg_kayitlari_yukle ile AYNI okuma, ama ÖNBELLEKSİZ — doğrudan
     Supabase'den okur. GÜVENLİK: 'tam listeyi yükle → bir kısmını değiştir →
     TAMAMINI üzerine yaz' işlemlerinde (Kaydet/Sil/Geri Al/Kalıcı Sil) artık
-    HEP bu kullanılıyor — çünkü önbellek (30sn) bayatsa, az önce (başka bir
-    ekrandan) eklenmiş bir kayıt bu listede YOK sayılıp üzerine yazılınca
-    sessizce kaybolabiliyordu. Bu riski tamamen ortadan kaldırır."""
+    HEP bu kullanılıyor. Okuma BAŞARISIZ olursa (bağlantı yok / hata) _OKUMA_BASARISIZ
+    döner — [] DÖNMEZ, çünkü çağıran taraf bunu 'kayıt yok' sanıp üzerine
+    yazarsa VERİ KAYBI olur. Kayıt gerçekten yoksa (sorgu başarılı, satır yok)
+    boş liste [] döner — bu GERÇEK boşluktur, güvenlidir."""
     try:
         _sb_kgt = get_sb_client()
-        if _sb_kgt:
-            _r_kgt = _sb_kgt.table("kullanici_tercih").select("deger").eq(
-                "kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
-            if _r_kgt.data:
-                import json as _kgjt
-                return _kgjt.loads(_r_kgt.data[0]["deger"])
+        if not _sb_kgt:
+            return _OKUMA_BASARISIZ
+        _r_kgt = _sb_kgt.table("kullanici_tercih").select("deger").eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
+        if _r_kgt.data:
+            import json as _kgjt
+            return _kgjt.loads(_r_kgt.data[0]["deger"])
+        return []
     except Exception:
-        pass
-    return []
+        return _OKUMA_BASARISIZ
 
 def _kg_kayitlari_kaydet(_anahtar, _liste):
     try:
@@ -2751,19 +2764,25 @@ def _dis_nakliye_tasiyici_kaydet(liste):
 # NOT: Kargo kaydından öğrenilen ders gereği (bkz. dosya başındaki kritik uyarı)
 # bu fonksiyonlar ÖNBELLEKSİZ — her zaman doğrudan Supabase'den okur/yazar.
 _TEDARIKCI_ANAHTAR = "tedarikciler_listesi_v2"
+_TEDARIKCI_MIGRASYON_ANAHTARI = "tedarikciler_migrasyon_yapildi_v2"
 
 
-def _tedarikci_yukle_ham():
+def _tedarikci_yukle_ham_guvenli():
+    """Supabase'den DOĞRUDAN okur. BAŞARISIZ olursa (bağlantı/hata) _OKUMA_BASARISIZ
+    döner — ASLA sessizce boş liste dönüp 'kayıt yokmuş gibi' davranmaz. Bu
+    ayrımın kaybolması, yeni eklenen tedarikçilerin geçici bir okuma hatası
+    yüzünden eski (migrasyon) listesiyle EZİLİP kaybolmasına yol açmıştı."""
     try:
         _sb_td = get_sb_client()
-        if _sb_td:
-            _r_td = _sb_td.table("kullanici_tercih").select("deger").eq(
-                "kullanici", "__liste_ui__").eq("anahtar", _TEDARIKCI_ANAHTAR).execute()
-            if _r_td.data:
-                return json.loads(_r_td.data[0]["deger"])
+        if not _sb_td:
+            return _OKUMA_BASARISIZ
+        _r_td = _sb_td.table("kullanici_tercih").select("deger").eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _TEDARIKCI_ANAHTAR).execute()
+        if _r_td.data:
+            return json.loads(_r_td.data[0]["deger"])
+        return []  # gerçekten yok (sorgu başarılı, satır yok) — güvenli boşluk
     except Exception:
-        pass
-    return None  # None = bu anahtar hiç oluşturulmamış (eski listeden taşıma denenir)
+        return _OKUMA_BASARISIZ
 
 
 def _tedarikci_kaydet(liste):
@@ -2782,30 +2801,43 @@ def _tedarikci_kaydet(liste):
     return False
 
 
-def _tedarikci_yukle():
-    """Tedarikçi listesini döndürür. İlk kullanımda, eski 'Taşıyıcı' listesinden
-    (dis_nakliye_tasiyicilar) otomatik bir kerelik TAŞIMA yapar — hiçbir eski
-    kayıt kaybolmaz, yeni (zengin alanlı) şemaya dönüştürülüp saklanır."""
-    _td_liste = _tedarikci_yukle_ham()
-    if _td_liste is None:
-        _td_eski = _dis_nakliye_tasiyici_yukle()
-        _td_liste = []
-        for _e in (_td_eski or []):
-            if isinstance(_e, dict):
-                _td_liste.append({
-                    "tarih": "", "firma_adi": _tr_buyuk(_e.get("tasiyici", "")), "gsm": _e.get("yetkili_tel", ""),
-                    "sabit_tel": "", "email": "", "adres": "", "ilce": "", "il": "",
-                    "yuk_aciklamasi": "", "tur": "", "adet": 0, "tutar": 0.0,
-                    "yetkili": _e.get("yetkili", ""), "silindi": False,
-                })
-            elif isinstance(_e, str) and _e.strip():
-                _td_liste.append({
-                    "tarih": "", "firma_adi": _tr_buyuk(_e), "gsm": "", "sabit_tel": "", "email": "",
-                    "adres": "", "ilce": "", "il": "", "yuk_aciklamasi": "", "tur": "", "adet": 0, "tutar": 0.0,
-                    "yetkili": "", "silindi": False,
-                })
-        _tedarikci_kaydet(_td_liste)  # boş bile olsa anahtarı oluştur, bir daha taşıma denemesin
-    return _td_liste
+def _tedarikci_migrasyon_yapildi_mi():
+    """Eski taşıyıcı listesinden migrasyonun daha önce KESİNLİKLE yapıldığını
+    gösteren AYRI bir işaret. Bu sayede geçici bir okuma hatası 'hiç migrasyon
+    yapılmamış' sanılıp tekrar migrasyon (ve üzerine yazma) tetiklemez —
+    yaşanan veri kaybının kök nedeni tam olarak buydu."""
+    try:
+        _sb_tdm = get_sb_client()
+        if _sb_tdm:
+            _r_tdm = _sb_tdm.table("kullanici_tercih").select("deger").eq(
+                "kullanici", "__liste_ui__").eq("anahtar", _TEDARIKCI_MIGRASYON_ANAHTARI).execute()
+            return bool(_r_tdm.data)
+    except Exception:
+        pass
+    return False
+
+
+def _tedarikci_migrasyon_isaretle():
+    try:
+        _sb_tdm2 = get_sb_client()
+        if _sb_tdm2:
+            _sb_tdm2.table("kullanici_tercih").upsert({
+                "kullanici": "__liste_ui__", "anahtar": _TEDARIKCI_MIGRASYON_ANAHTARI, "deger": "1"
+            }, on_conflict="kullanici,anahtar").execute()
+    except Exception:
+        pass
+
+
+def _tedarikci_yukle_goster():
+    """SADECE GÖRÜNTÜLEME için (Kargolar'daki Dış Nakliye Firma açılır listesi,
+    başka sayfalardan hızlı bakış vb.) — okuma başarısız olursa (bağlantı
+    sorunu) HİÇBİR ŞEY YAZMADAN boş liste döner, sessizce devam eder. Migrasyon
+    SADECE Tedarikçi sayfasının kendisinde, açıkça ve güvenlik kontrolleriyle
+    yapılır — burada ASLA bir yazma tetiklenmez."""
+    _sonuc = _tedarikci_yukle_ham_guvenli()
+    if _sonuc is _OKUMA_BASARISIZ:
+        return []
+    return _sonuc
 
 def _dis_nakliye_musteri_bilgisi(cari_id):
     """Seçilen müşterinin cari kartından Gönderen bloğu için otomatik bilgileri çeker."""
@@ -3176,7 +3208,7 @@ def not_dialog(cari_id, firma_adi=""):
         _kg_il_opts = ["-- İl seçilir --"] + [_tr_buyuk(a) for a in (_IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI)]
         try:
             _kg_tasiyici_opts = ["-- Seç veya elle yaz --"] + sorted(set(
-                _t.get("firma_adi", "") for _t in _tedarikci_yukle() if not _t.get("silindi") and _t.get("firma_adi", "").strip()))
+                _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and _t.get("firma_adi", "").strip()))
         except Exception:
             _kg_tasiyici_opts = ["-- Seç veya elle yaz --"]
         # Bu iller "yakın/yerel" sayılır — Alıcı İl bunlardan biriyse Dış Nakliye
@@ -3401,7 +3433,7 @@ def not_dialog(cari_id, firma_adi=""):
             # liste — mevcut hücrede zaten yazılı olan (listede olmayan) bir
             # değer varsa o da seçenekler arasına eklenir, kaybolmasın diye.
             _kg_dnf_opts = sorted(set(
-                [_t.get("firma_adi", "") for _t in _tedarikci_yukle() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()]
+                [_t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()]
                 + ([str(_v) for _v in _kg_df["Dış Nakliye Firma"].dropna().unique().tolist() if str(_v).strip()] if "Dış Nakliye Firma" in _kg_df.columns else [])
             ))
             for _kg_kol_ad in _kg_df.columns:
@@ -3470,15 +3502,19 @@ def not_dialog(cari_id, firma_adi=""):
                     # olabilecek) kopyadan değil, tam bu an TAZE çekiyoruz —
                     # yoksa arada başka bir yerden eklenmiş bir kayıt burada
                     # sessizce kaybolabilirdi.
-                    _kg_silinmis_taze = [_k for _k in _kg_kayitlari_yukle_taze(_kg_anahtar) if _k.get("silindi")]
-                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste + _kg_silinmis_taze)
-                    _kg_kayitlari_yukle.clear()
-                    _kg_yeni_toplam = sum(_kg_efektif_tutar(_k) for _k in _kg_yeni_liste)
-                    _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam - _kg_eski_toplam)
-                    st.session_state[_kg_tumu_secili_anahtari] = False
-                    st.session_state[_kg_ver_anahtari] += 1
-                    st.toast("✅ Kargo kayıtları güncellendi", icon="🚚")
-                    st.rerun()
+                    _kg_taze_sonuc = _kg_kayitlari_yukle_taze(_kg_anahtar)
+                    if _kg_taze_sonuc is _OKUMA_BASARISIZ:
+                        st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için hiçbir şey kaydedilmedi. Lütfen tekrar dene.")
+                    else:
+                        _kg_silinmis_taze = [_k for _k in _kg_taze_sonuc if _k.get("silindi")]
+                        _kg_kayitlari_kaydet(_kg_anahtar, _kg_yeni_liste + _kg_silinmis_taze)
+                        _kg_kayitlari_yukle.clear()
+                        _kg_yeni_toplam = sum(_kg_efektif_tutar(_k) for _k in _kg_yeni_liste)
+                        _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam - _kg_eski_toplam)
+                        st.session_state[_kg_tumu_secili_anahtari] = False
+                        st.session_state[_kg_ver_anahtari] += 1
+                        st.toast("✅ Kargo kayıtları güncellendi", icon="🚚")
+                        st.rerun()
             with _kgb2:
                 _kg_secili_sayi = int(_kg_duzenlenen["Seç"].sum()) if "Seç" in _kg_duzenlenen.columns else 0
                 if st.button(f"🗑️ Seçili {_kg_secili_sayi} Kaydı Sil", key=f"kg_sil_btn_{cari_id}", use_container_width=True, disabled=_kg_secili_sayi == 0):
@@ -3498,15 +3534,19 @@ def not_dialog(cari_id, firma_adi=""):
                             _kg_kayit2["silindi"] = True
                             _kg_kayit2["silinme_tarihi"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                         _kg_kalanlar.append(_kg_kayit2)
-                    _kg_silinmis_taze2 = [_k for _k in _kg_kayitlari_yukle_taze(_kg_anahtar) if _k.get("silindi")]
-                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_kalanlar + _kg_silinmis_taze2)
-                    _kg_kayitlari_yukle.clear()
-                    _kg_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kg_kalanlar if not _k.get("silindi"))
-                    _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam2 - _kg_eski_toplam2)
-                    st.session_state[_kg_tumu_secili_anahtari] = False
-                    st.session_state[_kg_ver_anahtari] += 1
-                    st.toast(f"🗑️ {_kg_secili_sayi} kayıt silindi — 'Kargolar' sayfasındaki '🗑️ Silinenler'den geri alabilirsin", icon="🗑️")
-                    st.rerun()
+                    _kg_taze_sonuc2 = _kg_kayitlari_yukle_taze(_kg_anahtar)
+                    if _kg_taze_sonuc2 is _OKUMA_BASARISIZ:
+                        st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için hiçbir şey silinmedi. Lütfen tekrar dene.")
+                    else:
+                        _kg_silinmis_taze2 = [_k for _k in _kg_taze_sonuc2 if _k.get("silindi")]
+                        _kg_kayitlari_kaydet(_kg_anahtar, _kg_kalanlar + _kg_silinmis_taze2)
+                        _kg_kayitlari_yukle.clear()
+                        _kg_yeni_toplam2 = sum(_kg_efektif_tutar(_k) for _k in _kg_kalanlar if not _k.get("silindi"))
+                        _cari_gerceklesen_ciro_ekle(cari_id, _kg_yeni_toplam2 - _kg_eski_toplam2)
+                        st.session_state[_kg_tumu_secili_anahtari] = False
+                        st.session_state[_kg_ver_anahtari] += 1
+                        st.toast(f"🗑️ {_kg_secili_sayi} kayıt silindi — 'Kargolar' sayfasındaki '🗑️ Silinenler'den geri alabilirsin", icon="🗑️")
+                        st.rerun()
         else:
             st.caption("Bu müşteri için henüz kargo kaydı yok.")
     with _tab_teklif:
@@ -3826,7 +3866,7 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
     _kgd_il_opts = ["-- İl seçilir --"] + [_tr_buyuk(a) for a in (_IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI)]
     try:
         _kgd_tasiyici_opts = ["-- Seç veya elle yaz --"] + sorted(set(
-            _t.get("firma_adi", "") for _t in _tedarikci_yukle() if not _t.get("silindi") and _t.get("firma_adi", "").strip()))
+            _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and _t.get("firma_adi", "").strip()))
     except Exception:
         _kgd_tasiyici_opts = ["-- Seç veya elle yaz --"]
     _KGD_YEREL_ILLER = [_tr_buyuk(a) for a in ["İzmir", "Bursa", "Kocaeli", "Tekirdağ", "İstanbul", "Manisa"]]
@@ -3970,13 +4010,17 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
 
             if _kgd_hedef_cari_id == int(cari_id):
                 # ── AYNI MÜŞTERİ — yerinde güncelle (satir_no'nun üzerine yaz).
-                _kgd_liste_fresh = list(_kg_kayitlari_yukle_taze(_kgd_anahtar))
-                if satir_no >= len(_kgd_liste_fresh):
-                    st.error("Bu kayıt kaydedilirken bulunamadı, başka bir yerden silinmiş olabilir.")
+                _kgd_taze_sonuc = _kg_kayitlari_yukle_taze(_kgd_anahtar)
+                if _kgd_taze_sonuc is _OKUMA_BASARISIZ:
+                    st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için hiçbir şey kaydedilmedi. Lütfen tekrar dene.")
                 else:
-                    _kgd_eski_tutar = _kg_efektif_tutar(_kgd_liste_fresh[satir_no])
-                    _kgd_liste_fresh[satir_no] = _kgd_guncel_kayit
-                    _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_liste_fresh)
+                    _kgd_liste_fresh = list(_kgd_taze_sonuc)
+                    if satir_no >= len(_kgd_liste_fresh):
+                        st.error("Bu kayıt kaydedilirken bulunamadı, başka bir yerden silinmiş olabilir.")
+                    else:
+                        _kgd_eski_tutar = _kg_efektif_tutar(_kgd_liste_fresh[satir_no])
+                        _kgd_liste_fresh[satir_no] = _kgd_guncel_kayit
+                        _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_liste_fresh)
                     _kg_kayitlari_yukle.clear()
                     # NOT: _kargolar_tumunu_yukle Kargolar sayfasının kendi İÇİNDE
                     # tanımlı yerel bir fonksiyon, buradan (ayrı bir dialog
@@ -3996,28 +4040,36 @@ def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
                 # ── FARKLI MÜŞTERİ SEÇİLDİ — kayıt TAŞINIYOR: eski müşteriden
                 # silinip yeni müşteriye (güncel haliyle) ekleniyor. Gerçekleşen
                 # ciro her iki müşteride de buna göre düzeltiliyor.
-                _kgd_eski_liste = list(_kg_kayitlari_yukle_taze(_kgd_anahtar))
-                if satir_no >= len(_kgd_eski_liste):
-                    st.error("Bu kayıt taşınırken bulunamadı, başka bir yerden silinmiş olabilir.")
+                _kgd_eski_sonuc = _kg_kayitlari_yukle_taze(_kgd_anahtar)
+                if _kgd_eski_sonuc is _OKUMA_BASARISIZ:
+                    st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için taşıma yapılmadı. Lütfen tekrar dene.")
                 else:
-                    _kgd_eski_tutar = _kg_efektif_tutar(_kgd_eski_liste[satir_no])
-                    _kgd_eski_liste_temiz = [_k for _i2, _k in enumerate(_kgd_eski_liste) if _i2 != satir_no]
-                    _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_eski_liste_temiz)
-                    _kgd_hedef_anahtar = f"_kargo_kayitlari_{_kgd_hedef_cari_id}"
-                    _kgd_hedef_liste = list(_kg_kayitlari_yukle_taze(_kgd_hedef_anahtar))
-                    _kgd_hedef_liste.append(_kgd_guncel_kayit)
-                    _kg_kayitlari_kaydet(_kgd_hedef_anahtar, _kgd_hedef_liste)
-                    _kg_kayitlari_yukle.clear()
-                    st.cache_data.clear()
-                    _cari_gerceklesen_ciro_ekle(cari_id, -_kgd_eski_tutar)
-                    _cari_gerceklesen_ciro_ekle(_kgd_hedef_cari_id, _kgd_yeni_tutar)
-                    if _kg_alici and _kg_alici_il_deger:
-                        _kgd_hafiza_guncel = dict(_kgd_manuel_alici_hafiza)
-                        _kgd_hafiza_guncel[_tr_buyuk(_kg_alici)] = _tr_buyuk(_kg_alici_il_deger)
-                        _kg_manuel_alici_kaydet(_kgd_hafiza_guncel)
-                        _kg_manuel_alici_yukle.clear()
-                    st.toast(f"✅ Kayıt '{_kgd_musteri_secili_firma}' müşterisine taşındı ve güncellendi", icon="🚚")
-                    st.rerun()
+                    _kgd_eski_liste = list(_kgd_eski_sonuc)
+                    if satir_no >= len(_kgd_eski_liste):
+                        st.error("Bu kayıt taşınırken bulunamadı, başka bir yerden silinmiş olabilir.")
+                    else:
+                        _kgd_hedef_anahtar = f"_kargo_kayitlari_{_kgd_hedef_cari_id}"
+                        _kgd_hedef_sonuc = _kg_kayitlari_yukle_taze(_kgd_hedef_anahtar)
+                        if _kgd_hedef_sonuc is _OKUMA_BASARISIZ:
+                            st.error("⚠️ Hedef müşterinin verisine şu an ulaşılamadı — güvenlik için taşıma yapılmadı. Lütfen tekrar dene.")
+                        else:
+                            _kgd_eski_tutar = _kg_efektif_tutar(_kgd_eski_liste[satir_no])
+                            _kgd_eski_liste_temiz = [_k for _i2, _k in enumerate(_kgd_eski_liste) if _i2 != satir_no]
+                            _kg_kayitlari_kaydet(_kgd_anahtar, _kgd_eski_liste_temiz)
+                            _kgd_hedef_liste = list(_kgd_hedef_sonuc)
+                            _kgd_hedef_liste.append(_kgd_guncel_kayit)
+                            _kg_kayitlari_kaydet(_kgd_hedef_anahtar, _kgd_hedef_liste)
+                            _kg_kayitlari_yukle.clear()
+                            st.cache_data.clear()
+                            _cari_gerceklesen_ciro_ekle(cari_id, -_kgd_eski_tutar)
+                            _cari_gerceklesen_ciro_ekle(_kgd_hedef_cari_id, _kgd_yeni_tutar)
+                            if _kg_alici and _kg_alici_il_deger:
+                                _kgd_hafiza_guncel = dict(_kgd_manuel_alici_hafiza)
+                                _kgd_hafiza_guncel[_tr_buyuk(_kg_alici)] = _tr_buyuk(_kg_alici_il_deger)
+                                _kg_manuel_alici_kaydet(_kgd_hafiza_guncel)
+                                _kg_manuel_alici_yukle.clear()
+                            st.toast(f"✅ Kayıt '{_kgd_musteri_secili_firma}' müşterisine taşındı ve güncellendi", icon="🚚")
+                            st.rerun()
 
 
 def not_paneli(cari_id, firma_adi="", key_prefix="np"):
@@ -14400,14 +14452,21 @@ elif aktif == "kargolar":
                             _kg_kar_zarar_hesapla(_yr_kayit)
                             _kl_yeni_gruplar.setdefault(_yr_cid, []).append(_yr_kayit)
                             _kl_yuklenen_sayac += 1
+                        _kl_taze_basarisiz_musteriler = []
                         for _yr_cid2, _yr_yeni_kayitlar in _kl_yeni_gruplar.items():
-                            _yr_mevcut = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_yr_cid2}"))
+                            _yr_taze_sonuc = _kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_yr_cid2}")
+                            if _yr_taze_sonuc is _OKUMA_BASARISIZ:
+                                _kl_taze_basarisiz_musteriler.append(_kl_musteri_map.get(_yr_cid2, str(_yr_cid2)))
+                                continue
+                            _yr_mevcut = list(_yr_taze_sonuc)
                             _yr_mevcut.extend(_yr_yeni_kayitlar)
                             _kargolar_yaz(_yr_cid2, _yr_mevcut)
                             _yr_eklenen_tutar = sum(_kg_efektif_tutar(_k) for _k in _yr_yeni_kayitlar)
                             _cari_gerceklesen_ciro_ekle(_yr_cid2, _yr_eklenen_tutar)
                         _kargolar_tumunu_yukle.clear()
                         _kg_kayitlari_yukle.clear()
+                        if _kl_taze_basarisiz_musteriler:
+                            st.error(f"⚠️ Şu müşteriler için veritabanına ulaşılamadı, GÜVENLİK İÇİN o müşterilerin kayıtları yüklenmedi (diğerleri yüklendi): {', '.join(_kl_taze_basarisiz_musteriler)}. Lütfen bu müşteriler için tekrar dene.")
                         if _kl_eslesmeyen:
                             st.warning(f"⚠️ {len(set(_kl_eslesmeyen))} farklı müşteri adı sistemde bulunamadı (eklenmedi — hepsi): {', '.join(sorted(set(_kl_eslesmeyen)))}")
                         st.toast(f"✅ {_kl_yuklenen_sayac} kayıt yüklendi", icon="📤")
@@ -14480,7 +14539,7 @@ elif aktif == "kargolar":
             "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
         }
         _kl_dnf_opts = sorted(set(
-            [_t.get("firma_adi", "") for _t in _tedarikci_yukle() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()]
+            [_t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()]
             + ([str(_v) for _v in _kl_df_goster["Dış Nakliye Firma"].dropna().unique().tolist() if str(_v).strip()] if "Dış Nakliye Firma" in _kl_df_goster.columns else [])
         ))
         _kl_col_config = {"Seç": st.column_config.CheckboxColumn("Seç", default=False)}
@@ -14607,8 +14666,13 @@ elif aktif == "kargolar":
                     _kl_etkilenen_cid = set(int(x) for x in _kl_df["_cari_id"].unique())
                     _kl_tam_listeler = {}
                     _kl_eski_toplamlar = {}
+                    _kl_kaydet_basarisiz_musteriler = []
                     for _cid_yukle in _kl_etkilenen_cid:
-                        _kl_tam_listeler[_cid_yukle] = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle}"))
+                        _cid_taze_sonuc = _kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle}")
+                        if _cid_taze_sonuc is _OKUMA_BASARISIZ:
+                            _kl_kaydet_basarisiz_musteriler.append(_kl_musteri_map.get(_cid_yukle, str(_cid_yukle)))
+                            continue
+                        _kl_tam_listeler[_cid_yukle] = list(_cid_taze_sonuc)
                         _kl_eski_toplamlar[_cid_yukle] = sum(_kg_efektif_tutar(_k) for _k in _kl_tam_listeler[_cid_yukle])
                     # GÜVENLİK: Kaydet artık "Seç" işaretine bakmadan SADECE
                     # değerleri günceller — işaretli olsa bile SATIR SİLİNMEZ.
@@ -14618,6 +14682,8 @@ elif aktif == "kargolar":
                     # kaydı sessizce siliyordu — tehlikeliydi, düzeltildi.)
                     for _idx, _r in _kl_duzenlenen.iterrows():
                         _cid = int(_kl_df_goster.iloc[_idx]["_cari_id"])
+                        if _cid not in _kl_tam_listeler:
+                            continue  # bu müşterinin verisi taze okunamadı, GÜVENLİK için dokunulmuyor
                         _satir_no = int(_kl_df_goster.iloc[_idx]["_satir_no"])
                         if _satir_no >= len(_kl_tam_listeler[_cid]):
                             continue
@@ -14636,6 +14702,8 @@ elif aktif == "kargolar":
                         _cari_gerceklesen_ciro_ekle(_cid_kaydet, _kl_yeni_toplam - _kl_eski_toplamlar.get(_cid_kaydet, 0))
                     _kargolar_tumunu_yukle.clear()
                     _kg_kayitlari_yukle.clear()
+                    if _kl_kaydet_basarisiz_musteriler:
+                        st.error(f"⚠️ Şu müşterilerin verisine şu an ulaşılamadı, GÜVENLİK İÇİN onların değişiklikleri kaydedilmedi (diğerleri kaydedildi): {', '.join(_kl_kaydet_basarisiz_musteriler)}. Lütfen tekrar dene.")
                     st.session_state["_kl_tumu_secili_mod"] = False
                     st.session_state["_kl_editor_versiyon"] += 1
                     st.toast("✅ Kargo kayıtları güncellendi (filtre dışındaki kayıtlara dokunulmadı)", icon="🚚")
@@ -14647,8 +14715,13 @@ elif aktif == "kargolar":
                                               for _idx2, _r2 in _kl_duzenlenen.iterrows() if bool(_r2.get("Seç")))
                     _kl_tam_listeler2 = {}
                     _kl_eski_toplamlar2 = {}
+                    _kl_sil_basarisiz_musteriler = []
                     for _cid_yukle2 in _kl_etkilenen_cid2:
-                        _kl_tam_listeler2[_cid_yukle2] = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle2}"))
+                        _cid2_taze_sonuc = _kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle2}")
+                        if _cid2_taze_sonuc is _OKUMA_BASARISIZ:
+                            _kl_sil_basarisiz_musteriler.append(_kl_musteri_map.get(_cid_yukle2, str(_cid_yukle2)))
+                            continue
+                        _kl_tam_listeler2[_cid_yukle2] = list(_cid2_taze_sonuc)
                         _kl_eski_toplamlar2[_cid_yukle2] = sum(_kg_efektif_tutar(_k) for _k in _kl_tam_listeler2[_cid_yukle2])
                     # GÜVENLİK: YUMUŞAK SİLME — kayıt listeden ÇIKARILMIYOR,
                     # sadece "silindi" olarak işaretlenip normal görünümden
@@ -14667,6 +14740,8 @@ elif aktif == "kargolar":
                         _cari_gerceklesen_ciro_ekle(_cid_kaydet2, _kl_yeni_toplam2 - _kl_eski_toplamlar2.get(_cid_kaydet2, 0))
                     _kargolar_tumunu_yukle.clear()
                     _kg_kayitlari_yukle.clear()
+                    if _kl_sil_basarisiz_musteriler:
+                        st.error(f"⚠️ Şu müşterilerin verisine şu an ulaşılamadı, GÜVENLİK İÇİN onlardan hiçbir şey silinmedi: {', '.join(_kl_sil_basarisiz_musteriler)}. Lütfen tekrar dene.")
                     st.session_state["_kl_tumu_secili_mod"] = False
                     st.session_state["_kl_editor_versiyon"] += 1
                     st.toast(f"🗑️ {_kl_secili_sayi} kayıt silindi — '🗑️ Silinenler'den geri alabilirsin", icon="🗑️")
@@ -14681,8 +14756,13 @@ elif aktif == "kargolar":
                         _kl_etkilenen_cid3 = set(int(_kl_df_goster.iloc[_idx3]["_cari_id"])
                                                   for _idx3, _r3 in _kl_duzenlenen.iterrows() if bool(_r3.get("Seç")))
                         _kl_tam_listeler3 = {}
+                        _kl_geri_al_basarisiz_musteriler = []
                         for _cid_yukle3 in _kl_etkilenen_cid3:
-                            _kl_tam_listeler3[_cid_yukle3] = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle3}"))
+                            _cid3_taze_sonuc = _kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle3}")
+                            if _cid3_taze_sonuc is _OKUMA_BASARISIZ:
+                                _kl_geri_al_basarisiz_musteriler.append(_kl_musteri_map.get(_cid_yukle3, str(_cid_yukle3)))
+                                continue
+                            _kl_tam_listeler3[_cid_yukle3] = list(_cid3_taze_sonuc)
                         _kl_geri_alinan_tutar = {}
                         for _idx3, _r3 in _kl_duzenlenen.iterrows():
                             if not bool(_r3.get("Seç")):
@@ -14700,6 +14780,8 @@ elif aktif == "kargolar":
                                 _cari_gerceklesen_ciro_ekle(_cid_kaydet3, _kl_geri_alinan_tutar[_cid_kaydet3])
                         _kargolar_tumunu_yukle.clear()
                         _kg_kayitlari_yukle.clear()
+                        if _kl_geri_al_basarisiz_musteriler:
+                            st.error(f"⚠️ Şu müşterilerin verisine şu an ulaşılamadı, GÜVENLİK İÇİN onlar için geri alma yapılmadı: {', '.join(_kl_geri_al_basarisiz_musteriler)}. Lütfen tekrar dene.")
                         st.session_state["_kl_tumu_secili_mod"] = False
                         st.session_state["_kl_editor_versiyon"] += 1
                         st.toast("↩️ Seçili kayıtlar geri alındı", icon="↩️")
@@ -14712,8 +14794,13 @@ elif aktif == "kargolar":
                         _kl_etkilenen_cid4 = set(int(_kl_df_goster.iloc[_idx4]["_cari_id"])
                                                   for _idx4, _r4 in _kl_duzenlenen.iterrows() if bool(_r4.get("Seç")))
                         _kl_tam_listeler4 = {}
+                        _kl_kalici_basarisiz_musteriler = []
                         for _cid_yukle4 in _kl_etkilenen_cid4:
-                            _kl_tam_listeler4[_cid_yukle4] = list(_kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle4}"))
+                            _cid4_taze_sonuc = _kg_kayitlari_yukle_taze(f"_kargo_kayitlari_{_cid_yukle4}")
+                            if _cid4_taze_sonuc is _OKUMA_BASARISIZ:
+                                _kl_kalici_basarisiz_musteriler.append(_kl_musteri_map.get(_cid_yukle4, str(_cid_yukle4)))
+                                continue
+                            _kl_tam_listeler4[_cid_yukle4] = list(_cid4_taze_sonuc)
                         _kl_silinecek_satirlar = {}
                         for _idx4, _r4 in _kl_duzenlenen.iterrows():
                             if not bool(_r4.get("Seç")):
@@ -14727,6 +14814,8 @@ elif aktif == "kargolar":
                             _kargolar_yaz(_cid_kaydet4, _kl_liste_temiz4)
                         _kargolar_tumunu_yukle.clear()
                         _kg_kayitlari_yukle.clear()
+                        if _kl_kalici_basarisiz_musteriler:
+                            st.error(f"⚠️ Şu müşterilerin verisine şu an ulaşılamadı, GÜVENLİK İÇİN onlardan hiçbir şey kalıcı silinmedi: {', '.join(_kl_kalici_basarisiz_musteriler)}. Lütfen tekrar dene.")
                         st.session_state["_kl_tumu_secili_mod"] = False
                         st.session_state["_kl_editor_versiyon"] += 1
                         st.session_state["kargolar_kalici_sil_onay"] = False
@@ -14741,7 +14830,39 @@ elif aktif == "tedarikci":
     if "_td_editor_versiyon" not in st.session_state:
         st.session_state["_td_editor_versiyon"] = 0
     _td_silinenler_aktif = st.session_state.get("_td_silinenler_goster", False)
-    _td_tum = _tedarikci_yukle()
+
+    # GÜVENLİK: okuma başarısız olursa (bağlantı sorunu) sayfanın geri kalanını
+    # HİÇ render ETME — aksi halde "boşmuş" sanılıp yanlışlıkla migrasyon ya da
+    # kaydetme tetiklenip var olan veri EZİLEBİLİRDİ (yaşanan veri kaybı buydu).
+    _td_okuma_sonuc = _tedarikci_yukle_ham_guvenli()
+    if _td_okuma_sonuc is _OKUMA_BASARISIZ:
+        st.error("⚠️ Tedarikçi verisine şu an ulaşılamadı. Güvenlik için hiçbir şey değiştirilmedi/taşınmadı. Sayfayı yenileyip tekrar dene.")
+        st.stop()
+    elif not _td_okuma_sonuc and not _tedarikci_migrasyon_yapildi_mi():
+        # Migrasyon GERÇEKTEN hiç yapılmamış (hem liste boş HEM işaret yok) —
+        # bu durumda güvenle eski taşıyıcı listesinden bir kerelik taşınır.
+        _td_eski = _dis_nakliye_tasiyici_yukle()
+        _td_migrasyon_liste = []
+        for _e in (_td_eski or []):
+            if isinstance(_e, dict):
+                _td_migrasyon_liste.append({
+                    "tarih": "", "firma_adi": _tr_buyuk(_e.get("tasiyici", "")), "gsm": _e.get("yetkili_tel", ""),
+                    "sabit_tel": "", "email": "", "adres": "", "ilce": "", "il": "",
+                    "yuk_aciklamasi": "", "tur": "", "adet": 0, "tutar": 0.0,
+                    "yetkili": _e.get("yetkili", ""), "silindi": False,
+                })
+            elif isinstance(_e, str) and _e.strip():
+                _td_migrasyon_liste.append({
+                    "tarih": "", "firma_adi": _tr_buyuk(_e), "gsm": "", "sabit_tel": "", "email": "",
+                    "adres": "", "ilce": "", "il": "", "yuk_aciklamasi": "", "tur": "", "adet": 0, "tutar": 0.0,
+                    "yetkili": "", "silindi": False,
+                })
+        if _td_migrasyon_liste:
+            _tedarikci_kaydet(_td_migrasyon_liste)
+        _tedarikci_migrasyon_isaretle()  # bir daha ASLA tekrar denenmesin
+        _td_tum = _td_migrasyon_liste
+    else:
+        _td_tum = _td_okuma_sonuc
     _td_liste_goster = [t for t in _td_tum if bool(t.get("silindi")) == _td_silinenler_aktif]
 
     if not _td_silinenler_aktif:
@@ -14778,20 +14899,21 @@ elif aktif == "tedarikci":
                 if not _td_firma.strip():
                     st.error("⚠️ Firma Adı zorunlu.")
                 else:
-                    _td_tum_taze = _tedarikci_yukle_ham()
-                    if _td_tum_taze is None:
-                        _td_tum_taze = []
-                    _td_tum_taze.append({
-                        "tarih": str(_td_tarih), "firma_adi": _tr_buyuk(_td_firma), "yetkili": _tr_buyuk(_td_yetkili),
-                        "gsm": _td_gsm, "sabit_tel": _td_sabit, "email": _td_email,
-                        "il": (_td_il if _td_il != "-- İl seçilir --" else ""),
-                        "ilce": (_td_ilce if _td_ilce != "-- Önce il seç --" else ""),
-                        "adres": _tr_buyuk(_td_adres), "yuk_aciklamasi": _tr_buyuk(_td_yuk_aciklama),
-                        "tur": _tr_buyuk(_td_tur), "adet": _td_adet, "tutar": _td_tutar, "silindi": False,
-                    })
-                    _tedarikci_kaydet(_td_tum_taze)
-                    st.toast("✅ Tedarikçi eklendi", icon="🚛")
-                    st.rerun()
+                    _td_tum_taze = _tedarikci_yukle_ham_guvenli()
+                    if _td_tum_taze is _OKUMA_BASARISIZ:
+                        st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için kaydedilmedi. Lütfen tekrar dene.")
+                    else:
+                        _td_tum_taze.append({
+                            "tarih": str(_td_tarih), "firma_adi": _tr_buyuk(_td_firma), "yetkili": _tr_buyuk(_td_yetkili),
+                            "gsm": _td_gsm, "sabit_tel": _td_sabit, "email": _td_email,
+                            "il": (_td_il if _td_il != "-- İl seçilir --" else ""),
+                            "ilce": (_td_ilce if _td_ilce != "-- Önce il seç --" else ""),
+                            "adres": _tr_buyuk(_td_adres), "yuk_aciklamasi": _tr_buyuk(_td_yuk_aciklama),
+                            "tur": _tr_buyuk(_td_tur), "adet": _td_adet, "tutar": _td_tutar, "silindi": False,
+                        })
+                        _tedarikci_kaydet(_td_tum_taze)
+                        st.toast("✅ Tedarikçi eklendi", icon="🚛")
+                        st.rerun()
 
     if not _td_liste_goster:
         if _td_silinenler_aktif:
@@ -14815,71 +14937,83 @@ elif aktif == "tedarikci":
         _td_df = _td_df.rename(columns=_TD_ISIM)
         _td_df["Tutar"] = _td_df["Tutar"].map(_kg_tr_format)
 
+        # Butonlar tablonun ÜSTÜNDE görünsün diye önce boş bir kutu (container)
+        # ayrılıyor, düzenlenen tablo aşağıda oluşuyor, butonlar en son bu
+        # kutunun İÇİNE render ediliyor — ama DOM'da (ekranda) yeri en üstte kalıyor.
+        _td_btn_kutu = st.container()
+
         if st.session_state.get("_td_tumu_secili_mod", False):
             _td_df["Seç"] = True
         _td_editor_key = f"tedarikci_editor_{st.session_state['_td_editor_versiyon']}"
         _td_duzenlenen = st.data_editor(_td_df, use_container_width=True, hide_index=True, key=_td_editor_key)
 
-        _tdb1, _tdb2, _tdb3, _tdb4 = st.columns(4)
-        with _tdb1:
-            if st.button("☑️ Tümünü Seç", key="td_tumunu_sec_btn", use_container_width=True):
-                st.session_state["_td_tumu_secili_mod"] = True
-                st.session_state["_td_editor_versiyon"] += 1
-                st.rerun()
-        with _tdb2:
-            if st.button("⬜ Seçimi Temizle", key="td_secimi_temizle_btn", use_container_width=True):
-                st.session_state["_td_tumu_secili_mod"] = False
-                st.session_state["_td_editor_versiyon"] += 1
-                st.rerun()
-        with _tdb3:
-            if not _td_silinenler_aktif:
-                if st.button("💾 Değişiklikleri Kaydet", type="primary", key="td_kaydet_btn", use_container_width=True):
-                    _td_ters = {v: k for k, v in _TD_ISIM.items()}
-                    # GÜVENLİK: tam listeyi TAZE çek; sadece bu görünümdeki
-                    # (aktif/silinmiş) kayıtları güncelle, diğerlerine dokunma.
-                    _td_tam_taze = _tedarikci_yukle_ham() or []
-                    _td_goster_idx = [i for i, t in enumerate(_td_tam_taze) if bool(t.get("silindi")) == _td_silinenler_aktif]
-                    if len(_td_goster_idx) != len(_td_duzenlenen):
-                        st.error("⚠️ Liste arada değişmiş görünüyor, güvenlik için kaydetmedim — sayfayı yenileyip tekrar dene.")
-                    else:
-                        for _pos, _i in enumerate(_td_goster_idx):
-                            _r = _td_duzenlenen.iloc[_pos]
-                            _yeni_kayit = {}
-                            for _kol, _val in _r.items():
-                                if _kol == "Seç":
-                                    continue
-                                _yeni_kayit[_td_ters.get(_kol, _kol)] = _val
-                            _yeni_kayit["tutar"] = _kg_tr_parse(_yeni_kayit.get("tutar", 0))
-                            _yeni_kayit["silindi"] = _td_tam_taze[_i].get("silindi", False)
-                            _td_tam_taze[_i] = _yeni_kayit
-                        _tedarikci_kaydet(_td_tam_taze)
-                        st.session_state["_td_tumu_secili_mod"] = False
-                        st.session_state["_td_editor_versiyon"] += 1
-                        st.toast("✅ Tedarikçiler güncellendi", icon="🚛")
-                        st.rerun()
-        with _tdb4:
-            _td_secili_sayi = int(_td_duzenlenen["Seç"].sum()) if "Seç" in _td_duzenlenen.columns else 0
-            _td_buton_metni = f"↩️ Seçilenleri Geri Al ({_td_secili_sayi})" if _td_silinenler_aktif else f"🗑️ Seçili {_td_secili_sayi} Kaydı Sil"
-            if st.button(_td_buton_metni, key="td_sil_geri_al_btn", use_container_width=True, disabled=_td_secili_sayi == 0):
-                _td_tam_taze2 = _tedarikci_yukle_ham() or []
-                _td_goster_idx2 = [i for i, t in enumerate(_td_tam_taze2) if bool(t.get("silindi")) == _td_silinenler_aktif]
-                if len(_td_goster_idx2) != len(_td_duzenlenen):
-                    st.error("⚠️ Liste arada değişmiş görünüyor, güvenlik için işlemi yapmadım — sayfayı yenileyip tekrar dene.")
-                else:
-                    for _pos2, (_, _r2) in enumerate(_td_duzenlenen.iterrows()):
-                        if not bool(_r2.get("Seç")):
-                            continue
-                        _i2 = _td_goster_idx2[_pos2]
-                        _td_tam_taze2[_i2]["silindi"] = not _td_silinenler_aktif
-                        if not _td_silinenler_aktif:
-                            _td_tam_taze2[_i2]["silinme_tarihi"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                        else:
-                            _td_tam_taze2[_i2].pop("silinme_tarihi", None)
-                    _tedarikci_kaydet(_td_tam_taze2)
+        with _td_btn_kutu:
+            _tdb1, _tdb2, _tdb3, _tdb4 = st.columns(4)
+            with _tdb1:
+                if st.button("☑️ Tümünü Seç", key="td_tumunu_sec_btn", use_container_width=True):
+                    st.session_state["_td_tumu_secili_mod"] = True
+                    st.session_state["_td_editor_versiyon"] += 1
+                    st.rerun()
+            with _tdb2:
+                if st.button("⬜ Seçimi Temizle", key="td_secimi_temizle_btn", use_container_width=True):
                     st.session_state["_td_tumu_secili_mod"] = False
                     st.session_state["_td_editor_versiyon"] += 1
-                    st.toast("✅ İşlem tamamlandı", icon="🚛")
                     st.rerun()
+            with _tdb3:
+                if not _td_silinenler_aktif:
+                    if st.button("💾 Değişiklikleri Kaydet", type="primary", key="td_kaydet_btn", use_container_width=True):
+                        _td_ters = {v: k for k, v in _TD_ISIM.items()}
+                        # GÜVENLİK: tam listeyi TAZE çek; sadece bu görünümdeki
+                        # (aktif/silinmiş) kayıtları güncelle, diğerlerine dokunma.
+                        _td_tam_taze = _tedarikci_yukle_ham_guvenli()
+                        if _td_tam_taze is _OKUMA_BASARISIZ:
+                            st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için hiçbir şey kaydedilmedi. Lütfen tekrar dene.")
+                        else:
+                            _td_goster_idx = [i for i, t in enumerate(_td_tam_taze) if bool(t.get("silindi")) == _td_silinenler_aktif]
+                            if len(_td_goster_idx) != len(_td_duzenlenen):
+                                st.error("⚠️ Liste arada değişmiş görünüyor, güvenlik için kaydetmedim — sayfayı yenileyip tekrar dene.")
+                            else:
+                                for _pos, _i in enumerate(_td_goster_idx):
+                                    _r = _td_duzenlenen.iloc[_pos]
+                                    _yeni_kayit = {}
+                                    for _kol, _val in _r.items():
+                                        if _kol == "Seç":
+                                            continue
+                                        _yeni_kayit[_td_ters.get(_kol, _kol)] = _val
+                                    _yeni_kayit["tutar"] = _kg_tr_parse(_yeni_kayit.get("tutar", 0))
+                                    _yeni_kayit["silindi"] = _td_tam_taze[_i].get("silindi", False)
+                                    _td_tam_taze[_i] = _yeni_kayit
+                                _tedarikci_kaydet(_td_tam_taze)
+                                st.session_state["_td_tumu_secili_mod"] = False
+                                st.session_state["_td_editor_versiyon"] += 1
+                                st.toast("✅ Tedarikçiler güncellendi", icon="🚛")
+                                st.rerun()
+            with _tdb4:
+                _td_secili_sayi = int(_td_duzenlenen["Seç"].sum()) if "Seç" in _td_duzenlenen.columns else 0
+                _td_buton_metni = f"↩️ Seçilenleri Geri Al ({_td_secili_sayi})" if _td_silinenler_aktif else f"🗑️ Seçili {_td_secili_sayi} Kaydı Sil"
+                if st.button(_td_buton_metni, key="td_sil_geri_al_btn", use_container_width=True, disabled=_td_secili_sayi == 0):
+                    _td_tam_taze2 = _tedarikci_yukle_ham_guvenli()
+                    if _td_tam_taze2 is _OKUMA_BASARISIZ:
+                        st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için hiçbir işlem yapılmadı. Lütfen tekrar dene.")
+                    else:
+                        _td_goster_idx2 = [i for i, t in enumerate(_td_tam_taze2) if bool(t.get("silindi")) == _td_silinenler_aktif]
+                        if len(_td_goster_idx2) != len(_td_duzenlenen):
+                            st.error("⚠️ Liste arada değişmiş görünüyor, güvenlik için işlemi yapmadım — sayfayı yenileyip tekrar dene.")
+                        else:
+                            for _pos2, (_, _r2) in enumerate(_td_duzenlenen.iterrows()):
+                                if not bool(_r2.get("Seç")):
+                                    continue
+                                _i2 = _td_goster_idx2[_pos2]
+                                _td_tam_taze2[_i2]["silindi"] = not _td_silinenler_aktif
+                                if not _td_silinenler_aktif:
+                                    _td_tam_taze2[_i2]["silinme_tarihi"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                                else:
+                                    _td_tam_taze2[_i2].pop("silinme_tarihi", None)
+                            _tedarikci_kaydet(_td_tam_taze2)
+                            st.session_state["_td_tumu_secili_mod"] = False
+                            st.session_state["_td_editor_versiyon"] += 1
+                            st.toast("✅ İşlem tamamlandı", icon="🚛")
+                            st.rerun()
 
     st.divider()
     _td_silinen_sayi = sum(1 for t in _td_tum if t.get("silindi"))
