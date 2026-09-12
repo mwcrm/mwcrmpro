@@ -14991,6 +14991,86 @@ elif aktif == "tedarikci":
                         st.toast("✅ Tedarikçi eklendi", icon="🚛")
                         st.rerun()
 
+        # ── MANUEL TEK KAYIT DÜZENLEME — "Değişiklikleri Kaydet" (toplu tablo)
+        # bazı durumlarda satır eşleşmesi kayabiliyor diye kullanıcı talebiyle
+        # eklendi. Burada pozisyona GÜVENİLMİYOR: seçilen kaydın TAM içeriği
+        # taze listede birebir aranıp öyle güncelleniyor — sıra/uzunluk arada
+        # değişse bile doğru satır bulunur, yanlış satır asla ezilmez.
+        if _td_liste_goster:
+            with st.expander("✏️ Tedarikçiyi Tek Tek Düzenle (güvenli manuel düzeltme)"):
+                st.caption("Tablodaki toplu 'Değişiklikleri Kaydet' yerine, tek bir tedarikçiyi seçip burada güvenle güncelleyebilirsin.")
+                _td_secenekler = [f"{i+1}) {t.get('firma_adi','') or '(isimsiz)'} — {t.get('tarih','') or '-'}"
+                                   for i, t in enumerate(_td_liste_goster)]
+                _td_secili_pos = st.selectbox("Düzenlenecek tedarikçi", list(range(len(_td_secenekler))),
+                                               format_func=lambda i: _td_secenekler[i], key="td_duzenle_secim")
+                _td_secili_kayit = _td_liste_goster[_td_secili_pos]
+
+                st.markdown("**📋 Firma Bilgileri**")
+                with st.container(border=True):
+                    _tde1, _tde2, _tde3 = st.columns(3)
+                    _tde_firma = _tde1.text_input("Firma Adı", value=_td_secili_kayit.get("firma_adi", ""), key=f"td_duzenle_firma_{_td_secili_pos}")
+                    _tde_yetkili = _tde2.text_input("Yetkili", value=_td_secili_kayit.get("yetkili", ""), key=f"td_duzenle_yetkili_{_td_secili_pos}")
+                    _tde_tarih = _tde3.text_input("Tarih (YYYY-AA-GG)", value=str(_td_secili_kayit.get("tarih", "") or ""), key=f"td_duzenle_tarih_{_td_secili_pos}")
+                    _tde_gsm = _tde1.text_input("GSM", value=_td_secili_kayit.get("gsm", ""), key=f"td_duzenle_gsm_{_td_secili_pos}")
+                    _tde_sabit = _tde2.text_input("Sabit Tel", value=_td_secili_kayit.get("sabit_tel", ""), key=f"td_duzenle_sabit_{_td_secili_pos}")
+                    _tde_email = _tde3.text_input("Email", value=_td_secili_kayit.get("email", ""), key=f"td_duzenle_email_{_td_secili_pos}")
+
+                st.markdown("**📍 Adres**")
+                with st.container(border=True):
+                    _tdea1, _tdea2, _tdea3 = st.columns(3)
+                    _td_il_opts2 = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
+                    _tde_il_mevcut = _td_secili_kayit.get("il", "")
+                    _tde_il_idx = _td_il_opts2.index(_tde_il_mevcut) if _tde_il_mevcut in _td_il_opts2 else 0
+                    _tde_il = _tdea1.selectbox("İl", _td_il_opts2, index=_tde_il_idx, key=f"td_duzenle_il_{_td_secili_pos}")
+                    _tde_ilce_opts = _IL_ILCE_HARITASI.get(_tde_il, []) if _tde_il != "-- İl seçilir --" else []
+                    _tde_ilce_mevcut = _td_secili_kayit.get("ilce", "")
+                    _tde_ilce_liste = (["-- Önce il seç --"] if not _tde_ilce_opts else _tde_ilce_opts)
+                    _tde_ilce_idx = _tde_ilce_liste.index(_tde_ilce_mevcut) if _tde_ilce_mevcut in _tde_ilce_liste else 0
+                    _tde_ilce = _tdea2.selectbox("İlçe", _tde_ilce_liste, index=_tde_ilce_idx, key=f"td_duzenle_ilce_{_td_secili_pos}")
+                    _tde_adres = _tdea3.text_input("Adres", value=_td_secili_kayit.get("adres", ""), key=f"td_duzenle_adres_{_td_secili_pos}")
+
+                st.markdown("**📦 Yük Bilgisi**")
+                with st.container(border=True):
+                    _tdey1, _tdey2, _tdey3 = st.columns(3)
+                    _tde_tur = _tdey1.text_input("Tür", value=_td_secili_kayit.get("tur", ""), key=f"td_duzenle_tur_{_td_secili_pos}")
+                    try:
+                        _tde_adet_baslangic = int(float(_td_secili_kayit.get("adet", 0) or 0))
+                    except Exception:
+                        _tde_adet_baslangic = 0
+                    _tde_adet = _tdey2.number_input("Adet", min_value=0, step=1, value=_tde_adet_baslangic, key=f"td_duzenle_adet_{_td_secili_pos}")
+                    _tde_tutar_str = _tdey3.text_input("Tutar", value=_kg_tr_format(_td_secili_kayit.get("tutar", 0)),
+                                                        key=f"td_duzenle_tutar_{_td_secili_pos}", help="Virgülle ondalık yazabilirsin (ör. 3.500,50)")
+                    _tde_yuk = st.text_input("Verdiğimiz Yük Açıklaması", value=_td_secili_kayit.get("yuk_aciklamasi", ""), key=f"td_duzenle_yuk_{_td_secili_pos}")
+
+                if st.button("💾 Bu Tedarikçiyi Güncelle", type="primary", key=f"td_duzenle_kaydet_btn_{_td_secili_pos}", use_container_width=True):
+                    _td_tam_taze3 = _tedarikci_yukle_ham_guvenli()
+                    if _td_tam_taze3 is _OKUMA_BASARISIZ:
+                        st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için hiçbir şey kaydedilmedi. Lütfen tekrar dene.")
+                    else:
+                        # Pozisyona değil, seçim anındaki kaydın TAM İÇERİĞİNE göre
+                        # arıyoruz — arada tablo sırası/uzunluğu değişse bile
+                        # doğru (ve SADECE doğru) satır güncellenir.
+                        _tde_hedef_idx = None
+                        for _j, _t in enumerate(_td_tam_taze3):
+                            if _t == _td_secili_kayit:
+                                _tde_hedef_idx = _j
+                                break
+                        if _tde_hedef_idx is None:
+                            st.error("⚠️ Bu kayıt veritabanında bulunamadı — muhtemelen arada değişti/silindi. Sayfayı yenileyip tekrar dene.")
+                        else:
+                            _td_tam_taze3[_tde_hedef_idx] = {
+                                "tarih": _tde_tarih, "firma_adi": _tr_buyuk(_tde_firma), "yetkili": _tr_buyuk(_tde_yetkili),
+                                "gsm": _tde_gsm, "sabit_tel": _tde_sabit, "email": _tde_email,
+                                "il": (_tde_il if _tde_il != "-- İl seçilir --" else ""),
+                                "ilce": (_tde_ilce if _tde_ilce != "-- Önce il seç --" else ""),
+                                "adres": _tr_buyuk(_tde_adres), "yuk_aciklamasi": _tr_buyuk(_tde_yuk),
+                                "tur": _tr_buyuk(_tde_tur), "adet": _tde_adet, "tutar": _kg_tr_parse(_tde_tutar_str),
+                                "silindi": _td_secili_kayit.get("silindi", False),
+                            }
+                            _tedarikci_kaydet(_td_tam_taze3)
+                            st.toast("✅ Tedarikçi güncellendi", icon="🚛")
+                            st.rerun()
+
     if not _td_liste_goster:
         if _td_silinenler_aktif:
             st.info("💡 Silinmiş tedarikçi yok.")
