@@ -7409,7 +7409,7 @@ function kartSec(id){
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
         "🧾 Teklif":70,"💬 Mesaj":70,
-        "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90
+        "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"rut":90
     }
     for _il_vars in _IL_SUTUN_LISTESI:
         _KOL_VARSAYILAN[_il_vars] = 10
@@ -7498,6 +7498,7 @@ function kartSec(id){
         "asama2":        st.column_config.SelectboxColumn("2. Aşama", options=_asama_secenek_guvenli("asama2", ["", "Teklif"]), width=_w("asama2")),
         "asama3":        st.column_config.SelectboxColumn("3. Aşama", options=_asama_secenek_guvenli("asama3", ["Tümü", "Deneme", "TAKİP", "Fiyat Hazırla", "Sözleşme"]), width=_w("asama3")),
         "ara_islem":     st.column_config.TextColumn("Ara İşlem", width=_w("ara_islem")),
+        "rut":           st.column_config.TextColumn("🛣️ Rut", width=_w("rut"), help="Bu müşteriye atanmış rut/rota adı — üstteki filtre satırındaki 'Rut' kutusu buraya yazılan değere göre filtreler."),
         "sonuc":         st.column_config.SelectboxColumn("Sonuç", options=_asama_secenek_guvenli("sonuc", ["Tümü", "Kazanıldı", "Kaybedildi", "Devam Ediyor"]), width=_w("sonuc")),
     }
     _IL_KISA_ETIKET = {"İstanbul":"İst","Bursa":"Brs","İzmir":"İzm","Manisa":"Man","Tekirdağ":"Tek",
@@ -7537,7 +7538,7 @@ function kartSec(id){
     col_order = ["Seç","tarih","guncelleme_tarihi","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
-                 "🧾 Teklif","💬 Mesaj","ara_islem","sonuc","temsilci"] + _IL_SUTUN_LISTESI
+                 "🧾 Teklif","💬 Mesaj","ara_islem","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
     _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
@@ -7570,6 +7571,12 @@ function kartSec(id){
     if "ara_islem" not in df_edit.columns:
         df_edit["ara_islem"] = ""
     df_edit["ara_islem"] = df_edit["ara_islem"].fillna("").astype(str).replace("nan","")
+    # rut kolonu kesinlikle olsun — cari_kartlar'da GERÇEK bir sütun DEĞİL
+    # (proje kuralı: yeni SQL migration yok), kullanici_tercih'ten (yukarıda
+    # df'e "rut" olarak zaten eklendi) geliyor.
+    if "rut" not in df_edit.columns:
+        df_edit["rut"] = ""
+    df_edit["rut"] = df_edit["rut"].fillna("").astype(str).replace("nan","")
 
     # ── İL SÜTUNLARI — global fonksiyonlar (dosya başında tanımlı) kullanılıyor,
     # burada tekrar tanımlanmaz — hem burası hem Notlar&Randevu dialog'u AYNI
@@ -7953,6 +7960,14 @@ function kartSec(id){
         _kayitli_temiz = [c for c in _kayitli_sira if c in col_order]
         _eksik_yeni = [c for c in col_order if c not in _kayitli_temiz]
         _aktif_col_order = _kayitli_temiz + _eksik_yeni
+
+    # "Rut" kullanıcı isteğiyle HER ZAMAN "Ara İşlem"in hemen sağında olmalı —
+    # kayıtlı (sürükle-bırak ile özelleştirilmiş) eski sütun sırası "rut"u
+    # tanımadığı için onu sona atabiliyordu; burada konumu zorla düzeltilir.
+    if "rut" in _aktif_col_order and "ara_islem" in _aktif_col_order:
+        _aktif_col_order = [c for c in _aktif_col_order if c != "rut"]
+        _ai_pos = _aktif_col_order.index("ara_islem")
+        _aktif_col_order.insert(_ai_pos + 1, "rut")
 
     # ── SAĞ TARAFTAKİ BOŞLUĞU KAPAT ─────────────────────────────────────────
     # Tüm kolonlara sabit piksel genişliği verildiğinde, toplam genişlik ekran
@@ -8370,6 +8385,30 @@ function kartSec(id){
                             ], on_conflict="kullanici,anahtar").execute()
                     except:
                         pass
+
+                # ── "🛣️ Rut" — cari_kartlar'da GERÇEK bir sütun DEĞİL (proje
+                # kuralı: yeni SQL migration yok); Analiz/Varış İli/Koli-Palet
+                # ile AYNI desen — kullanici_tercih'te {cari_id: "Rut adı"}
+                # sözlüğü olarak saklanır. Hücre boşaltılırsa atama silinir.
+                _rut_ov_guncel = dict(_cari_rut_map_masaustu)
+                _rut_degisti = False
+                for _idx_str_rt, _deg_rt in _edited_rows.items():
+                    if "rut" not in _deg_rt:
+                        continue
+                    _idxn_rt = int(_idx_str_rt)
+                    if _idxn_rt >= len(_rows):
+                        continue
+                    _rid_rt = int(float(str(_rows[_idxn_rt].get("id", 0))))
+                    if not _rid_rt:
+                        continue
+                    _v_rt = str(_deg_rt["rut"] or "").strip()
+                    if _v_rt:
+                        _rut_ov_guncel[str(_rid_rt)] = _v_rt
+                    else:
+                        _rut_ov_guncel.pop(str(_rid_rt), None)
+                    _rut_degisti = True
+                if _rut_degisti:
+                    _cari_rut_kaydet(_rut_ov_guncel)
 
                 # ── "📅 Son Randevu" hücresine manuel tarih yazılırsa GERÇEK bir
                 # randevu kaydı (randevular tablosu) oluşturulur — override değil,
