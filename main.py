@@ -3994,16 +3994,12 @@ def not_dialog(cari_id, firma_adi=""):
             _desi_sayi_w = max(len(str(g[2])) for g in _girisler)
             _desi_metinleri = [f"{str(g[2]).rjust(_desi_sayi_w)} DESİ -KG" for g in _girisler]
             _desi_w = max(len("DESİ-KG"), max(len(t) for t in _desi_metinleri))
-            _birim_metinleri = [f"{g[3]:.3f}".rstrip("0").rstrip(".") for g in _girisler]
-            _birim_sayi_w = max(len(t) for t in _birim_metinleri)
-            _birim_metinleri = [f"{t.rjust(_birim_sayi_w)} TL" for t in _birim_metinleri]
-            _birim_w = max(len("BİRİM FİYAT"), max(len(t) for t in _birim_metinleri))
             _toplam_metinleri = [f"{g[4]:.2f}" for g in _girisler]
             _toplam_sayi_w = max(len(t) for t in _toplam_metinleri)
             _toplam_metinleri = [f"{t.rjust(_toplam_sayi_w)} TL" for t in _toplam_metinleri]
             _toplam_w = max(len("TOPLAM"), max(len(t) for t in _toplam_metinleri))
             _baslik = (f"{'V.İLİ'.ljust(_sehir_w)}   {'TÜR'.ljust(_tur_w)}   {'DESİ-KG'.ljust(_desi_w)}   "
-                       f"{'BİRİM FİYAT'.ljust(_birim_w)}   {'TOPLAM'.ljust(_toplam_w)}")
+                       f"{'TOPLAM'.ljust(_toplam_w)}")
             _ayrac = "-" * len(_baslik)
             _satirlar = [_baslik, _ayrac]
             _onceki_sehir = None
@@ -4011,7 +4007,7 @@ def not_dialog(cari_id, firma_adi=""):
                 if _onceki_sehir is not None and _g[0] != _onceki_sehir:
                     _satirlar.append(_ayrac)
                 _satirlar.append(f"{_g[0].ljust(_sehir_w)}   {_tur_metinleri[_i].ljust(_tur_w)}   {_desi_metinleri[_i].ljust(_desi_w)}   "
-                                  f"{_birim_metinleri[_i].ljust(_birim_w)}   {_toplam_metinleri[_i].ljust(_toplam_w)}")
+                                  f"{_toplam_metinleri[_i].ljust(_toplam_w)}")
                 _onceki_sehir = _g[0]
             return "\n".join(_satirlar)
 
