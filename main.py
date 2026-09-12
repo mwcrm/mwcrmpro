@@ -4112,16 +4112,19 @@ def not_dialog(cari_id, firma_adi=""):
                     _sehir = _sehir_bulundu or _fy_son_sehir
                     if not _sehir:
                         continue  # bu satırda ve öncesinde hiç şehir yoksa atla (muhtemelen başlık satırı)
-                    # Sayıları bul — virgüllü/noktalı olan BİRİM FİYAT, düz tam sayı DESİ
+                    # Sayıları bul — ARTIK ondalık olup olmamasına bakılmaz:
+                    # satırdaki İLK sayı her zaman DESİ, İKİNCİ sayı her zaman
+                    # BİRİM FİYAT sayılır (ikisi de tam sayı olabilir, ör.
+                    # "ANKARA 37 200", ya da fiyat ondalıklı olabilir, ör.
+                    # "AMASYA 227 3.574" — ikisi de aynı sırayla çalışır).
                     _tum_sayi_m = _fy_re.findall(r"\d+[.,]\d+|\d+", _s)
-                    if not _tum_sayi_m:
-                        continue
-                    _ondalikli = [x for x in _tum_sayi_m if "." in x or "," in x]
-                    _tamsayi = [x for x in _tum_sayi_m if x not in _ondalikli]
-                    if not _ondalikli or not _tamsayi:
+                    if len(_tum_sayi_m) < 2:
                         continue  # hem desi hem birim fiyat yoksa (örn. sadece şehir adı yazılan satır) atla
-                    _birim_fiyat = float(_ondalikli[0].replace(",", "."))
-                    _desi = int(_tamsayi[0])
+                    try:
+                        _desi = int(round(float(_tum_sayi_m[0].replace(",", "."))))
+                        _birim_fiyat = float(_tum_sayi_m[1].replace(",", "."))
+                    except Exception:
+                        continue
                     _toplam = round(_desi * _birim_fiyat, 2)
                     _tip = "KOLİ" if _desi <= 100 else "PALET"
                     _fy_yeni_girisler.append((_sehir, _tip, _desi, _birim_fiyat, _toplam))
