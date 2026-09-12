@@ -4001,7 +4001,7 @@ def not_dialog(cari_id, firma_adi=""):
             _baslik = (f"{'V.İLİ'.ljust(_sehir_w)}   {'TÜR'.ljust(_tur_w)}   {'DESİ-KG'.ljust(_desi_w)}   "
                        f"{'TOPLAM'.ljust(_toplam_w)}")
             _ayrac = "-" * len(_baslik)
-            _satirlar = [_baslik, _ayrac]
+            _satirlar = ["FİYAT İNCELE", _ayrac, "", _baslik, _ayrac]
             _onceki_sehir = None
             for _i, _g in enumerate(_girisler):
                 if _onceki_sehir is not None and _g[0] != _onceki_sehir:
