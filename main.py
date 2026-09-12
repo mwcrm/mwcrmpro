@@ -66,7 +66,12 @@ def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
     hesaplanır. Sadece DOLU olan iller (sütun sırasına göre) kısaltılıp
     " - " ile birleştirilir (örn. "İST - BRS - ANK"). _il_matrisi,
     _il_gonderim_matrisi_yukle()'den gelen {cari_id_str: {il_adi: değer}}
-    sözlüğüdür."""
+    sözlüğüdür.
+    "Diğer" sütunu (30 ana ilin dışındaki iller için serbest metin) ÖZEL:
+    tek bir sabit "DİĞ" kısaltması KULLANILMAZ — içine yazılan HER il adı
+    kendi başına (virgül/eğik çizgi/satır sonu/çoklu boşlukla ayrılmış
+    parçalar halinde) ayrı ayrı kısaltılıp Rut'a eklenir (ör. içine
+    "Kırklareli, Çorum" yazılmışsa "KIR - ÇOR" olarak eklenir)."""
     try:
         if _cari_id is None or (isinstance(_cari_id, float) and pd.isna(_cari_id)):
             return ""
@@ -75,7 +80,16 @@ def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
         return ""
     _kisaltmalar = []
     for _il_kol in _IL_SUTUN_LISTESI:
-        if str(_kayit_il.get(_il_kol, "") or "").strip():
+        _deger = str(_kayit_il.get(_il_kol, "") or "").strip()
+        if not _deger:
+            continue
+        if _il_kol == "Diğer":
+            _parcalar = [p.strip() for p in re.split(r"[,/\n]+|\s{2,}", _deger) if p.strip()]
+            if not _parcalar:
+                _parcalar = [_deger]
+            for _p in _parcalar:
+                _kisaltmalar.append(_tr_buyuk(_p)[:3])
+        else:
             _kisaltmalar.append(_IL_KISA_ETIKET.get(_il_kol, _il_kol[:3]).upper())
     return " - ".join(_kisaltmalar)
 
