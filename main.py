@@ -94,6 +94,68 @@ def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
     return " - ".join(_kisaltmalar)
 
 
+def _fy_tablo_olustur_global(_girisler):
+    """Kargo Girişi dialog'undaki fiyat tablosu formatlayıcısıyla (_fy_format_tablo)
+    AYNI mantık — GLOBAL bir kopyası, eski (BİRİM FİYAT'lı, "FİYAT İNCELE"
+    başlıksız) 'Koli/Palet' metinlerini toplu olarak yeni formata çevirebilmek
+    için burada tutuluyor. _girisler: [(sehir, tur, desi, toplam), ...]."""
+    if not _girisler:
+        return ""
+    _sehir_w = max(len("V.İLİ"), max(len(g[0]) for g in _girisler))
+    _tur_metinleri = [f"- {g[1]}" for g in _girisler]
+    _tur_w = max(len("TÜR"), max(len(t) for t in _tur_metinleri))
+    _desi_sayi_w = max(len(str(g[2])) for g in _girisler)
+    _desi_metinleri = [f"{str(g[2]).rjust(_desi_sayi_w)} DESİ -KG" for g in _girisler]
+    _desi_w = max(len("DESİ-KG"), max(len(t) for t in _desi_metinleri))
+    _toplam_metinleri = [f"{g[3]:.2f}" for g in _girisler]
+    _toplam_sayi_w = max(len(t) for t in _toplam_metinleri)
+    _toplam_metinleri = [f"{t.rjust(_toplam_sayi_w)} TL" for t in _toplam_metinleri]
+    _toplam_w = max(len("TOPLAM"), max(len(t) for t in _toplam_metinleri))
+    _baslik = (f"{'V.İLİ'.ljust(_sehir_w)}   {'TÜR'.ljust(_tur_w)}   {'DESİ-KG'.ljust(_desi_w)}   "
+               f"{'TOPLAM'.ljust(_toplam_w)}")
+    _ayrac = "-" * len(_baslik)
+    _satirlar = ["FİYAT İNCELE", _ayrac, "", _baslik, _ayrac]
+    _onceki_sehir = None
+    for _i, _g in enumerate(_girisler):
+        if _onceki_sehir is not None and _g[0] != _onceki_sehir:
+            _satirlar.append(_ayrac)
+        _satirlar.append(f"{_g[0].ljust(_sehir_w)}   {_tur_metinleri[_i].ljust(_tur_w)}   {_desi_metinleri[_i].ljust(_desi_w)}   "
+                          f"{_toplam_metinleri[_i].ljust(_toplam_w)}")
+        _onceki_sehir = _g[0]
+    return "\n".join(_satirlar)
+
+
+import re as _fy_re_erken
+
+_FY_ESKI_SATIR_RE = _fy_re_erken.compile(
+    r'^(\S+)\s*-\s*(\S+)\s+(\d+)\s*DESİ\s*-KG\s+(?:[\d.]+\s*TL\s+)?([\d.]+)\s*TL\s*$'
+)
+
+
+def _fy_eski_metni_yeni_formata_cevir(_eski_metin):
+    """KULLANICI İSTEĞİ (2026-09): 'Koli/Palet' hücresinde daha önce
+    kaydedilmiş fiyat tablosu metnini (varsa) YENİ formata (FİYAT İNCELE
+    başlıklı, BİRİM FİYAT sütunsuz) çevirir. Bu araçla ÜRETİLMEMİŞ (serbest
+    yazılmış) metinlere kesinlikle DOKUNMAZ — ayrıştırma başarısız olursa
+    metin OLDUĞU GİBİ geri döner (veri kaybı riski yok)."""
+    _metin = str(_eski_metin or "")
+    if "DESİ" not in _metin:
+        return _metin
+    if _metin.strip().startswith("FİYAT İNCELE") and "BİRİM FİYAT" not in _metin:
+        return _metin
+    _girisler = []
+    for _satir in _metin.split("\n"):
+        _m = _FY_ESKI_SATIR_RE.match(_satir.strip())
+        if _m:
+            try:
+                _girisler.append((_m.group(1), _m.group(2), int(_m.group(3)), float(_m.group(4))))
+            except Exception:
+                pass
+    if not _girisler:
+        return _metin
+    return _fy_tablo_olustur_global(_girisler)
+
+
 @st.cache_data(ttl=30, show_spinner=False)
 def _tum_musteri_kargo_yekun_toplami():
     """KULLANICI İSTEĞİ (2026-09): Cari Liste'deki 'Gerçekleşen Ciro' artık
@@ -8127,7 +8189,7 @@ function kartSec(id){
 
     with st.container():
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
-        _sb1, _sb2, _sb3, _sb4, _sb_bos = st.columns([1.4, 1.1, 1.1, 1.3, 3.7])
+        _sb1, _sb2, _sb3, _sb4, _sb5, _sb_bos = st.columns([1.4, 1.1, 1.1, 1.3, 1.6, 2.1])
         with _sb1:
             if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust"):
                 st.session_state["_kaydet_flag"] = True
@@ -8150,6 +8212,47 @@ function kartSec(id){
                                 file_name=f"cari_liste_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 key="cl_excel_indir_ust", use_container_width=True)
+        with _sb5:
+            # KULLANICI İSTEĞİ (2026-09): eskiden kaydedilmiş "Koli/Palet"
+            # fiyat tabloları (BİRİM FİYAT'lı, "FİYAT İNCELE" başlıksız
+            # eski format) burada TEK TIKLA yeni formata (başlıklı,
+            # BİRİM FİYAT'sız) çevrilir. Bu araçla üretilmemiş serbest
+            # metinlere dokunulmaz (bkz. _fy_eski_metni_yeni_formata_cevir).
+            if st.button("🔄 Eski Fiyat Tablolarını Güncelle", key="cl_fiyat_tablo_migrate_btn", use_container_width=True):
+                _kp_taze_mig = dict(st.session_state.get("_koli_palet_manuel", {}))
+                try:
+                    _sb_mig = get_sb_client()
+                    if _sb_mig:
+                        _r_mig = _sb_mig.table("kullanici_tercih").select("deger").eq(
+                            "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                        if _r_mig.data:
+                            _kp_taze_mig = json.loads(_r_mig.data[0]["deger"])
+                except Exception:
+                    pass
+                _mig_degisen = 0
+                for _cid_str_mig, _eski_metin_mig in list(_kp_taze_mig.items()):
+                    _yeni_metin_mig = _fy_eski_metni_yeni_formata_cevir(_eski_metin_mig)
+                    if _yeni_metin_mig != _eski_metin_mig:
+                        _kp_taze_mig[_cid_str_mig] = _yeni_metin_mig
+                        _mig_degisen += 1
+                if _mig_degisen > 0:
+                    st.session_state["_koli_palet_manuel"] = _kp_taze_mig
+                    try:
+                        _sb_mig2 = get_sb_client()
+                        if _sb_mig2:
+                            _deger_mig = json.dumps(_kp_taze_mig, ensure_ascii=False)
+                            _g_mig = _sb_mig2.table("kullanici_tercih").update({"deger": _deger_mig}).eq(
+                                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                            if not _g_mig.data:
+                                _sb_mig2.table("kullanici_tercih").insert({
+                                    "kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel", "deger": _deger_mig
+                                }).execute()
+                    except Exception:
+                        pass
+                    st.toast(f"✅ {_mig_degisen} müşterinin fiyat tablosu yeni formata çevrildi", icon="🔄")
+                    st.rerun()
+                else:
+                    st.toast("Zaten hepsi güncel formatta.", icon="✅")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
