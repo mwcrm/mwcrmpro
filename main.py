@@ -14285,11 +14285,15 @@ elif aktif == "kargolar":
         _kl_fatura_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["fatura_firma"].dropna().unique().tolist() if str(x).strip()]) if "fatura_firma" in _kl_df.columns else ["-- Tümü --"]
         # Tedarikçi (Dış Nakliye Firma) filtresi — o an filtrede görünen
         # kayıtlarda GERÇEKTEN kullanılmış tedarikçilerle sınırlı (Gönderen/
-        # Alıcı/Fatura Ödeyen filtreleriyle aynı mantık).
-        _kl_tedarikci_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_df["dis_nakliye_firma"].dropna().unique().tolist() if str(x).strip()]) if "dis_nakliye_firma" in _kl_df.columns else ["-- Tümü --"]
+        # Alıcı/Fatura Ödeyen filtreleriyle aynı mantık). "🚚 Hepsi" seçeneği
+        # HANGİ tedarikçi olduğuna bakmaksızın Dış Nakliye Firma'sı DOLU olan
+        # (yani dışarıya nakliyeye verilmiş) TÜM kayıtları birden gösterir —
+        # "-- Tümü --" ise hiç filtre uygulamaz (boş olanlar dahil hepsi).
+        _kl_tedarikci_gercek_opts = sorted([x for x in _kl_df["dis_nakliye_firma"].dropna().unique().tolist() if str(x).strip()]) if "dis_nakliye_firma" in _kl_df.columns else []
+        _kl_tedarikci_opts_ham = ["-- Tümü --", "🚚 Hepsi (Dış Nakliyesi Olanlar)"] + _kl_tedarikci_gercek_opts
 
-        _kl_fc1, _kl_fc3, _kl_fc4, _kl_fc4b, _kl_fc4c, _kl_fc5, _kl_fc5b, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
-            [1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 0.9, 1.0, 1.0, 1.0], vertical_alignment="bottom")
+        _kl_fc1, _kl_fc3, _kl_fc4, _kl_fc4b, _kl_fc5, _kl_fc5b, _kl_fc5c, _kl_fc6, _kl_fc7, _kl_fc8, _kl_fc9 = st.columns(
+            [1.5, 1.0, 1.0, 1.0, 1.0, 1.1, 1.0, 0.9, 1.0, 1.0, 1.0], vertical_alignment="bottom")
         _kl_secili_musteri_genel = _kl_fc1.selectbox("Genel Müşteri Seç (kargo girişi için)", _kl_musteri_secenekler, key="kargolar_musteri_filtre")
         _kl_sec_gonderen = _kl_fc3.selectbox("Gönderen", _kl_gonderen_opts_ham, key="kargolar_gonderen_filtre")
         _kl_sec_alici = _kl_fc4.selectbox("Alıcı", _kl_alici_opts_ham, key="kargolar_alici_filtre")
@@ -14302,7 +14306,6 @@ elif aktif == "kargolar":
             _kl_alici_il_kapsam = _kl_df
         _kl_alici_il_opts_ham = ["-- Tümü --"] + sorted([x for x in _kl_alici_il_kapsam["alici_il"].dropna().unique().tolist() if str(x).strip()]) if "alici_il" in _kl_alici_il_kapsam.columns else ["-- Tümü --"]
         _kl_sec_alici_il = _kl_fc4b.selectbox("Alıcı İl", _kl_alici_il_opts_ham, key="kargolar_alici_il_filtre")
-        _kl_sec_tedarikci = _kl_fc4c.selectbox("Tedarikçi", _kl_tedarikci_opts_ham, key="kargolar_tedarikci_filtre")
         _kl_sec_fatura = _kl_fc5.selectbox("Fatura Ödeyen", _kl_fatura_opts_ham, key="kargolar_fatura_filtre")
         _KL_AY_ADLARI = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
                          "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -14321,6 +14324,7 @@ elif aktif == "kargolar":
         _kl_ay_opts = ["-- Tümü --"] + [f"{_KL_AY_ADLARI[_ay - 1]} {_yil}" for _yil, _ay in _kl_ay_secenekleri_sirali]
         _kl_ay_haritasi = {f"{_KL_AY_ADLARI[_ay - 1]} {_yil}": (_yil, _ay) for _yil, _ay in _kl_ay_secenekleri_sirali}
         _kl_sec_ay = _kl_fc5b.selectbox("Ay", _kl_ay_opts, key="kargolar_ay_filtre")
+        _kl_sec_tedarikci = _kl_fc5c.selectbox("Tedarikçi", _kl_tedarikci_opts_ham, key="kargolar_tedarikci_filtre")
         with _kl_fc6:
             if _kl_secili_musteri_genel != "-- Tüm Müşteriler --":
                 _kl_sec_cari_id = None
@@ -14347,7 +14351,9 @@ elif aktif == "kargolar":
             _kl_df = _kl_df[_kl_df["alici_firma"] == _kl_sec_alici]
         if _kl_sec_alici_il != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["alici_il"] == _kl_sec_alici_il]
-        if _kl_sec_tedarikci != "-- Tümü --":
+        if _kl_sec_tedarikci == "🚚 Hepsi (Dış Nakliyesi Olanlar)":
+            _kl_df = _kl_df[_kl_df["dis_nakliye_firma"].astype(str).str.strip() != ""]
+        elif _kl_sec_tedarikci != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["dis_nakliye_firma"] == _kl_sec_tedarikci]
         if _kl_sec_fatura != "-- Tümü --":
             _kl_df = _kl_df[_kl_df["fatura_firma"] == _kl_sec_fatura]
