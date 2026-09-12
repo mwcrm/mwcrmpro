@@ -93,6 +93,70 @@ def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
             _kisaltmalar.append(_IL_KISA_ETIKET.get(_il_kol, _il_kol[:3]).upper())
     return " - ".join(_kisaltmalar)
 
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _tum_musteri_kargo_yekun_toplami():
+    """KULLANICI İSTEĞİ (2026-09): Cari Liste'deki 'Gerçekleşen Ciro' artık
+    HER MÜŞTERİ İÇİN, o müşterinin TÜM (silinmemiş) kargo kayıtlarındaki
+    Yekün (B.Tutar × Adet) toplamından CANLI hesaplanır — {cari_id: toplam}.
+    Eskiden bu alan, her kargo ekle/düzenle/sil işleminde elle artırılıp
+    azaltılan bir SAYAÇ idi (_cari_gerceklesen_ciro_ekle); zamanla küçük
+    hatalar/atlanan durumlar birikip gerçek toplamdan (bazen abartılı
+    şekilde) sapabiliyordu. Bu fonksiyon hiçbir sayaca güvenmez, HER
+    SEFERİNDE kargo kayıtlarının kendisinden taze toplar — asla yanlış
+    bir sayı biriktiremez."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return {}
+        _tum_satirlar = []
+        _offset = 0
+        while True:
+            _r = sb.table("kullanici_tercih").select("anahtar,deger").eq(
+                "kullanici", "__liste_ui__").like("anahtar", "_kargo_kayitlari_%").range(
+                _offset, _offset + 999).execute()
+            _batch = _r.data or []
+            _tum_satirlar.extend(_batch)
+            if len(_batch) < 1000:
+                break
+            _offset += 1000
+        _toplamlar = {}
+        for _row in _tum_satirlar:
+            try:
+                _cid = int(str(_row["anahtar"]).replace("_kargo_kayitlari_", ""))
+            except Exception:
+                continue
+            try:
+                _liste = json.loads(_row["deger"])
+            except Exception:
+                _liste = []
+            _toplam = _toplamlar.get(_cid, 0.0)
+            _gorulmus_kayitlar = set()
+            for _kayit in _liste:
+                if _kayit.get("silindi"):
+                    continue
+                # BİREBİR MÜKERRER (Kargolar sayfasındaki "🔁 Mükerrer" ile
+                # AYNI tanım: tüm alanları birebir aynı) kayıtlar SADECE BİR
+                # KEZ sayılır — aksi halde yanlışlıkla iki kez girilmiş/
+                # yüklenmiş bir kayıt, toplamı gereksiz yere şişirir.
+                try:
+                    _mukerrer_anahtar = tuple(sorted(
+                        (k, str(v)) for k, v in _kayit.items() if k != "silindi"))
+                except Exception:
+                    _mukerrer_anahtar = None
+                if _mukerrer_anahtar is not None:
+                    if _mukerrer_anahtar in _gorulmus_kayitlar:
+                        continue
+                    _gorulmus_kayitlar.add(_mukerrer_anahtar)
+                try:
+                    _toplam += float(_kayit.get("yekun", 0) or 0)
+                except Exception:
+                    pass
+            _toplamlar[_cid] = _toplam
+        return _toplamlar
+    except Exception:
+        return {}
+
 # "Diğer" başlığının altına, alt alta yazılacak iller (başlığı olmayan 50 il).
 # "Varış İlleri" hızlı-girişinde bu illerden biri yazılırsa "Diğer" sütununa,
 # üstteki 30 il de kendi sütununa gider.
@@ -5641,6 +5705,12 @@ section[data-testid="stSidebar"] { display: none !important; }
             for _tk in ["gsm","sabit"]:
                 if _tk in _df_m.columns:
                     _df_m[_tk] = _telefon_temizle(_df_m[_tk])
+            # "Gerçekleşen Ciro" — masaüstüyle aynı: kargo kayıtlarından
+            # CANLI toplanır, eski sayaç değeri kullanılmaz.
+            if "id" in _df_m.columns:
+                _kargo_yekun_toplamlari_mob = _tum_musteri_kargo_yekun_toplami()
+                _df_m["gerceklesen_ciro"] = _df_m["id"].apply(
+                    lambda _rid: _kargo_yekun_toplamlari_mob.get(int(_rid), 0.0) if pd.notna(_rid) else 0.0)
 
         # Analiz yapılmış firmalar
         _analiz_set = set()
@@ -5847,6 +5917,15 @@ section[data-testid="stSidebar"] { display: none !important; }
     _il_gonderim_matrisi_erken = _il_gonderim_matrisi_yukle()
     if not df.empty and "id" in df.columns:
         df["rut"] = df["id"].apply(lambda _rid: _cari_rut_hesapla_otomatik(_rid, _il_gonderim_matrisi_erken))
+
+    # "Gerçekleşen Ciro" — KULLANICI İSTEĞİ (2026-09): artık kargo
+    # kayıtlarının kendisinden CANLI toplanır (bkz. _tum_musteri_kargo_yekun_toplami),
+    # eski "sayaç" değeri değil — böylece asla gerçek kargo toplamından
+    # sapmış/abartılı bir sayı gösterilmez.
+    if not df.empty and "id" in df.columns:
+        _kargo_yekun_toplamlari_erken = _tum_musteri_kargo_yekun_toplami()
+        df["gerceklesen_ciro"] = df["id"].apply(
+            lambda _rid: _kargo_yekun_toplamlari_erken.get(int(_rid), 0.0) if pd.notna(_rid) else 0.0)
 
     # ── Güncelleme Tarihi ön-hesabı — ÇOKLU TARİH filtre kutusu için burada
     # (filtrelemeden önce) hesaplanmalı. ÖNEMLİ: bir müşterinin sadece "EN SON"
@@ -7525,7 +7604,8 @@ function kartSec(id){
         "id":            st.column_config.NumberColumn("ID", disabled=True, width=_w("id")),
         "olusturan": None, "silindi": None,
         "beklenen_ciro":    st.column_config.NumberColumn("Hedef ₺",  format="%,.0f ₺", width=_w("beklenen_ciro")),
-        "gerceklesen_ciro": st.column_config.NumberColumn("Gerçek ₺", format="%,.0f ₺", width=_w("gerceklesen_ciro")),
+        "gerceklesen_ciro": st.column_config.NumberColumn("Gerçek ₺", format="%,.0f ₺", width=_w("gerceklesen_ciro"), disabled=True,
+                                help="OTOMATİK hesaplanır — bu müşterinin TÜM kargo kayıtlarındaki Yekün toplamı. Elle düzenlenmez; değiştirmek için Kargolar sayfasından ilgili kargo kaydını düzenleyin."),
         "rakip_firma":   st.column_config.TextColumn("Özel", width=_w("rakip_firma")),
         "firma":         st.column_config.TextColumn("Firma",     width=_w("firma")),
         "yetkili":       st.column_config.TextColumn("Yetkili",   width=_w("yetkili")),
