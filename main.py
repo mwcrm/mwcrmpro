@@ -3505,12 +3505,11 @@ def not_dialog(cari_id, firma_adi=""):
                 "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
             }
             _kg_col_config = {"Seç": st.column_config.CheckboxColumn("Seç", default=False, width=40)}
-            # Dış Nakliye Firma artık Tedarikçi listesinden seçilen bir açılır
-            # liste — mevcut hücrede zaten yazılı olan (listede olmayan) bir
-            # değer varsa o da seçenekler arasına eklenir, kaybolmasın diye.
+            # Dış Nakliye Firma SADECE Tedarikçi listesinden gelir — eski
+            # kargo kayıtlarındaki (bazen bozuk/uzun/"None" gibi) elle
+            # yazılmış değerler seçeneklere KARIŞTIRILMAZ (kullanıcı isteği).
             _kg_dnf_opts = sorted(set(
-                [_t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()]
-                + ([str(_v) for _v in _kg_df["Dış Nakliye Firma"].dropna().unique().tolist() if str(_v).strip()] if "Dış Nakliye Firma" in _kg_df.columns else [])
+                _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()
             ))
             for _kg_kol_ad in _kg_df.columns:
                 if _kg_kol_ad == "Seç":
@@ -14614,9 +14613,11 @@ elif aktif == "kargolar":
             "Kdv %20": "Otomatik hesaplanır: Ara Toplam × %20",
             "Son Toplam": "Otomatik hesaplanır: Ara Toplam + Kdv %20",
         }
+        # Dış Nakliye Firma SADECE Tedarikçi listesinden gelir — eski kargo
+        # kayıtlarındaki (bazen bozuk/uzun/"None" gibi) elle yazılmış
+        # değerler seçeneklere KARIŞTIRILMAZ (kullanıcı isteği).
         _kl_dnf_opts = sorted(set(
-            [_t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()]
-            + ([str(_v) for _v in _kl_df_goster["Dış Nakliye Firma"].dropna().unique().tolist() if str(_v).strip()] if "Dış Nakliye Firma" in _kl_df_goster.columns else [])
+            _t.get("firma_adi", "") for _t in _tedarikci_yukle_goster() if not _t.get("silindi") and str(_t.get("firma_adi", "")).strip()
         ))
         _kl_col_config = {"Seç": st.column_config.CheckboxColumn("Seç", default=False)}
         for _kl_kol_ad in _kl_df_goster.columns:
