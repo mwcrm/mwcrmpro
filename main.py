@@ -50,6 +50,35 @@ _IL_SUTUN_LISTESI = ["İstanbul","Bursa","İzmir","Manisa","Tekirdağ","Kocaeli"
                      "Mardin","Mersin","Muğla","Ordu","Sakarya","Samsun","Trabzon","Van",
                      "Şanlıurfa","Diğer"]
 
+# İl sütunu başlıklarının kısaltmaları — GLOBAL (hem Cari Liste tablosundaki
+# başlıklarda hem "Rut" otomatik hesaplamasında kullanılır).
+_IL_KISA_ETIKET = {"İstanbul":"İst","Bursa":"Brs","İzmir":"İzm","Manisa":"Man","Tekirdağ":"Tek",
+                    "Kocaeli":"Koc","Ankara":"Ank","Konya":"Kon","Denizli":"Den","Adana":"Ada",
+                    "Gaziantep":"Gaz","Kayseri":"Kay","Antalya":"Ant","Aydın":"Ayd","Balıkesir":"Bal",
+                    "Diyarbakır":"Diy","Erzurum":"Erz","Eskişehir":"Esk","Hatay":"Hat","Kahramanmaraş":"Kah",
+                    "Malatya":"Mal","Mardin":"Mar","Mersin":"Mrs","Muğla":"Muğ","Ordu":"Ord",
+                    "Sakarya":"Sak","Samsun":"Sam","Trabzon":"Tra","Van":"Van","Şanlıurfa":"Şan","Diğer":"Diğ"}
+
+
+def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
+    """KULLANICI İSTEĞİ (2026-09): "Rut" artık elle yazılmıyor — o müşterinin
+    hangi İL sütun(lar)ına gönderim bilgisi girildiğine bakılarak OTOMATİK
+    hesaplanır. Sadece DOLU olan iller (sütun sırasına göre) kısaltılıp
+    " - " ile birleştirilir (örn. "İST - BRS - ANK"). _il_matrisi,
+    _il_gonderim_matrisi_yukle()'den gelen {cari_id_str: {il_adi: değer}}
+    sözlüğüdür."""
+    try:
+        if _cari_id is None or (isinstance(_cari_id, float) and pd.isna(_cari_id)):
+            return ""
+        _kayit_il = _il_matrisi.get(str(int(_cari_id)), {}) or {}
+    except Exception:
+        return ""
+    _kisaltmalar = []
+    for _il_kol in _IL_SUTUN_LISTESI:
+        if str(_kayit_il.get(_il_kol, "") or "").strip():
+            _kisaltmalar.append(_IL_KISA_ETIKET.get(_il_kol, _il_kol[:3]).upper())
+    return " - ".join(_kisaltmalar)
+
 # "Diğer" başlığının altına, alt alta yazılacak iller (başlığı olmayan 50 il).
 # "Varış İlleri" hızlı-girişinde bu illerden biri yazılırsa "Diğer" sütununa,
 # üstteki 30 il de kendi sütununa gider.
@@ -5608,11 +5637,13 @@ section[data-testid="stSidebar"] { display: none !important; }
                 _analiz_set = set(_nm(x.get("firma","")) for x in _an_r if x.get("firma"))
         except: pass
 
-        # Rut ataması — yeni SQL sütunu açmadan (proje kuralı) mevcut
-        # kullanici_tercih tablosunda saklanan {cari_id: "Rut Adı"} sözlüğü.
-        _cari_rut_map = _cari_rut_yukle_ham()
+        # "Rut" — KULLANICI İSTEĞİ (2026-09): elle atanmıyor, o müşterinin
+        # hangi İL sütun(lar)ına gönderim bilgisi girildiyse OTOMATİK
+        # hesaplanır (masaüstü Cari Liste tablosundaki İL sütunlarıyla aynı
+        # kaynak — bkz. _cari_rut_hesapla_otomatik, dosya başında GLOBAL).
+        _il_gonderim_matrisi_mob = _il_gonderim_matrisi_yukle()
         if not _df_m.empty:
-            _df_m["rut"] = _df_m["id"].astype(str).map(lambda _i: _cari_rut_map.get(_i, ""))
+            _df_m["rut"] = _df_m["id"].apply(lambda _rid: _cari_rut_hesapla_otomatik(_rid, _il_gonderim_matrisi_mob))
 
         # Arama & filtre — "Rut" filtresi kullanıcı isteğiyle "Ara"nın SAĞINDA.
         _mc1, _mc2, _mc3 = st.columns([2.2, 1.3, 1])
@@ -5637,29 +5668,10 @@ section[data-testid="stSidebar"] { display: none !important; }
                     _df_mob = _df_mob[_df_mob["durum"].astype(str).str.contains(_mob_durum, case=False, na=False)]
 
         st.caption(f"{len(_df_mob)} müşteri")
-
-        # ── RUT ATA/DEĞİŞTİR — filtrelemenin işe yaraması için önce bir
-        # müşteriye Rut atanabilmesi gerekiyor. Tek tek, güvenli (pozisyona
-        # değil cari_id'ye göre eşleşen) manuel atama.
-        with st.expander("🛣️ Bir Müşteriye Rut Ata / Değiştir"):
-            if not _df_m.empty and "firma" in _df_m.columns:
-                _rut_secenekler = [f"[{int(_r['id'])}] {_r['firma']}" for _, _r in _df_m.iterrows() if str(_r.get('firma','')).strip()]
-                _rut_secili = st.selectbox("Müşteri", _rut_secenekler, key="_rut_atama_musteri_sec")
-                if _rut_secili:
-                    _rut_secili_id = _rut_secili.split("]")[0].replace("[", "").strip()
-                    _rut_mevcut_deger = _cari_rut_map.get(_rut_secili_id, "")
-                    _rut_yeni_deger = st.text_input("Rut adı", value=_rut_mevcut_deger, key=f"_rut_atama_deger_{_rut_secili_id}")
-                    if st.button("💾 Kaydet", key=f"_rut_atama_kaydet_{_rut_secili_id}"):
-                        _rut_taze = _cari_rut_yukle_ham()
-                        if _rut_yeni_deger.strip():
-                            _rut_taze[_rut_secili_id] = _rut_yeni_deger.strip()
-                        else:
-                            _rut_taze.pop(_rut_secili_id, None)
-                        _cari_rut_kaydet(_rut_taze)
-                        st.toast("✅ Rut kaydedildi", icon="🛣️")
-                        st.rerun()
-            else:
-                st.caption("Henüz müşteri kaydı yok.")
+        # NOT: "🛣️ Bir Müşteriye Rut Ata / Değiştir" bölümü kaldırıldı — Rut
+        # artık elle atanmıyor, İL sütunlarından otomatik hesaplanıyor.
+        # Bir müşterinin Rut'unu değiştirmek için masaüstü Cari Liste
+        # tablosundaki ilgili İL sütununu doldur/boşalt.
 
         # Durum renk & badge
         _DURUM_RENK = {
@@ -5804,11 +5816,12 @@ section[data-testid="stSidebar"] { display: none !important; }
     # temizleniyor; salt düzenleme sırasında 60 saniyelik önbellek kullanılıyor.
     df = get_cari_listesi()
 
-    # Rut ataması — mobil listeyle aynı kaynak (yeni SQL sütunu açılmadı,
-    # kullanici_tercih'te saklanıyor). Masaüstü filtre satırında da kullanılır.
-    _cari_rut_map_masaustu = _cari_rut_yukle_ham()
+    # "Rut" — filtre kutusunun kullanacağı erken hesap. KULLANICI İSTEĞİ
+    # (2026-09): elle atanmıyor, hangi İL sütun(lar)ına gönderim bilgisi
+    # girildiyse (bkz. _il_gonderim_matrisi_yukle) OTOMATİK hesaplanır.
+    _il_gonderim_matrisi_erken = _il_gonderim_matrisi_yukle()
     if not df.empty and "id" in df.columns:
-        df["rut"] = df["id"].astype(str).map(lambda _i: _cari_rut_map_masaustu.get(_i, ""))
+        df["rut"] = df["id"].apply(lambda _rid: _cari_rut_hesapla_otomatik(_rid, _il_gonderim_matrisi_erken))
 
     # ── Güncelleme Tarihi ön-hesabı — ÇOKLU TARİH filtre kutusu için burada
     # (filtrelemeden önce) hesaplanmalı. ÖNEMLİ: bir müşterinin sadece "EN SON"
@@ -7498,15 +7511,12 @@ function kartSec(id){
         "asama2":        st.column_config.SelectboxColumn("2. Aşama", options=_asama_secenek_guvenli("asama2", ["", "Teklif"]), width=_w("asama2")),
         "asama3":        st.column_config.SelectboxColumn("3. Aşama", options=_asama_secenek_guvenli("asama3", ["Tümü", "Deneme", "TAKİP", "Fiyat Hazırla", "Sözleşme"]), width=_w("asama3")),
         "ara_islem":     st.column_config.TextColumn("Ara İşlem", width=_w("ara_islem")),
-        "rut":           st.column_config.TextColumn("🛣️ Rut", width=_w("rut"), help="Bu müşteriye atanmış rut/rota adı — üstteki filtre satırındaki 'Rut' kutusu buraya yazılan değere göre filtreler."),
+        "rut":           st.column_config.TextColumn("🛣️ Rut", width=_w("rut"), disabled=True,
+                             help="OTOMATİK hesaplanır — hangi İL sütun(lar)ına gönderim bilgisi girildiyse, o illerin kısaltması buraya otomatik yazılır. Elle düzenlenmez; değiştirmek için ilgili İL sütununu doldurun/boşaltın."),
         "sonuc":         st.column_config.SelectboxColumn("Sonuç", options=_asama_secenek_guvenli("sonuc", ["Tümü", "Kazanıldı", "Kaybedildi", "Devam Ediyor"]), width=_w("sonuc")),
     }
-    _IL_KISA_ETIKET = {"İstanbul":"İst","Bursa":"Brs","İzmir":"İzm","Manisa":"Man","Tekirdağ":"Tek",
-                        "Kocaeli":"Koc","Ankara":"Ank","Konya":"Kon","Denizli":"Den","Adana":"Ada",
-                        "Gaziantep":"Gaz","Kayseri":"Kay","Antalya":"Ant","Aydın":"Ayd","Balıkesir":"Bal",
-                        "Diyarbakır":"Diy","Erzurum":"Erz","Eskişehir":"Esk","Hatay":"Hat","Kahramanmaraş":"Kah",
-                        "Malatya":"Mal","Mardin":"Mar","Mersin":"Mrs","Muğla":"Muğ","Ordu":"Ord",
-                        "Sakarya":"Sak","Samsun":"Sam","Trabzon":"Tra","Van":"Van","Şanlıurfa":"Şan","Diğer":"Diğ"}
+    # _IL_KISA_ETIKET artık GLOBAL (dosya başında tanımlı) — burada tekrar
+    # tanımlanmaz; hem Rut otomatik hesaplaması hem bu başlıklar aynı sabiti kullanır.
     for _il_kol_cfg in _IL_SUTUN_LISTESI:
         col_config[_il_kol_cfg] = st.column_config.TextColumn(
             _IL_KISA_ETIKET.get(_il_kol_cfg, _il_kol_cfg[:3]), width=_w(_il_kol_cfg),
@@ -7571,13 +7581,6 @@ function kartSec(id){
     if "ara_islem" not in df_edit.columns:
         df_edit["ara_islem"] = ""
     df_edit["ara_islem"] = df_edit["ara_islem"].fillna("").astype(str).replace("nan","")
-    # rut kolonu kesinlikle olsun — cari_kartlar'da GERÇEK bir sütun DEĞİL
-    # (proje kuralı: yeni SQL migration yok), kullanici_tercih'ten (yukarıda
-    # df'e "rut" olarak zaten eklendi) geliyor.
-    if "rut" not in df_edit.columns:
-        df_edit["rut"] = ""
-    df_edit["rut"] = df_edit["rut"].fillna("").astype(str).replace("nan","")
-
     # ── İL SÜTUNLARI — global fonksiyonlar (dosya başında tanımlı) kullanılıyor,
     # burada tekrar tanımlanmaz — hem burası hem Notlar&Randevu dialog'u AYNI
     # önbelleği paylaşır, biri kaydedince diğeri de hemen güncel görür.
@@ -7586,6 +7589,12 @@ function kartSec(id){
         for _il_kol in _IL_SUTUN_LISTESI:
             df_edit[_il_kol] = df_edit["id"].apply(
                 lambda _rid: (_il_gonderim_matrisi.get(str(int(_rid)), {}).get(_il_kol, "") or "") if pd.notna(_rid) else "")
+        # "Rut" — KULLANICI İSTEĞİ (2026-09): artık elle yazılmıyor, hangi İL
+        # sütun(lar)ına gönderim bilgisi girildiyse OTOMATİK hesaplanır (bkz.
+        # _cari_rut_hesapla_otomatik, dosya başında tanımlı GLOBAL fonksiyon).
+        df_edit["rut"] = df_edit["id"].apply(lambda _rid: _cari_rut_hesapla_otomatik(_rid, _il_gonderim_matrisi))
+    elif "rut" not in df_edit.columns:
+        df_edit["rut"] = ""
 
     # Son randevu bilgisini ekle (tarih + saat + bölge) — normalize edilmiş eşleştirme
     try:
@@ -8386,29 +8395,10 @@ function kartSec(id){
                     except:
                         pass
 
-                # ── "🛣️ Rut" — cari_kartlar'da GERÇEK bir sütun DEĞİL (proje
-                # kuralı: yeni SQL migration yok); Analiz/Varış İli/Koli-Palet
-                # ile AYNI desen — kullanici_tercih'te {cari_id: "Rut adı"}
-                # sözlüğü olarak saklanır. Hücre boşaltılırsa atama silinir.
-                _rut_ov_guncel = dict(_cari_rut_map_masaustu)
-                _rut_degisti = False
-                for _idx_str_rt, _deg_rt in _edited_rows.items():
-                    if "rut" not in _deg_rt:
-                        continue
-                    _idxn_rt = int(_idx_str_rt)
-                    if _idxn_rt >= len(_rows):
-                        continue
-                    _rid_rt = int(float(str(_rows[_idxn_rt].get("id", 0))))
-                    if not _rid_rt:
-                        continue
-                    _v_rt = str(_deg_rt["rut"] or "").strip()
-                    if _v_rt:
-                        _rut_ov_guncel[str(_rid_rt)] = _v_rt
-                    else:
-                        _rut_ov_guncel.pop(str(_rid_rt), None)
-                    _rut_degisti = True
-                if _rut_degisti:
-                    _cari_rut_kaydet(_rut_ov_guncel)
+                # NOT: "🛣️ Rut" artık elle düzenlenmiyor — İL sütunlarından
+                # otomatik hesaplanıyor (bkz. _cari_rut_hesapla_otomatik).
+                # Sütun disabled=True olduğu için _edited_rows'a hiç girmez;
+                # bu yüzden burada ayrı bir kaydetme bloğuna gerek kalmadı.
 
                 # ── "📅 Son Randevu" hücresine manuel tarih yazılırsa GERÇEK bir
                 # randevu kaydı (randevular tablosu) oluşturulur — override değil,
