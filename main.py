@@ -15021,7 +15021,13 @@ elif aktif == "tedarikci":
         if st.session_state.get("_td_tumu_secili_mod", False):
             _td_df["Seç"] = True
         _td_editor_key = f"tedarikci_editor_{st.session_state['_td_editor_versiyon']}"
-        _td_duzenlenen = st.data_editor(_td_df, use_container_width=True, hide_index=True, key=_td_editor_key)
+        # GÖRÜNÜM: yükseklik sabit/küçük bırakılmıyor — kayıt sayısına göre
+        # otomatik hesaplanıyor ki hepsi TEK SEFERDE (iç kaydırma olmadan)
+        # görünsün. (Kullanıcı isteği: "hepsi görünsün, dar pencere olmasın".)
+        _td_satir_yuksekligi = 35
+        _td_yukseklik = 38 + _td_satir_yuksekligi * max(len(_td_df), 1) + 3
+        _td_duzenlenen = st.data_editor(_td_df, use_container_width=True, hide_index=True, key=_td_editor_key,
+                                         height=_td_yukseklik)
 
         with _td_btn_kutu:
             _tdb1, _tdb2, _tdb3, _tdb4 = st.columns(4)
