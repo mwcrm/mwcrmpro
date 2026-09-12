@@ -188,16 +188,18 @@ durumlar dahil.
   kullanır — bu davranış korunacak, asla hard-delete'e çevrilmeyecek.
 - Supabase'e yazılan her "tam liste" (kargo, tedarikçi, il gönderim matrisi,
   manuel alıcı hafızası vb. `kullanici_tercih` tablosundaki JSON blob'lar) için:
-  ÖNCE yeni veri eklenir/doğrulanır, SADECE ekleme kesin başarılı olduktan
-  SONRA eski satır silinir — asla önce sil sonra ekle sırası kullanılmaz (ağ
-  kopmasında ekleme başarısız kalırsa o anahtardaki TÜM veri sıfırlanır; 94
-  kargo kaydının ve tedarikçi listesinin kaybının kök nedeni buydu).
+  DELETE hiç kullanılmaz. Satır zaten varsa doğrudan UPDATE edilir (atomik,
+  tek adım), satır hiç yoksa INSERT edilir. (Not: daha önce "önce ekle, id ile
+  doğrula, sonra eskiyi sil" denendi — ama id doğrulaması beklenen gibi
+  çalışmayınca yeni kayıtlar eski satırın arkasında saklı kalıp görünmez oldu.
+  UPDATE-yoksa-INSERT deseni hiçbir sütuna bağımlı olmadığı için bu riski
+  taşımıyor — kesin tercih edilecek yöntem budur.)
 - Okuma başarısız olduğunda (bağlantı sorunu) asla `[]` (boş) dönülüp "kayıt
   yokmuş" gibi davranılmaz — `_OKUMA_BASARISIZ` sinyali kullanılır ve çağıran
   taraf işlemi iptal eder.
 - Yeni bir modül/özellik için kaydetme fonksiyonu yazılacaksa, kargo
   (`_kg_kayitlari_kaydet`) ve tedarikçi (`_tedarikci_kaydet`) için kullanılan
-  güvenli desen birebir kopyalanır; sıfırdan, bu deseni atlayan bir "kaydet"
+  UPDATE-yoksa-INSERT deseni birebir kopyalanır; DELETE içeren bir "kaydet"
   fonksiyonu yazılmaz.
 
 ### 4) MacroDroid Entegrasyonu
@@ -269,27 +271,20 @@ def _il_gonderim_matrisi_yukle():
     return {}
 
 def _il_gonderim_matrisi_kaydet(_matris):
-    """GÜVENLİ SIRA — bkz. _kg_kayitlari_kaydet: önce ekle+doğrula, sonra eskiyi sil."""
+    """GÜVENLİ (2026-09, 2. düzeltme) — bkz. _tedarikci_kaydet. SİLME YOK,
+    satır varsa UPDATE, yoksa INSERT."""
     try:
         _sb_ilm2 = get_sb_client()
         if not _sb_ilm2:
             return False
         import json as _ilmj2
         _deger = _ilmj2.dumps(_matris, ensure_ascii=False)
-        _ekle_sonuc = _sb_ilm2.table("kullanici_tercih").insert(
-            {"kullanici": "__liste_ui__", "anahtar": "_il_gonderim_matrisi", "deger": _deger}
-        ).execute()
-        try:
-            _yeni_id = _ekle_sonuc.data[0].get("id") if _ekle_sonuc.data else None
-        except Exception:
-            _yeni_id = None
-        if _yeni_id is None:
-            return True
-        try:
-            _sb_ilm2.table("kullanici_tercih").delete().eq(
-                "kullanici", "__liste_ui__").eq("anahtar", "_il_gonderim_matrisi").neq("id", _yeni_id).execute()
-        except Exception:
-            pass
+        _guncelle_sonuc = _sb_ilm2.table("kullanici_tercih").update({"deger": _deger}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", "_il_gonderim_matrisi").execute()
+        if not _guncelle_sonuc.data:
+            _sb_ilm2.table("kullanici_tercih").insert(
+                {"kullanici": "__liste_ui__", "anahtar": "_il_gonderim_matrisi", "deger": _deger}
+            ).execute()
         return True
     except Exception:
         return False
@@ -314,27 +309,20 @@ def _kg_manuel_alici_yukle():
     return {}
 
 def _kg_manuel_alici_kaydet(_sozluk):
-    """GÜVENLİ SIRA — bkz. _kg_kayitlari_kaydet: önce ekle+doğrula, sonra eskiyi sil."""
+    """GÜVENLİ (2026-09, 2. düzeltme) — bkz. _tedarikci_kaydet. SİLME YOK,
+    satır varsa UPDATE, yoksa INSERT."""
     try:
         _sb_ma2 = get_sb_client()
         if not _sb_ma2:
             return False
         import json as _maj2
         _deger = _maj2.dumps(_sozluk, ensure_ascii=False)
-        _ekle_sonuc = _sb_ma2.table("kullanici_tercih").insert(
-            {"kullanici": "__liste_ui__", "anahtar": "_kargo_manuel_alici_firmalar", "deger": _deger}
-        ).execute()
-        try:
-            _yeni_id = _ekle_sonuc.data[0].get("id") if _ekle_sonuc.data else None
-        except Exception:
-            _yeni_id = None
-        if _yeni_id is None:
-            return True
-        try:
-            _sb_ma2.table("kullanici_tercih").delete().eq(
-                "kullanici", "__liste_ui__").eq("anahtar", "_kargo_manuel_alici_firmalar").neq("id", _yeni_id).execute()
-        except Exception:
-            pass
+        _guncelle_sonuc = _sb_ma2.table("kullanici_tercih").update({"deger": _deger}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", "_kargo_manuel_alici_firmalar").execute()
+        if not _guncelle_sonuc.data:
+            _sb_ma2.table("kullanici_tercih").insert(
+                {"kullanici": "__liste_ui__", "anahtar": "_kargo_manuel_alici_firmalar", "deger": _deger}
+            ).execute()
         return True
     except Exception:
         return False
@@ -392,39 +380,25 @@ def _kg_kayitlari_yukle_taze(_anahtar):
         return _OKUMA_BASARISIZ
 
 def _kg_kayitlari_kaydet(_anahtar, _liste):
-    """GÜVENLİ SIRA (2026-09 veri kaybı düzeltmesi): eskiden ÖNCE SİL SONRA
-    EKLE yapılıyordu — silme başarılı olup hemen ardından ekleme ağ
-    kopması/geçici hata yüzünden BAŞARISIZ olursa, o anahtardaki TÜM kargo
-    verisi kalıcı olarak sıfırlanıyordu (94 kayıtlık kaybın kök nedeni).
-    Şimdi: ÖNCE yeni veri eklenir ve eklemenin GERÇEKTEN başarılı olduğu
-    (dönen id ile) doğrulanır, SADECE O ZAMAN eski satır(lar) — yeni eklenen
-    HARİÇ — silinir. id doğrulanamazsa eski satır silinmez (en kötü ihtimalle
-    fazladan bir kopya kalır — ama veri ASLA kaybolmaz)."""
+    """GÜVENLİ (2026-09, 2. düzeltme — 1. düzeltmedeki hata giderildi): bkz.
+    _tedarikci_kaydet'teki aynı gerekçe. SİLME YOK — satır zaten varsa
+    doğrudan UPDATE edilir, yoksa INSERT edilir. id sütununa bağımlı
+    değildir, bu yüzden 'yeni kayıt görünmüyor' riski taşımaz."""
     try:
         _sb_kg2 = get_sb_client()
         if not _sb_kg2:
             return False
         import json as _kgj2
         _deger = _kgj2.dumps(_liste, ensure_ascii=False)
-        _ekle_sonuc = _sb_kg2.table("kullanici_tercih").insert(
-            {"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}
-        ).execute()
-        try:
-            _yeni_id = _ekle_sonuc.data[0].get("id") if _ekle_sonuc.data else None
-        except Exception:
-            _yeni_id = None
-        if _yeni_id is None:
-            # Ekleme yapıldı ama id doğrulanamadı — güvenlik için eski satırı
-            # SİLMİYORUZ (veri kaybı riskine girmektense fazladan kopya kalsın).
-            return True
-        try:
-            _sb_kg2.table("kullanici_tercih").delete().eq(
-                "kullanici", "__liste_ui__").eq("anahtar", _anahtar).neq("id", _yeni_id).execute()
-        except Exception:
-            pass  # eski kopya silinemedi ama yeni veri zaten güvende — veri kaybı yok
+        _guncelle_sonuc = _sb_kg2.table("kullanici_tercih").update({"deger": _deger}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _anahtar).execute()
+        if not _guncelle_sonuc.data:
+            _sb_kg2.table("kullanici_tercih").insert(
+                {"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}
+            ).execute()
         return True
     except Exception:
-        return False  # ekleme başarısız oldu — eski veriye HİÇ dokunulmadı
+        return False
 
 
 def _kg_efektif_tutar(_kayit):
@@ -2877,32 +2851,27 @@ def _tedarikci_yukle_ham_guvenli():
 
 
 def _tedarikci_kaydet(liste):
-    """GÜVENLİ SIRA (2026-09 veri kaybı düzeltmesi) — bkz. _kg_kayitlari_kaydet
-    ile birebir aynı gerekçe: ÖNCE yeni veri eklenir ve id ile doğrulanır,
-    SADECE O ZAMAN eski satır silinir. Asla önce sil sonra ekle sırası
-    kullanılmaz — bu sıra, tedarikçi listesinin ağ kopmasında sıfırlanmasına
-    (yeni eklenen tedarikçilerin kaybolmasına) yol açan geçmiş hatanın kök
-    nedeniydi."""
+    """GÜVENLİ (2026-09, 2. düzeltme — 1. düzeltmedeki hata giderildi):
+    Önceki sürüm 'önce ekle, dönen id ile doğrula, sonra eskiyi sil'
+    yapıyordu — ama id doğrulaması beklendiği gibi çalışmayınca (kullanılan
+    Supabase şemasında farklı davranış), eski satır hiç silinmiyor, yeni
+    eklenen tedarikçi ise okuma sırasında görünmüyordu ('kayıt yapmıyor' gibi
+    görünen hata buydu). ŞİMDİ: hiçbir sütuna (id vb.) bağımlı olmayan çok
+    daha basit ve sağlam bir yöntem kullanılıyor — SİLME YOK. Satır zaten
+    varsa doğrudan UPDATE edilir (atomik, tek adım, hiçbir an veri eksik
+    durumda olmaz); satır hiç yoksa (ilk kayıt) INSERT edilir."""
     try:
         _sb_td2 = get_sb_client()
         if not _sb_td2:
             return False
-        _ekle_sonuc = _sb_td2.table("kullanici_tercih").insert({
-            "kullanici": "__liste_ui__", "anahtar": _TEDARIKCI_ANAHTAR,
-            "deger": json.dumps(liste, ensure_ascii=False)
-        }).execute()
-        try:
-            _yeni_id = _ekle_sonuc.data[0].get("id") if _ekle_sonuc.data else None
-        except Exception:
-            _yeni_id = None
-        if _yeni_id is None:
-            # id doğrulanamadı — güvenlik için eski satırı SİLMİYORUZ.
-            return True
-        try:
-            _sb_td2.table("kullanici_tercih").delete().eq(
-                "kullanici", "__liste_ui__").eq("anahtar", _TEDARIKCI_ANAHTAR).neq("id", _yeni_id).execute()
-        except Exception:
-            pass  # eski kopya silinemedi ama yeni veri zaten güvende
+        _deger = json.dumps(liste, ensure_ascii=False)
+        _guncelle_sonuc = _sb_td2.table("kullanici_tercih").update({"deger": _deger}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _TEDARIKCI_ANAHTAR).execute()
+        if not _guncelle_sonuc.data:
+            # Eşleşen satır yoktu (ilk kayıt) — şimdi ekle.
+            _sb_td2.table("kullanici_tercih").insert({
+                "kullanici": "__liste_ui__", "anahtar": _TEDARIKCI_ANAHTAR, "deger": _deger
+            }).execute()
         return True
     except Exception:
         return False
