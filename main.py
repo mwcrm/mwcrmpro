@@ -4100,6 +4100,30 @@ def not_dialog(cari_id, firma_adi=""):
                 _fy_tum_iller = _IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI
                 _fy_il_norm_map = {_fy_norm(a): a.upper() for a in _fy_tum_iller}
 
+                def _fy_sayi_parse(_metin):
+                    """Türkçe sayı yazımını DOĞRU okur — hiçbir matematik
+                    işlemi YAPMAZ, sadece metni doğru sayıya çevirir. '1.478'
+                    gibi bir değer, virgül YOKSA ve nokttan sonra TAM 3 rakam
+                    varsa BİNLİK AYRACI sayılır (-> 1478) — kullanıcı isteği:
+                    '1.600' gibi bir tutar yanlışlıkla '1,60' gibi küçük bir
+                    ondalık sayıya dönüştürülmesin. Hem nokta hem virgül
+                    varsa (1.234,56) klasik Türkçe biçim: nokta binlik,
+                    virgül ondalık. Sadece virgül varsa (162,5) virgül
+                    ondalık ayraçtır."""
+                    _sfy = str(_metin).strip()
+                    if "," in _sfy and "." in _sfy:
+                        _sfy = _sfy.replace(".", "").replace(",", ".")
+                    elif "," in _sfy:
+                        _sfy = _sfy.replace(",", ".")
+                    elif "." in _sfy:
+                        _nokta_sonrasi = _sfy.split(".")[-1]
+                        if len(_nokta_sonrasi) == 3 and _nokta_sonrasi.isdigit():
+                            _sfy = _sfy.replace(".", "")
+                    try:
+                        return float(_sfy)
+                    except Exception:
+                        return 0.0
+
                 # ── SATIR SATIR ayrıştırma — her satırda: Şehir, Desi (tam sayı),
                 # Birim Fiyat (ondalıklı sayı, örn. 3.574 ya da 3,574). Ondalık
                 # nokta/virgül içeren sayı HER ZAMAN birim fiyat sayılır, tam sayı
@@ -4152,8 +4176,8 @@ def not_dialog(cari_id, firma_adi=""):
                     if len(_tum_sayi_m) < 2:
                         continue  # hem desi hem birim fiyat yoksa (örn. sadece şehir adı yazılan satır) atla
                     try:
-                        _desi = int(round(float(_tum_sayi_m[0].replace(",", "."))))
-                        _ikinci_sayi = float(_tum_sayi_m[1].replace(",", "."))
+                        _desi = int(round(_fy_sayi_parse(_tum_sayi_m[0])))
+                        _ikinci_sayi = _fy_sayi_parse(_tum_sayi_m[1])
                     except Exception:
                         continue
                     # KULLANICI İSTEĞİ (2026-09): ÇARPMA YAPILMAZ — TOPLAM,
