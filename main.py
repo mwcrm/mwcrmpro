@@ -3500,6 +3500,13 @@ def not_dialog(cari_id, firma_adi=""):
         _hf_ham_metin = st.text_area("Yapıştır", height=150, key=f"hf_ham_{cari_id}", placeholder="Firma adı\nAdres satırı...\n0212 555 44 33\n0555 444 33 22\ninfo@firma.com\n34000 İstanbul/Türkiye", label_visibility="collapsed")
         if st.button("🔍 Ayrıştır", key=f"hf_ayristir_btn_{cari_id}"):
             if _hf_ham_metin.strip():
+                # KULLANICI İSTEĞİ: yeni ayrıştırmadan önce, önceki ayrıştırmadan
+                # kalan alan kutularının (widget) session_state değerleri de
+                # temizlenir — aksi halde Streamlit widget'ları "value=" parametresini
+                # yok sayıp ESKİ değerleri göstermeye devam ediyordu (form
+                # yenilenmiyormuş gibi görünüyordu).
+                for _hf_alan_k in ("firma", "gsm", "sabit", "email", "adres", "il", "ilce"):
+                    st.session_state.pop(f"hf_{_hf_alan_k}_{cari_id}", None)
                 st.session_state[f"hf_sonuc_{cari_id}"] = _hizli_firma_ayristir(_hf_ham_metin)
             else:
                 st.warning("Önce bir metin yapıştır.")
@@ -3556,6 +3563,9 @@ def not_dialog(cari_id, firma_adi=""):
                     except: pass
                     if _hf_ok:
                         st.session_state.pop(f"hf_sonuc_{cari_id}", None)
+                        st.session_state.pop(f"hf_ham_{cari_id}", None)
+                        for _hf_alan_k2 in ("firma", "gsm", "sabit", "email", "adres", "il", "ilce"):
+                            st.session_state.pop(f"hf_{_hf_alan_k2}_{cari_id}", None)
                         st.toast(f"✅ '{_hf_firma}' Cari Ana Liste'ye eklendi", icon="⚡")
                         st.rerun()
                     else:
@@ -5896,6 +5906,12 @@ elif aktif == "hizli_firma":
     _hfs_ham_metin = st.text_area("Yapıştır", height=180, key="hfs_ham", placeholder="Firma adı\nAdres: Mahalle, Cadde No:12, İlçe/İl\n0212 555 44 33\n0555 444 33 22\ninfo@firma.com", label_visibility="collapsed")
     if st.button("🔍 Ayrıştır", key="hfs_ayristir_btn"):
         if _hfs_ham_metin.strip():
+            # KULLANICI İSTEĞİ: yeni ayrıştırmadan önce, önceki ayrıştırmadan
+            # kalan alan kutularının session_state değerleri de temizlenir —
+            # aksi halde Streamlit "value=" parametresini yok sayıp ESKİ
+            # değerleri göstermeye devam ediyordu.
+            for _hfs_alan_k in ("firma", "gsm", "sabit", "email", "adres", "il", "ilce"):
+                st.session_state.pop(f"hfs_{_hfs_alan_k}", None)
             st.session_state["hfs_sonuc"] = _hizli_firma_ayristir(_hfs_ham_metin)
         else:
             st.warning("Önce bir metin yapıştır.")
@@ -5953,6 +5969,8 @@ elif aktif == "hizli_firma":
                 if _hfs_ok:
                     st.session_state.pop("hfs_sonuc", None)
                     st.session_state.pop("hfs_ham", None)
+                    for _hfs_alan_k2 in ("firma", "gsm", "sabit", "email", "adres", "il", "ilce"):
+                        st.session_state.pop(f"hfs_{_hfs_alan_k2}", None)
                     st.success(f"✅ '{_hfs_firma}' Cari Ana Liste'ye eklendi!")
                     st.rerun()
                 else:
