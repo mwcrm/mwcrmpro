@@ -361,7 +361,9 @@ def _hizli_firma_ayristir(_metin):
             _rakamlar = _rakamlar[1:]
         if len(_rakamlar) != 10:
             continue
-        _bicimli = f"0{_rakamlar[0:3]} {_rakamlar[3:6]} {_rakamlar[6:8]} {_rakamlar[8:10]}"
+        # Format: "216 591 08 08" (baştaki 0 OLMADAN) — kullanıcı isteği,
+        # örnek verdiği format buydu.
+        _bicimli = f"{_rakamlar[0:3]} {_rakamlar[3:6]} {_rakamlar[6:8]} {_rakamlar[8:10]}"
         if _rakamlar[0] == "5":
             if _bicimli not in _tel_gsm:
                 _tel_gsm.append(_bicimli)
@@ -391,15 +393,41 @@ def _hizli_firma_ayristir(_metin):
                     break
             break
 
-    # Kalan metni ADRES için topla — firma adı satırı ve boş satırlar hariç
-    _adres_parcalari = []
-    for _s in _calisma.split("\n"):
-        _s_temiz = _hf_re.sub(r'\s+', ' ', _s).strip(" ,-")
-        if not _s_temiz or _s_temiz == _firma_adi.strip():
-            continue
-        _adres_parcalari.append(_s_temiz)
-    _adres = ", ".join(_adres_parcalari)
-    _adres = _hf_re.sub(r'\s*,\s*,+', ',', _adres).strip(" ,")
+    # ── ADRES — KULLANICI İSTEĞİ: Google/Yandex Haritalar tarzı yapıştırmalarda
+    # "4,19 yorum", "Web sitesi", "Yol tarifi", "Yorum yaz", "Kaydet", "Paylaş",
+    # "Telefon et", "Varış süresi", "46 dk." gibi arayüz çöplüğü ADRES'e KARIŞMAZ.
+    # ÖNCELİK: metinde "Adres:" etiketi varsa (bu tarz sitelerde hep vardır),
+    # SADECE ondan sonraki (bir sonraki bilinen etikete kadar olan) kısım
+    # gerçek adres sayılır. Etiket yoksa, gürültü kelimelerini eleyen bir
+    # yedek yönteme geçilir.
+    _adres = ""
+    _etiket_m = _hf_re.search(
+        r'adres\s*:?\s*(.+?)(?=\n|varış süresi|saatler?\b|web sitesi|yorum|değerlendirme|$)',
+        _calisma, _hf_re.IGNORECASE | _hf_re.DOTALL)
+    if _etiket_m:
+        _aday_adres = _etiket_m.group(1).strip(" ,.-")
+        if _aday_adres:
+            _adres = _aday_adres
+    if not _adres:
+        _GURULTU_KELIME_HF = ["yorum yaz", "yorum", "üretici", "web sitesi", "yol tarifi",
+                               "kaydet", "paylaş", "telefon et", "telefon", "varış süresi",
+                               "saatler", "değerlendirme", "işletmeyi öner", "yorumlar"]
+        _adres_parcalari = []
+        for _parca in _hf_re.split(r'[\n,]', _calisma):
+            _p_temiz = _hf_re.sub(r'\s+', ' ', _parca).strip(" ,.-")
+            if not _p_temiz or _p_temiz == _firma_adi.strip():
+                continue
+            _p_kucuk = _p_temiz.lower()
+            if any(_gk in _p_kucuk for _gk in _GURULTU_KELIME_HF):
+                continue
+            if _hf_re.fullmatch(r'[\d.,]+', _p_temiz):  # tek başına rakam/puan/süre
+                continue
+            if _hf_re.fullmatch(r'\d+\s*dk\.?', _p_kucuk):
+                continue
+            _adres_parcalari.append(_p_temiz)
+        _adres = ", ".join(_adres_parcalari)
+    _adres = _hf_re.sub(r'\s*,\s*,+', ',', _adres)
+    _adres = _hf_re.sub(r'[ \t]+', ' ', _adres).strip(" ,")
 
     return {
         "firma_adi": _tr_buyuk(_firma_adi.strip()),
@@ -410,6 +438,59 @@ def _hizli_firma_ayristir(_metin):
         "il": _bulunan_il,
         "ilce": _bulunan_ilce,
     }
+
+
+def _hizli_firma_mukerrer_kontrol(_firma_adi, _gsm, _sabit, _email, _adres=""):
+    """KULLANICI İSTEĞİ (2026-09): Hızlı Firma Ekle ile kaydetmeden ÖNCE,
+    mevcut Cari Ana Liste'de AYNI İSİM, AYNI TELEFON (GSM veya Sabit) ya da
+    AYNI EMAİL'e sahip bir kayıt olup olmadığını kontrol eder — göz ardı
+    edilmesin diye. Eşleşen kayıtları listeler; hiçbir şeyi otomatik
+    ENGELLEMEZ/SİLMEZ, sadece UYARIR — kayıt yine de eklenebilir."""
+    import re as _mk_re
+    try:
+        _df_mk = get_cari_listesi()
+    except Exception:
+        return []
+    if _df_mk.empty or "firma" not in _df_mk.columns:
+        return []
+
+    def _mk_isim_norm(_x):
+        return _mk_re.sub(r'[^A-ZİĞÜŞÖÇ0-9]', '', _tr_buyuk(str(_x or "")).strip())
+
+    def _mk_tel_norm_liste(_x):
+        _parcalar = [p for p in _mk_re.split(r'[\n,;/]+', str(_x or "")) if p.strip()]
+        _sonuc = []
+        for _p in _parcalar:
+            _r = _mk_re.sub(r'\D', '', _p)
+            if len(_r) >= 7:
+                _sonuc.append(_r[-10:])
+        return _sonuc
+
+    def _mk_email_seti(_x):
+        return {e.strip().lower() for e in str(_x or "").split("\n") if e.strip()}
+
+    _yeni_isim = _mk_isim_norm(_firma_adi)
+    _yeni_tel_seti = set(_mk_tel_norm_liste(_gsm) + _mk_tel_norm_liste(_sabit))
+    _yeni_email_seti = _mk_email_seti(_email)
+
+    _eslesenler = []
+    for _, _r in _df_mk.iterrows():
+        _sebepler = []
+        if _yeni_isim and _mk_isim_norm(_r.get("firma", "")) == _yeni_isim:
+            _sebepler.append("Aynı isim")
+        _r_tel_seti = set(_mk_tel_norm_liste(_r.get("gsm", "")) + _mk_tel_norm_liste(_r.get("sabit", "")))
+        if _yeni_tel_seti and (_yeni_tel_seti & _r_tel_seti):
+            _sebepler.append("Aynı telefon")
+        _r_email_seti = _mk_email_seti(_r.get("email", ""))
+        if _yeni_email_seti and (_yeni_email_seti & _r_email_seti):
+            _sebepler.append("Aynı email")
+        if _sebepler:
+            _eslesenler.append({
+                "id": _r.get("id"), "firma": _r.get("firma", ""), "gsm": _r.get("gsm", ""),
+                "sabit": _r.get("sabit", ""), "email": _r.get("email", ""),
+                "il": _r.get("il", ""), "sebep": ", ".join(_sebepler)
+            })
+    return _eslesenler
 
 import sqlite3
 import pandas as pd
@@ -3393,6 +3474,16 @@ def not_dialog(cari_id, firma_adi=""):
             _hf_ilce_idx = _hf_ilce_liste.index(_hf_sonuc["ilce"]) if _hf_sonuc["ilce"] in _hf_ilce_liste else 0
             _hf_ilce = _hfc6.selectbox("İlçe", _hf_ilce_liste, index=_hf_ilce_idx, key=f"hf_ilce_{cari_id}",
                                         format_func=lambda x: _tr_buyuk(x) if x != "-- Önce il seç --" else x)
+
+            # ── MÜKERRER KONTROLÜ — kaydetmeden ÖNCE, aynı isim/telefon/email'e
+            # sahip mevcut kayıt var mı diye kontrol edilir. Sadece UYARIR,
+            # engellemez — kullanıcı yine de eklemeyi seçebilir.
+            _hf_mukerrer = _hizli_firma_mukerrer_kontrol(_hf_firma, _hf_gsm, _hf_sabit, _hf_email)
+            if _hf_mukerrer:
+                st.warning(f"⚠️ Bende şu kayıt(lar) zaten var — dikkatli ol, mükerrer olabilir:")
+                for _hfm in _hf_mukerrer:
+                    st.markdown(f"- **{_hfm['firma']}** ({_hfm['sebep']}) — GSM: {_hfm['gsm'] or '-'} · Sabit: {_hfm['sabit'] or '-'} · Email: {_hfm['email'] or '-'} · İl: {_hfm['il'] or '-'}")
+
             if st.button("💾 Cari Ana Listeye Ekle", type="primary", key=f"hf_kaydet_btn_{cari_id}", use_container_width=True):
                 if not _hf_firma.strip():
                     st.error("⚠️ Firma Adı boş olamaz.")
@@ -4729,9 +4820,10 @@ def not_paneli(cari_id, firma_adi="", key_prefix="np"):
 
 
 
-_TAB_LISTESI_DEFAULT = ["yeni", "liste", "randevu", "ozel_teklif", "sozlesme", "kayitli_teklifler", "rapor", "excel", "kullanici", "admin_rapor", "harita", "mukerrer", "kargolar", "tedarikci"]
+_TAB_LISTESI_DEFAULT = ["yeni", "hizli_firma", "liste", "randevu", "ozel_teklif", "sozlesme", "kayitli_teklifler", "rapor", "excel", "kullanici", "admin_rapor", "harita", "mukerrer", "kargolar", "tedarikci"]
 _TAB_ETIKETLER = {
     "yeni": "➕ Yeni Kart Ekle",
+    "hizli_firma": "⚡ Hızlı Firma Ekle",
     "liste": "📋 Cari Liste / Düzenle",
     "rapor": "📊 Raporlar",
     "ozel_teklif": "⭐ Özel Teklif",
@@ -5114,7 +5206,14 @@ button[data-testid="manage-app-button"] { display: none !important; }
                         st.session_state[_yk] = str(_kr.iloc[0].get("yetkiler","tam") or "tam")
             _yv = st.session_state.get(_yk, "tam")
             if _yv != "tam":
-                _sb_liste = [t for t in _sb_liste if t in _yj.loads(_yv)]
+                _izin_listesi = _yj.loads(_yv)
+                # "Hızlı Firma Ekle" yeni eklendi — eski kaydedilmiş yetki
+                # listelerinde henüz yok. "Yeni Kart Ekle" izni olan herkese
+                # bunu da otomatik ver (elle her kullanıcının yetkisini
+                # güncellemeye gerek kalmasın).
+                if "yeni" in _izin_listesi and "hizli_firma" not in _izin_listesi:
+                    _izin_listesi.append("hizli_firma")
+                _sb_liste = [t for t in _sb_liste if t in _izin_listesi]
         except: pass
 
     _sb_liste_temiz = []
@@ -5191,7 +5290,7 @@ button[data-testid="manage-app-button"] { display: none !important; }
     </style>""", unsafe_allow_html=True)
 
     _MENU_GRUPLARI = [
-        ("🧾 Cari işlemleri",    ["yeni", "liste", "kargolar", "excel", "mukerrer"]),
+        ("🧾 Cari işlemleri",    ["yeni", "hizli_firma", "liste", "kargolar", "excel", "mukerrer"]),
         ("🚛 Tedarikçi",         ["tedarikci"]),
         ("📅 Randevu ve teklif", ["randevu", "ozel_teklif", "sozlesme", "kayitli_teklifler"]),
         ("🚚 Saha",              ["harita"]),
@@ -5742,6 +5841,74 @@ if aktif == "yeni":
             st.rerun()
 
 # ── CARİ LİSTE ───────────────────────────────────────────────────────────────
+elif aktif == "hizli_firma":
+    st.subheader("⚡ Hızlı Firma Ekle")
+    st.caption("İnternetten (Google/Yandex Haritalar, rehber siteleri vb.) kopyaladığın karmaşık/düzensiz firma bilgisini aşağıya yapıştır — Firma Adı, GSM, Sabit Tel, Email, Adres, İl ve İlçe otomatik ayrıştırılır. Kaydetmeden önce gözden geçirip düzeltebilirsin.")
+    _hfs_ham_metin = st.text_area("Yapıştır", height=180, key="hfs_ham", placeholder="Firma adı\nAdres: Mahalle, Cadde No:12, İlçe/İl\n0212 555 44 33\n0555 444 33 22\ninfo@firma.com", label_visibility="collapsed")
+    if st.button("🔍 Ayrıştır", key="hfs_ayristir_btn"):
+        if _hfs_ham_metin.strip():
+            st.session_state["hfs_sonuc"] = _hizli_firma_ayristir(_hfs_ham_metin)
+        else:
+            st.warning("Önce bir metin yapıştır.")
+    _hfs_sonuc = st.session_state.get("hfs_sonuc")
+    if _hfs_sonuc:
+        st.markdown("**Ayrıştırılan bilgiler — kaydetmeden önce gözden geçir/düzelt:**")
+        _hfsc1, _hfsc2 = st.columns(2)
+        _hfs_firma = _hfsc1.text_input("Firma Adı", value=_hfs_sonuc["firma_adi"], key="hfs_firma")
+        _hfs_gsm = _hfsc2.text_input("GSM (birden fazlaysa alt alta)", value=_hfs_sonuc["gsm"], key="hfs_gsm")
+        _hfsc3, _hfsc4 = st.columns(2)
+        _hfs_sabit = _hfsc3.text_input("Sabit Tel (birden fazlaysa alt alta)", value=_hfs_sonuc["sabit"], key="hfs_sabit")
+        _hfs_email = _hfsc4.text_input("Email (birden fazlaysa alt alta)", value=_hfs_sonuc["email"], key="hfs_email")
+        _hfs_adres = st.text_area("Adres", value=_hfs_sonuc["adres"], height=70, key="hfs_adres")
+        _hfsc5, _hfsc6 = st.columns(2)
+        _hfs_il_opts = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
+        _hfs_il_idx = _hfs_il_opts.index(_hfs_sonuc["il"]) if _hfs_sonuc["il"] in _hfs_il_opts else 0
+        _hfs_il = _hfsc5.selectbox("İl", _hfs_il_opts, index=_hfs_il_idx, key="hfs_il",
+                                    format_func=lambda x: _tr_buyuk(x) if x != "-- İl seçilir --" else x)
+        _hfs_ilce_opts = _IL_ILCE_HARITASI.get(_hfs_il, []) if _hfs_il != "-- İl seçilir --" else []
+        _hfs_ilce_liste = ["-- Önce il seç --"] + _hfs_ilce_opts if _hfs_ilce_opts else ["-- Önce il seç --"]
+        _hfs_ilce_idx = _hfs_ilce_liste.index(_hfs_sonuc["ilce"]) if _hfs_sonuc["ilce"] in _hfs_ilce_liste else 0
+        _hfs_ilce = _hfsc6.selectbox("İlçe", _hfs_ilce_liste, index=_hfs_ilce_idx, key="hfs_ilce",
+                                      format_func=lambda x: _tr_buyuk(x) if x != "-- Önce il seç --" else x)
+
+        # ── MÜKERRER KONTROLÜ — kaydetmeden ÖNCE, aynı isim/telefon/email'e
+        # sahip mevcut kayıt var mı diye kontrol edilir. Sadece UYARIR,
+        # engellemez — kullanıcı yine de eklemeyi seçebilir.
+        _hfs_mukerrer = _hizli_firma_mukerrer_kontrol(_hfs_firma, _hfs_gsm, _hfs_sabit, _hfs_email)
+        if _hfs_mukerrer:
+            st.warning(f"⚠️ Bende şu kayıt(lar) zaten var — dikkatli ol, mükerrer olabilir:")
+            for _hfsm in _hfs_mukerrer:
+                st.markdown(f"- **{_hfsm['firma']}** ({_hfsm['sebep']}) — GSM: {_hfsm['gsm'] or '-'} · Sabit: {_hfsm['sabit'] or '-'} · Email: {_hfsm['email'] or '-'} · İl: {_hfsm['il'] or '-'}")
+
+        if st.button("💾 Cari Ana Listeye Ekle", type="primary", key="hfs_kaydet_btn", use_container_width=True):
+            if not _hfs_firma.strip():
+                st.error("⚠️ Firma Adı boş olamaz.")
+            else:
+                _hfs_ok = db_insert("cari_kartlar", {
+                    "tarih": datetime.now().isoformat(),
+                    "firma": _tr_buyuk(_hfs_firma), "yetkili": "",
+                    "gsm": _hfs_gsm.strip(), "sabit": _hfs_sabit.strip(),
+                    "email": _hfs_email.strip(),
+                    "adres": _tr_buyuk(_hfs_adres),
+                    "ilce": _tr_buyuk(_hfs_ilce) if _hfs_ilce != "-- Önce il seç --" else "",
+                    "il": _tr_buyuk(_hfs_il) if _hfs_il != "-- İl seçilir --" else "",
+                    "durum": "Portföy", "silindi": 0,
+                    "olusturan": st.session_state.get("kullanici", ""),
+                    "beklenen_ciro": 0, "gerceklesen_ciro": 0,
+                    "atanan_kullanici": st.session_state.get("kullanici", "")
+                })
+                try: db_read.clear()
+                except: pass
+                try: get_cari_listesi.clear()
+                except: pass
+                if _hfs_ok:
+                    st.session_state.pop("hfs_sonuc", None)
+                    st.session_state.pop("hfs_ham", None)
+                    st.success(f"✅ '{_hfs_firma}' Cari Ana Liste'ye eklendi!")
+                    st.rerun()
+                else:
+                    st.error("⚠️ Kaydedilemedi — lütfen tekrar dene.")
+
 elif aktif == "mukerrer":
     sayfa_log("mukerrer")
     st.markdown("## 🔍 Mükerrer (Aynı İsimli) Müşterileri Bul ve Birleştir")
@@ -7123,6 +7290,21 @@ function kartSec(id){
 
     # ── GELİŞMİŞ FİLTRE PANEL ────────────────────────────────────────────────
     _cok_secili_idler = set()
+
+    # ── ÇOKLU FİRMA SEÇİMİ — kullanıcı isteği: tek satır filtrelerin ÜSTÜNDE,
+    # kendi tam genişlikte satırında, AÇILIR/KAPANIR PANELE (Filtreler & Arama)
+    # GİRMEDEN her zaman görünür ve açık kalır.
+    _cok_sec_opts = [f"[{int(i)}] {f}" for i, f in zip(df["id"], df["firma"]) if str(f) not in ["","nan","None"]] if not df.empty and "firma" in df.columns else []
+    # Taslak "Yükle" butonundan gelen bekleyen değeri — widget OLUŞTURULMADAN ÖNCE uygulanmalı
+    # (Streamlit, widget instantiate edildikten SONRA aynı key'e session_state ataması yapılmasına izin vermiyor)
+    if "_cok_tsk_bekleyen" in st.session_state:
+        _bekleyen_idler = set(st.session_state.pop("_cok_tsk_bekleyen"))
+        st.session_state["_cl_cok_secim"] = [o for o in _cok_sec_opts if int(o.split("]")[0].replace("[","").strip()) in _bekleyen_idler]
+    _cok_secili_ham = st.multiselect("🔍 Çoklu Firma Seçimi", _cok_sec_opts, key="_cl_cok_secim", placeholder="Birden fazla firma seçmek için tıkla...")
+    for _cs in _cok_secili_ham:
+        try: _cok_secili_idler.add(int(_cs.split("]")[0].replace("[","").strip()))
+        except: pass
+
     with st.expander("🔍 Filtreler & Arama", expanded=False):
         # ── TEK SATIR FİLTRE ───────────────────────────────────────────────────
         if st.session_state.get("kart_sec_reset"):
@@ -7137,8 +7319,9 @@ function kartSec(id){
             st.session_state.pop("kart_sec", None)
 
         # ── TEK SATIR — hepsi aynı hizada, eşit genişlikte: Yeni firma kontrol,
-        # Özel, Aşama, Durum, İl, İlçe, Çoklu firma, Güncelleme Tarihi ─────────
-        _fc = st.columns(9)
+        # Özel, Aşama, Durum, İl, İlçe, Güncelleme Tarihi (Çoklu firma artık
+        # bu panelin ÜSTÜNDE, kendi ayrı satırında — her zaman açık) ────────
+        _fc = st.columns(8)
 
         # ── YENİ FİRMA KONTROLÜ — "Satır Ekle" ile elle firma adı yazmadan önce,
         # aynı/benzer isimde zaten kayıtlı müşteri var mı diye anlık arama.
@@ -7206,9 +7389,9 @@ function kartSec(id){
         siralama_kol = "Tarih↓"
 
         # ── Güncelleme Tarihi filtresi — ÇOKLU seçim, saatsiz (sadece gün).
-        # "Çoklu firma" ile aynı mantık: seçenekler alt alta açılır, birden
-        # fazla tarih seçilebilir. Filtre satırının en sonunda. ──────────────
-        _guncelleme_tarih_sec = _fc[8].multiselect(
+        # Seçenekler alt alta açılır, birden fazla tarih seçilebilir.
+        # Filtre satırının en sonunda. ──────────────────────────────────────
+        _guncelleme_tarih_sec = _fc[7].multiselect(
             "gt", _guncelleme_tarih_opts_str, key="_cl_fil_guncelleme_tarih_multi",
             placeholder="🔍 Güncelleme Tarihi...", label_visibility="collapsed"
         )
@@ -7217,19 +7400,10 @@ function kartSec(id){
         # 'Toplam' modu otomatik kapanır — aksi halde seçim görünür ama uygulanmaz
         if ara_txt or _asama_sec or _durum_sec or _il_sec or _ilce_sec or _guncelleme_tarih_sec or _ozel_sec or _rut_sec:
             st.session_state["_toplam_aktif"] = False
-
-        # Çoklu firma seçimi — filtre satırında son sütun
-        _cok_sec_opts = [f"[{int(i)}] {f}" for i, f in zip(df["id"], df["firma"]) if str(f) not in ["","nan","None"]] if not df.empty and "firma" in df.columns else []
-        # Taslak "Yükle" butonundan gelen bekleyen değeri — widget OLUŞTURULMADAN ÖNCE uygulanmalı
-        # (Streamlit, widget instantiate edildikten SONRA aynı key'e session_state ataması yapılmasına izin vermiyor)
-        if "_cok_tsk_bekleyen" in st.session_state:
-            _bekleyen_idler = set(st.session_state.pop("_cok_tsk_bekleyen"))
-            st.session_state["_cl_cok_secim"] = [o for o in _cok_sec_opts if int(o.split("]")[0].replace("[","").strip()) in _bekleyen_idler]
-        _cok_secili_ham = _fc[7].multiselect("c", _cok_sec_opts, key="_cl_cok_secim", placeholder="🔍 Çoklu firma...", label_visibility="collapsed")
-        _cok_secili_idler = set()
-        for _cs in _cok_secili_ham:
-            try: _cok_secili_idler.add(int(_cs.split("]")[0].replace("[","").strip()))
-            except: pass
+        # NOT: "Çoklu Firma Seçimi" artık bu panelin ÜSTÜNDE, kendi ayrı
+        # satırında render ediliyor (_cok_secili_ham/_cok_secili_idler orada
+        # zaten hesaplandı) — burada TEKRAR oluşturulmuyor (aynı widget key'i
+        # iki kez kullanmak Streamlit'te hataya yol açar).
 
         # ── YENİ FİRMA KONTROLÜ SONUCU — arama kutusu artık tek satırlık filtre
         # barının içinde (yer kaplamasın diye); eşleşme bulununca sonuç/düzenleme
