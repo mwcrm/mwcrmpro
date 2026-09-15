@@ -337,7 +337,14 @@ def _hizli_firma_ayristir(_metin):
     _satirlar_ham = [s.strip() for s in _ham.split("\n") if s.strip()]
     _firma_adi = _satirlar_ham[0] if _satirlar_ham else ""
 
-    _calisma = _ham
+    # ÖNEMLİ: firma adı satırı YAPISAL OLARAK baştan çıkarılır — bir string
+    # karşılaştırmasına (== _firma_adi) güvenmek, ufak boşluk/noktalama
+    # farklarında satırın adrese sızmasına yol açıyordu.
+    _kalan_satirlar_ham = _ham.split("\n")
+    if _kalan_satirlar_ham and _kalan_satirlar_ham[0].strip() == _firma_adi:
+        _calisma = "\n".join(_kalan_satirlar_ham[1:])
+    else:
+        _calisma = _ham
 
     # E-postalar — KÜÇÜK HARF olarak, olduğu gibi bırakılır (kullanıcı isteği)
     _emailler = _hf_re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', _calisma)
@@ -346,8 +353,11 @@ def _hizli_firma_ayristir(_metin):
         _calisma = _calisma.replace(_e, " ")
 
     # Telefon adayları — geniş bir kalıpla yakala, rakam sayısına göre süz.
-    # 10 haneye (başındaki 0 veya 90 ülke kodu atıldıktan sonra) tamamlanan
+    # 10 haneye (başındaki 0 ve/veya 90 ülke kodu atıldıktan sonra) tamamlanan
     # her aday geçerli sayılır; "5" ile başlıyorsa GSM, değilse Sabit Tel.
+    # ÖNEMLİ: bazı firmalar numarayı "+90 0216 ..." gibi HEM ülke kodu HEM
+    # başındaki sıfırla birlikte yazıyor (13 hane) — bu yüzden tek seferlik
+    # değil, 10 haneye inene kadar TEKRARLI olarak ülke kodu/sıfır atılır.
     _tel_gsm, _tel_sabit = [], []
     # ÖNEMLİ: \s DEĞİL sadece boşluk kullanılır — \s satır sonunu (\n) da
     # kapsadığından, farklı satırlardaki iki ayrı telefon numarasını
@@ -355,10 +365,13 @@ def _hizli_firma_ayristir(_metin):
     _tel_adaylari = _hf_re.findall(r'[\+]?\d[\d \-\.\(\)]{7,17}\d', _calisma)
     for _aday in _tel_adaylari:
         _rakamlar = _hf_re.sub(r'\D', '', _aday)
-        if _rakamlar.startswith("90") and len(_rakamlar) == 12:
-            _rakamlar = _rakamlar[2:]
-        elif _rakamlar.startswith("0") and len(_rakamlar) == 11:
-            _rakamlar = _rakamlar[1:]
+        while len(_rakamlar) > 10:
+            if _rakamlar.startswith("90") and len(_rakamlar) >= 12:
+                _rakamlar = _rakamlar[2:]
+            elif _rakamlar.startswith("0"):
+                _rakamlar = _rakamlar[1:]
+            else:
+                break
         if len(_rakamlar) != 10:
             continue
         # Format: "216 591 08 08" (baştaki 0 OLMADAN) — kullanıcı isteği,
@@ -399,21 +412,18 @@ def _hizli_firma_ayristir(_metin):
     # ÖNCELİK: metinde "Adres:" etiketi varsa (bu tarz sitelerde hep vardır),
     # SADECE ondan sonraki (bir sonraki bilinen etikete kadar olan) kısım
     # gerçek adres sayılır. Etiket yoksa, gürültü kelimelerini eleyen bir
-    # yedek yönteme geçilir.
-    _adres = ""
-    _etiket_m = _hf_re.search(
-        r'adres\s*:?\s*(.+?)(?=\n|varış süresi|saatler?\b|web sitesi|yorum|değerlendirme|$)',
-        _calisma, _hf_re.IGNORECASE | _hf_re.DOTALL)
-    if _etiket_m:
-        _aday_adres = _etiket_m.group(1).strip(" ,.-")
-        if _aday_adres:
-            _adres = _aday_adres
-    if not _adres:
-        _GURULTU_KELIME_HF = ["yorum yaz", "yorum", "üretici", "web sitesi", "yol tarifi",
-                               "kaydet", "paylaş", "telefon et", "telefon", "varış süresi",
-                               "saatler", "değerlendirme", "işletmeyi öner", "yorumlar"]
-        _adres_parcalari = []
-        for _parca in _hf_re.split(r'[\n,]', _calisma):
+    # yedek yönteme geçilir. HER İKİ durumda da sonunda aynı gürültü filtresi
+    # SON GÜVENLİK KATMANI olarak tekrar uygulanır — "Adres:" etiketinden
+    # sonrasında da çöp kalabiliyordu.
+    _GURULTU_KELIME_HF = ["yorum yaz", "yorum", "üretici", "web sitesi", "yol tarifi",
+                           "kaydet", "paylaş", "telefon et", "telefon", "fax", "faks",
+                           "e-posta", "eposta", "e posta", "varış süresi",
+                           "saatler", "değerlendirme", "işletmeyi öner", "yorumlar",
+                           "routes", "directions", "share", "website", "call"]
+
+    def _hf_gurultu_temizle(_metin):
+        _parcalar_ic = []
+        for _parca in _hf_re.split(r'[\n,]', _metin):
             _p_temiz = _hf_re.sub(r'\s+', ' ', _parca).strip(" ,.-")
             if not _p_temiz or _p_temiz == _firma_adi.strip():
                 continue
@@ -424,9 +434,22 @@ def _hizli_firma_ayristir(_metin):
                 continue
             if _hf_re.fullmatch(r'\d+\s*dk\.?', _p_kucuk):
                 continue
-            _adres_parcalari.append(_p_temiz)
-        _adres = ", ".join(_adres_parcalari)
-    _adres = _hf_re.sub(r'\s*,\s*,+', ',', _adres)
+            _parcalar_ic.append(_p_temiz)
+        return " ".join(_parcalar_ic)
+
+    _adres = ""
+    _etiket_m = _hf_re.search(
+        r'adres\s*:?\s*(.+?)(?=\n|varış süresi|saatler?\b|web sitesi|yorum|değerlendirme|$)',
+        _calisma, _hf_re.IGNORECASE | _hf_re.DOTALL)
+    if _etiket_m:
+        _aday_adres = _etiket_m.group(1).strip(" ,.-")
+        if _aday_adres:
+            _adres = _aday_adres
+    if not _adres:
+        _adres = _calisma
+    _adres = _hf_gurultu_temizle(_adres)
+    # KULLANICI İSTEĞİ: Adreste HİÇ virgül olmayacak.
+    _adres = _adres.replace(",", " ")
     _adres = _hf_re.sub(r'[ \t]+', ' ', _adres).strip(" ,")
 
     return {
@@ -3459,10 +3482,10 @@ def not_dialog(cari_id, firma_adi=""):
             st.markdown("**Ayrıştırılan bilgiler — kaydetmeden önce gözden geçir/düzelt:**")
             _hfc1, _hfc2 = st.columns(2)
             _hf_firma = _hfc1.text_input("Firma Adı", value=_hf_sonuc["firma_adi"], key=f"hf_firma_{cari_id}")
-            _hf_gsm = _hfc2.text_input("GSM (birden fazlaysa alt alta)", value=_hf_sonuc["gsm"], key=f"hf_gsm_{cari_id}")
+            _hf_gsm = _hfc2.text_area("GSM (birden fazlaysa alt alta)", value=_hf_sonuc["gsm"], key=f"hf_gsm_{cari_id}", height=70)
             _hfc3, _hfc4 = st.columns(2)
-            _hf_sabit = _hfc3.text_input("Sabit Tel (birden fazlaysa alt alta)", value=_hf_sonuc["sabit"], key=f"hf_sabit_{cari_id}")
-            _hf_email = _hfc4.text_input("Email (birden fazlaysa alt alta)", value=_hf_sonuc["email"], key=f"hf_email_{cari_id}")
+            _hf_sabit = _hfc3.text_area("Sabit Tel (birden fazlaysa alt alta)", value=_hf_sonuc["sabit"], key=f"hf_sabit_{cari_id}", height=70)
+            _hf_email = _hfc4.text_area("Email (birden fazlaysa alt alta)", value=_hf_sonuc["email"], key=f"hf_email_{cari_id}", height=70)
             _hf_adres = st.text_area("Adres", value=_hf_sonuc["adres"], height=70, key=f"hf_adres_{cari_id}")
             _hfc5, _hfc6 = st.columns(2)
             _hf_il_opts = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
@@ -5855,10 +5878,10 @@ elif aktif == "hizli_firma":
         st.markdown("**Ayrıştırılan bilgiler — kaydetmeden önce gözden geçir/düzelt:**")
         _hfsc1, _hfsc2 = st.columns(2)
         _hfs_firma = _hfsc1.text_input("Firma Adı", value=_hfs_sonuc["firma_adi"], key="hfs_firma")
-        _hfs_gsm = _hfsc2.text_input("GSM (birden fazlaysa alt alta)", value=_hfs_sonuc["gsm"], key="hfs_gsm")
+        _hfs_gsm = _hfsc2.text_area("GSM (birden fazlaysa alt alta)", value=_hfs_sonuc["gsm"], key="hfs_gsm", height=70)
         _hfsc3, _hfsc4 = st.columns(2)
-        _hfs_sabit = _hfsc3.text_input("Sabit Tel (birden fazlaysa alt alta)", value=_hfs_sonuc["sabit"], key="hfs_sabit")
-        _hfs_email = _hfsc4.text_input("Email (birden fazlaysa alt alta)", value=_hfs_sonuc["email"], key="hfs_email")
+        _hfs_sabit = _hfsc3.text_area("Sabit Tel (birden fazlaysa alt alta)", value=_hfs_sonuc["sabit"], key="hfs_sabit", height=70)
+        _hfs_email = _hfsc4.text_area("Email (birden fazlaysa alt alta)", value=_hfs_sonuc["email"], key="hfs_email", height=70)
         _hfs_adres = st.text_area("Adres", value=_hfs_sonuc["adres"], height=70, key="hfs_adres")
         _hfsc5, _hfsc6 = st.columns(2)
         _hfs_il_opts = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
