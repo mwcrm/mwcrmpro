@@ -406,15 +406,34 @@ def _hizli_firma_ayristir(_metin):
                     break
             break
 
-    # ── ADRES — KULLANICI İSTEĞİ: Google/Yandex Haritalar tarzı yapıştırmalarda
-    # "4,19 yorum", "Web sitesi", "Yol tarifi", "Yorum yaz", "Kaydet", "Paylaş",
-    # "Telefon et", "Varış süresi", "46 dk." gibi arayüz çöplüğü ADRES'e KARIŞMAZ.
-    # ÖNCELİK: metinde "Adres:" etiketi varsa (bu tarz sitelerde hep vardır),
-    # SADECE ondan sonraki (bir sonraki bilinen etikete kadar olan) kısım
-    # gerçek adres sayılır. Etiket yoksa, gürültü kelimelerini eleyen bir
-    # yedek yönteme geçilir. HER İKİ durumda da sonunda aynı gürültü filtresi
-    # SON GÜVENLİK KATMANI olarak tekrar uygulanır — "Adres:" etiketinden
-    # sonrasında da çöp kalabiliyordu.
+    # ── ADRES — KULLANICI İSTEĞİ: SADECE gerçek adres bileşenleri (mahalle,
+    # cadde, sokak, sanayi sitesi adları, bina adları, sokak no, ilçe, il,
+    # semt) gelecek. Ürün/hizmet açıklaması, telefon, email gibi HERHANGİ
+    # bir başka bilgi ADRES'e KESİNLİKLE karışmayacak. Bunun için DENYLIST
+    # (gürültü kelimeleri) yetmiyor — bunun yerine WHITELIST kullanılıyor:
+    # bir parça, adres göstergesi bir anahtar kelime (mah/cad/sok/no:/sanayi/
+    # sitesi/osb vb.) YA DA bilinen bir İl/İlçe adı İÇERMİYORSA doğrudan
+    # ATILIR — "adres gibi görünmeyen" hiçbir şey adrese girmez.
+    _ADRES_ANAHTAR_KELIME_HF = ["mah", "mh.", "cad", "cd.", "sok", "sk.", "no:", "no.",
+                                 "kat", "daire", "blok", "site", "sit", "osb", "apt",
+                                 "bulvar", "meydan", "köy", "mevkii", "mevki", "merkez",
+                                 "sanayi", "plaza", "han", "çarşı", "semt", "bina"]
+    _il_ilce_kelime_seti_hf = set()
+    for _il_a_hf, _ilce_l_hf in _IL_ILCE_HARITASI.items():
+        _il_ilce_kelime_seti_hf.add(_hf_norm(_il_a_hf))
+        for _ilce_a_hf in _ilce_l_hf:
+            _il_ilce_kelime_seti_hf.add(_hf_norm(_ilce_a_hf))
+
+    def _hf_adres_benzeri_mi(_parca):
+        _pk = _parca.lower()
+        if any(_ak in _pk for _ak in _ADRES_ANAHTAR_KELIME_HF):
+            return True
+        _p_norm = _hf_norm(_parca)
+        for _kelime in _hf_re.split(r'[^A-ZİĞÜŞÖÇ0-9]+', _p_norm):
+            if _kelime and _kelime in _il_ilce_kelime_seti_hf:
+                return True
+        return False
+
     _GURULTU_KELIME_HF = ["yorum yaz", "yorum", "üretici", "web sitesi", "yol tarifi",
                            "kaydet", "paylaş", "telefon et", "telefon", "fax", "faks",
                            "e-posta", "eposta", "e posta", "varış süresi",
@@ -434,6 +453,8 @@ def _hizli_firma_ayristir(_metin):
                 continue
             if _hf_re.fullmatch(r'\d+\s*dk\.?', _p_kucuk):
                 continue
+            if not _hf_adres_benzeri_mi(_p_temiz):  # adres göstergesi YOKSA at
+                continue
             _parcalar_ic.append(_p_temiz)
         return " ".join(_parcalar_ic)
 
@@ -448,9 +469,39 @@ def _hizli_firma_ayristir(_metin):
     if not _adres:
         _adres = _calisma
     _adres = _hf_gurultu_temizle(_adres)
+    # SON GÜVENLİK KATMANI: adreste hâlâ bir telefon/email kalıntısı varsa
+    # (nadiren, farklı bir formatta yazıldığı için ilk taramada kaçmışsa) son
+    # bir kez daha temizlenir.
+    for _kalinti_tel in _hf_re.findall(r'[\+]?\d[\d \-\.\(\)]{7,17}\d', _adres):
+        _adres = _adres.replace(_kalinti_tel, " ")
+    for _kalinti_email in _hf_re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', _adres):
+        _adres = _adres.replace(_kalinti_email, " ")
     # KULLANICI İSTEĞİ: Adreste HİÇ virgül olmayacak.
     _adres = _adres.replace(",", " ")
     _adres = _hf_re.sub(r'[ \t]+', ' ', _adres).strip(" ,")
+
+    # ── SON GÜVENLİK KATMANI: kaynak metinde adres ile ürün/hizmet açıklaması
+    # arasında virgül/satır sonu gibi bir ayraç YOKSA (tek bitişik metin),
+    # yukarıdaki parça-bazlı filtre ikisini ayıramaz. Bu yüzden: adresin son
+    # geçerli "İlçe/İl" ya da "İl" eşleşmesinden SONRA kalan kısım, adres
+    # göstergesi TAŞIMIYORSA (ör. ürün açıklaması, telefon kalıntısı) oradan
+    # itibaren KESİLİR.
+    _il_ilce_desenleri_hf = []
+    for _il_a2, _ilce_l2 in _IL_ILCE_HARITASI.items():
+        _il_n2 = _hf_norm(_il_a2)
+        for _ilce_a2 in _ilce_l2:
+            _il_ilce_desenleri_hf.append(r'\b' + _hf_re.escape(_hf_norm(_ilce_a2)) + r'\s*/?\s*' + _hf_re.escape(_il_n2) + r'\b')
+        _il_ilce_desenleri_hf.append(r'\b' + _hf_re.escape(_il_n2) + r'\b')
+    _adres_norm_kontrol = _hf_norm(_adres)
+    _son_gecerli_konum = None
+    for _desen_k in _il_ilce_desenleri_hf:
+        for _m_k in _hf_re.finditer(_desen_k, _adres_norm_kontrol):
+            if _son_gecerli_konum is None or _m_k.end() > _son_gecerli_konum:
+                _son_gecerli_konum = _m_k.end()
+    if _son_gecerli_konum is not None and _son_gecerli_konum < len(_adres):
+        _kalan_metin_hf = _adres[_son_gecerli_konum:].strip()
+        if _kalan_metin_hf and not _hf_adres_benzeri_mi(_kalan_metin_hf):
+            _adres = _adres[:_son_gecerli_konum].strip()
 
     # ── BİRDEN FAZLA ADRES — KULLANICI İSTEĞİ: yapıştırılan metinde art arda
     # birkaç şube/adres varsa (her biri kendi "İlçe/İl" ile bitiyorsa), her
@@ -8633,7 +8684,7 @@ function kartSec(id){
 
     with st.container():
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
-        _sb1, _sb2, _sb3, _sb4, _sb5, _sb_bos = st.columns([1.4, 1.1, 1.1, 1.3, 1.6, 2.1])
+        _sb1, _sb2, _sb3, _sb4, _sb_bos = st.columns([1.4, 1.1, 1.1, 1.3, 3.7])
         with _sb1:
             if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust"):
                 st.session_state["_kaydet_flag"] = True
@@ -8656,47 +8707,6 @@ function kartSec(id){
                                 file_name=f"cari_liste_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 key="cl_excel_indir_ust", use_container_width=True)
-        with _sb5:
-            # KULLANICI İSTEĞİ (2026-09): eskiden kaydedilmiş "Koli/Palet"
-            # fiyat tabloları (BİRİM FİYAT'lı, "FİYAT İNCELE" başlıksız
-            # eski format) burada TEK TIKLA yeni formata (başlıklı,
-            # BİRİM FİYAT'sız) çevrilir. Bu araçla üretilmemiş serbest
-            # metinlere dokunulmaz (bkz. _fy_eski_metni_yeni_formata_cevir).
-            if st.button("🔄 Eski Fiyat Tablolarını Güncelle", key="cl_fiyat_tablo_migrate_btn", use_container_width=True):
-                _kp_taze_mig = dict(st.session_state.get("_koli_palet_manuel", {}))
-                try:
-                    _sb_mig = get_sb_client()
-                    if _sb_mig:
-                        _r_mig = _sb_mig.table("kullanici_tercih").select("deger").eq(
-                            "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
-                        if _r_mig.data:
-                            _kp_taze_mig = json.loads(_r_mig.data[0]["deger"])
-                except Exception:
-                    pass
-                _mig_degisen = 0
-                for _cid_str_mig, _eski_metin_mig in list(_kp_taze_mig.items()):
-                    _yeni_metin_mig = _fy_eski_metni_yeni_formata_cevir(_eski_metin_mig)
-                    if _yeni_metin_mig != _eski_metin_mig:
-                        _kp_taze_mig[_cid_str_mig] = _yeni_metin_mig
-                        _mig_degisen += 1
-                if _mig_degisen > 0:
-                    st.session_state["_koli_palet_manuel"] = _kp_taze_mig
-                    try:
-                        _sb_mig2 = get_sb_client()
-                        if _sb_mig2:
-                            _deger_mig = json.dumps(_kp_taze_mig, ensure_ascii=False)
-                            _g_mig = _sb_mig2.table("kullanici_tercih").update({"deger": _deger_mig}).eq(
-                                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
-                            if not _g_mig.data:
-                                _sb_mig2.table("kullanici_tercih").insert({
-                                    "kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel", "deger": _deger_mig
-                                }).execute()
-                    except Exception:
-                        pass
-                    st.toast(f"✅ {_mig_degisen} müşterinin fiyat tablosu yeni formata çevrildi", icon="🔄")
-                    st.rerun()
-                else:
-                    st.toast("Zaten hepsi güncel formatta.", icon="✅")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
