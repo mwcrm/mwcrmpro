@@ -3386,11 +3386,13 @@ def not_dialog(cari_id, firma_adi=""):
             _hfc5, _hfc6 = st.columns(2)
             _hf_il_opts = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
             _hf_il_idx = _hf_il_opts.index(_hf_sonuc["il"]) if _hf_sonuc["il"] in _hf_il_opts else 0
-            _hf_il = _hfc5.selectbox("İl", _hf_il_opts, index=_hf_il_idx, key=f"hf_il_{cari_id}")
+            _hf_il = _hfc5.selectbox("İl", _hf_il_opts, index=_hf_il_idx, key=f"hf_il_{cari_id}",
+                                      format_func=lambda x: _tr_buyuk(x) if x != "-- İl seçilir --" else x)
             _hf_ilce_opts = _IL_ILCE_HARITASI.get(_hf_il, []) if _hf_il != "-- İl seçilir --" else []
             _hf_ilce_liste = ["-- Önce il seç --"] + _hf_ilce_opts if _hf_ilce_opts else ["-- Önce il seç --"]
             _hf_ilce_idx = _hf_ilce_liste.index(_hf_sonuc["ilce"]) if _hf_sonuc["ilce"] in _hf_ilce_liste else 0
-            _hf_ilce = _hfc6.selectbox("İlçe", _hf_ilce_liste, index=_hf_ilce_idx, key=f"hf_ilce_{cari_id}")
+            _hf_ilce = _hfc6.selectbox("İlçe", _hf_ilce_liste, index=_hf_ilce_idx, key=f"hf_ilce_{cari_id}",
+                                        format_func=lambda x: _tr_buyuk(x) if x != "-- Önce il seç --" else x)
             if st.button("💾 Cari Ana Listeye Ekle", type="primary", key=f"hf_kaydet_btn_{cari_id}", use_container_width=True):
                 if not _hf_firma.strip():
                     st.error("⚠️ Firma Adı boş olamaz.")
@@ -3401,8 +3403,8 @@ def not_dialog(cari_id, firma_adi=""):
                         "gsm": _hf_gsm.strip(), "sabit": _hf_sabit.strip(),
                         "email": _hf_email.strip(),
                         "adres": _tr_buyuk(_hf_adres),
-                        "ilce": (_hf_ilce if _hf_ilce != "-- Önce il seç --" else ""),
-                        "il": (_hf_il if _hf_il != "-- İl seçilir --" else ""),
+                        "ilce": _tr_buyuk(_hf_ilce) if _hf_ilce != "-- Önce il seç --" else "",
+                        "il": _tr_buyuk(_hf_il) if _hf_il != "-- İl seçilir --" else "",
                         "durum": "Portföy", "silindi": 0,
                         "olusturan": st.session_state.get("kullanici", ""),
                         "beklenen_ciro": 0, "gerceklesen_ciro": 0,
