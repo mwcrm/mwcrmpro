@@ -362,7 +362,12 @@ def _hizli_firma_ayristir(_metin):
     # ÖNEMLİ: \s DEĞİL sadece boşluk kullanılır — \s satır sonunu (\n) da
     # kapsadığından, farklı satırlardaki iki ayrı telefon numarasını
     # birbirine karıştırıp ikisini de geçersiz kılabiliyordu.
-    _tel_adaylari = _hf_re.findall(r'[\+]?\d[\d \-\.\(\)]{7,17}\d', _calisma)
+    # ÖNEMLİ: tire (-) ARTIK dahil değil — "0216 766 67 04 - 0216 611 00 06"
+    # gibi İKİ AYRI numara boşluklu tire ile yan yana yazılınca, tire
+    # izin verilen karakterler arasında olduğu için regex ikisini TEK (ve
+    # rakam sayısı tutmadığı için GEÇERSİZ) bir adaya kaynaştırıp İKİSİNİ
+    # DE kaybediyordu. Tire kaldırılınca her numara kendi başına yakalanır.
+    _tel_adaylari = _hf_re.findall(r'[\+]?\d[\d \.\(\)]{7,17}\d', _calisma)
     for _aday in _tel_adaylari:
         _rakamlar = _hf_re.sub(r'\D', '', _aday)
         while len(_rakamlar) > 10:
@@ -524,8 +529,10 @@ def _hizli_firma_ayristir(_metin):
         for _nokta_hf in _sirali_noktalar:
             _parcalar_yeni_hf.append(_adres[_onceki_konum_hf:_nokta_hf].strip())
             _onceki_konum_hf = _nokta_hf
-        _son_parca_hf = _adres[_onceki_konum_hf:].strip()
-        if _son_parca_hf:
+        _son_parca_hf = _adres[_onceki_konum_hf:].strip(" ,.-:")
+        # Son parça, gerçekten adres göstergesi TAŞIMIYORSA (ör. sondan kalan
+        # "Merkez Ofis :" gibi bir etiket kırıntısı), eklenmez.
+        if _son_parca_hf and _hf_adres_benzeri_mi(_son_parca_hf):
             _parcalar_yeni_hf.append(_son_parca_hf)
         _adres = "\n".join(p for p in _parcalar_yeni_hf if p)
 
