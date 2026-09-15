@@ -324,6 +324,93 @@ def _tr_buyuk(_s):
     için her yerde bu fonksiyon kullanılır."""
     return str(_s or "").replace("i", "İ").replace("ı", "I").upper()
 
+
+def _hizli_firma_ayristir(_metin):
+    """KULLANICI İSTEĞİ (2026-09): İnternetten kopyalanan karmaşık/düzensiz
+    firma bilgisini (Google/Yandex Haritalar, rehber siteleri vb. tarzı)
+    otomatik olarak Firma Adı / GSM / Sabit Tel(ler) / Email(ler) / Adres /
+    İl / İlçe alanlarına ayrıştırır. SONUÇ SADECE BİR ÖNİZLEMEDİR — hiçbir
+    şey otomatik/sessizce kaydedilmez, kullanıcı önce gözden geçirip
+    düzeltebilir, sonra kendisi kaydeder."""
+    import re as _hf_re
+    _ham = str(_metin or "")
+    _satirlar_ham = [s.strip() for s in _ham.split("\n") if s.strip()]
+    _firma_adi = _satirlar_ham[0] if _satirlar_ham else ""
+
+    _calisma = _ham
+
+    # E-postalar — KÜÇÜK HARF olarak, olduğu gibi bırakılır (kullanıcı isteği)
+    _emailler = _hf_re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', _calisma)
+    _emailler = list(dict.fromkeys(_emailler))  # sırayı koru, tekilleştir
+    for _e in _emailler:
+        _calisma = _calisma.replace(_e, " ")
+
+    # Telefon adayları — geniş bir kalıpla yakala, rakam sayısına göre süz.
+    # 10 haneye (başındaki 0 veya 90 ülke kodu atıldıktan sonra) tamamlanan
+    # her aday geçerli sayılır; "5" ile başlıyorsa GSM, değilse Sabit Tel.
+    _tel_gsm, _tel_sabit = [], []
+    # ÖNEMLİ: \s DEĞİL sadece boşluk kullanılır — \s satır sonunu (\n) da
+    # kapsadığından, farklı satırlardaki iki ayrı telefon numarasını
+    # birbirine karıştırıp ikisini de geçersiz kılabiliyordu.
+    _tel_adaylari = _hf_re.findall(r'[\+]?\d[\d \-\.\(\)]{7,17}\d', _calisma)
+    for _aday in _tel_adaylari:
+        _rakamlar = _hf_re.sub(r'\D', '', _aday)
+        if _rakamlar.startswith("90") and len(_rakamlar) == 12:
+            _rakamlar = _rakamlar[2:]
+        elif _rakamlar.startswith("0") and len(_rakamlar) == 11:
+            _rakamlar = _rakamlar[1:]
+        if len(_rakamlar) != 10:
+            continue
+        _bicimli = f"0{_rakamlar[0:3]} {_rakamlar[3:6]} {_rakamlar[6:8]} {_rakamlar[8:10]}"
+        if _rakamlar[0] == "5":
+            if _bicimli not in _tel_gsm:
+                _tel_gsm.append(_bicimli)
+        else:
+            if _bicimli not in _tel_sabit:
+                _tel_sabit.append(_bicimli)
+        _calisma = _calisma.replace(_aday, " ")
+
+    # "Türkiye"/"Turkey" ibaresi kaldırılır
+    _calisma = _hf_re.sub(r'\bt[üu]rk[iİ]ye\b', ' ', _calisma, flags=_hf_re.IGNORECASE)
+    _calisma = _hf_re.sub(r'\bturkey\b', ' ', _calisma, flags=_hf_re.IGNORECASE)
+
+    # Posta kodu (tek başına 5 haneli sayı) kaldırılır
+    _calisma = _hf_re.sub(r'\b\d{5}\b', ' ', _calisma)
+
+    # İl / İlçe tespiti — bilinen 81 il/ilçe listesine göre (_IL_ILCE_HARITASI)
+    def _hf_norm(_x):
+        return str(_x or "").upper().replace("İ","I").replace("Ş","S").replace("Ğ","G").replace("Ü","U").replace("Ö","O").replace("Ç","C")
+    _bulunan_il, _bulunan_ilce = "", ""
+    _calisma_norm = _hf_norm(_calisma)
+    for _il_adi in _IL_ILCE_HARITASI.keys():
+        if _hf_re.search(r'\b' + _hf_re.escape(_hf_norm(_il_adi)) + r'\b', _calisma_norm):
+            _bulunan_il = _il_adi
+            for _ilce_adi in _IL_ILCE_HARITASI[_il_adi]:
+                if _hf_re.search(r'\b' + _hf_re.escape(_hf_norm(_ilce_adi)) + r'\b', _calisma_norm):
+                    _bulunan_ilce = _ilce_adi
+                    break
+            break
+
+    # Kalan metni ADRES için topla — firma adı satırı ve boş satırlar hariç
+    _adres_parcalari = []
+    for _s in _calisma.split("\n"):
+        _s_temiz = _hf_re.sub(r'\s+', ' ', _s).strip(" ,-")
+        if not _s_temiz or _s_temiz == _firma_adi.strip():
+            continue
+        _adres_parcalari.append(_s_temiz)
+    _adres = ", ".join(_adres_parcalari)
+    _adres = _hf_re.sub(r'\s*,\s*,+', ',', _adres).strip(" ,")
+
+    return {
+        "firma_adi": _tr_buyuk(_firma_adi.strip()),
+        "gsm": "\n".join(_tel_gsm),
+        "sabit": "\n".join(_tel_sabit),
+        "email": "\n".join(_emailler),
+        "adres": _tr_buyuk(_adres),
+        "il": _bulunan_il,
+        "ilce": _bulunan_ilce,
+    }
+
 import sqlite3
 import pandas as pd
 import shutil
@@ -3275,9 +3362,62 @@ def not_dialog(cari_id, firma_adi=""):
         st.session_state.pop("_not_dialog_kalici_id", None)
         st.session_state.pop("_not_dialog_kalici_firma", None)
         st.rerun()
-    _tab_not, _tab_rdv, _tab_yetkili, _tab_dn, _tab_kargo, _tab_teklif, _tab_sozlesme, _tab_varis, _tab_duz, _tab_sil = st.tabs(["📝 Notlar", "📅 Randevu Ekle", "👥 Yetkililer", "🚚 Dış Nakliye", "📦 Kargo Girişi", "⭐ Özel Teklif", "📜 Sözleşme Hazırla", "📦 Varış/Fiyat", "✏️ Cari Kartı Düzenle", "🗑️ Cari Sil"])
+    _tab_not, _tab_hizli, _tab_rdv, _tab_yetkili, _tab_dn, _tab_kargo, _tab_teklif, _tab_sozlesme, _tab_varis, _tab_duz, _tab_sil = st.tabs(["📝 Notlar", "⚡ Hızlı Firma Ekle", "📅 Randevu Ekle", "👥 Yetkililer", "🚚 Dış Nakliye", "📦 Kargo Girişi", "⭐ Özel Teklif", "📜 Sözleşme Hazırla", "📦 Varış/Fiyat", "✏️ Cari Kartı Düzenle", "🗑️ Cari Sil"])
     with _tab_not:
         not_paneli(cari_id, firma_adi, key_prefix="dlg")
+    with _tab_hizli:
+        st.caption("İnternetten kopyaladığın karmaşık/düzensiz firma bilgisini aşağıya yapıştır — Firma Adı, GSM, Sabit Tel, Email, Adres, İl ve İlçe otomatik ayrıştırılır. Bu, YENİ bir müşteri olarak Cari Ana Liste'ye eklenir (şu an açık olan '{}' ile ilgisi yoktur).".format(firma_adi or ""))
+        _hf_ham_metin = st.text_area("Yapıştır", height=150, key=f"hf_ham_{cari_id}", placeholder="Firma adı\nAdres satırı...\n0212 555 44 33\n0555 444 33 22\ninfo@firma.com\n34000 İstanbul/Türkiye", label_visibility="collapsed")
+        if st.button("🔍 Ayrıştır", key=f"hf_ayristir_btn_{cari_id}"):
+            if _hf_ham_metin.strip():
+                st.session_state[f"hf_sonuc_{cari_id}"] = _hizli_firma_ayristir(_hf_ham_metin)
+            else:
+                st.warning("Önce bir metin yapıştır.")
+        _hf_sonuc = st.session_state.get(f"hf_sonuc_{cari_id}")
+        if _hf_sonuc:
+            st.markdown("**Ayrıştırılan bilgiler — kaydetmeden önce gözden geçir/düzelt:**")
+            _hfc1, _hfc2 = st.columns(2)
+            _hf_firma = _hfc1.text_input("Firma Adı", value=_hf_sonuc["firma_adi"], key=f"hf_firma_{cari_id}")
+            _hf_gsm = _hfc2.text_input("GSM (birden fazlaysa alt alta)", value=_hf_sonuc["gsm"], key=f"hf_gsm_{cari_id}")
+            _hfc3, _hfc4 = st.columns(2)
+            _hf_sabit = _hfc3.text_input("Sabit Tel (birden fazlaysa alt alta)", value=_hf_sonuc["sabit"], key=f"hf_sabit_{cari_id}")
+            _hf_email = _hfc4.text_input("Email (birden fazlaysa alt alta)", value=_hf_sonuc["email"], key=f"hf_email_{cari_id}")
+            _hf_adres = st.text_area("Adres", value=_hf_sonuc["adres"], height=70, key=f"hf_adres_{cari_id}")
+            _hfc5, _hfc6 = st.columns(2)
+            _hf_il_opts = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
+            _hf_il_idx = _hf_il_opts.index(_hf_sonuc["il"]) if _hf_sonuc["il"] in _hf_il_opts else 0
+            _hf_il = _hfc5.selectbox("İl", _hf_il_opts, index=_hf_il_idx, key=f"hf_il_{cari_id}")
+            _hf_ilce_opts = _IL_ILCE_HARITASI.get(_hf_il, []) if _hf_il != "-- İl seçilir --" else []
+            _hf_ilce_liste = ["-- Önce il seç --"] + _hf_ilce_opts if _hf_ilce_opts else ["-- Önce il seç --"]
+            _hf_ilce_idx = _hf_ilce_liste.index(_hf_sonuc["ilce"]) if _hf_sonuc["ilce"] in _hf_ilce_liste else 0
+            _hf_ilce = _hfc6.selectbox("İlçe", _hf_ilce_liste, index=_hf_ilce_idx, key=f"hf_ilce_{cari_id}")
+            if st.button("💾 Cari Ana Listeye Ekle", type="primary", key=f"hf_kaydet_btn_{cari_id}", use_container_width=True):
+                if not _hf_firma.strip():
+                    st.error("⚠️ Firma Adı boş olamaz.")
+                else:
+                    _hf_ok = db_insert("cari_kartlar", {
+                        "tarih": datetime.now().isoformat(),
+                        "firma": _tr_buyuk(_hf_firma), "yetkili": "",
+                        "gsm": _hf_gsm.strip(), "sabit": _hf_sabit.strip(),
+                        "email": _hf_email.strip(),
+                        "adres": _tr_buyuk(_hf_adres),
+                        "ilce": (_hf_ilce if _hf_ilce != "-- Önce il seç --" else ""),
+                        "il": (_hf_il if _hf_il != "-- İl seçilir --" else ""),
+                        "durum": "Portföy", "silindi": 0,
+                        "olusturan": st.session_state.get("kullanici", ""),
+                        "beklenen_ciro": 0, "gerceklesen_ciro": 0,
+                        "atanan_kullanici": st.session_state.get("kullanici", "")
+                    })
+                    try: db_read.clear()
+                    except: pass
+                    try: get_cari_listesi.clear()
+                    except: pass
+                    if _hf_ok:
+                        st.session_state.pop(f"hf_sonuc_{cari_id}", None)
+                        st.toast(f"✅ '{_hf_firma}' Cari Ana Liste'ye eklendi", icon="⚡")
+                        st.rerun()
+                    else:
+                        st.error("⚠️ Kaydedilemedi — lütfen tekrar dene.")
     with _tab_rdv:
         if firma_adi:
             st.markdown(f"**{firma_adi}** için randevu ekle")
