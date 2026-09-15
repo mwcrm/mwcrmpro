@@ -452,6 +452,32 @@ def _hizli_firma_ayristir(_metin):
     _adres = _adres.replace(",", " ")
     _adres = _hf_re.sub(r'[ \t]+', ' ', _adres).strip(" ,")
 
+    # ── BİRDEN FAZLA ADRES — KULLANICI İSTEĞİ: yapıştırılan metinde art arda
+    # birkaç şube/adres varsa (her biri kendi "İlçe/İl" ile bitiyorsa), her
+    # "İlçe/İl" kalıbından hemen SONRA satır atlanıp bir sonraki adres YENİ
+    # SATIRDA başlar — aynı il/ilçe tekrar etse bile sorun değil, ayraç
+    # olarak yine kullanılır.
+    _adres_norm_hf = _hf_norm(_adres)
+    _ekleme_noktalari_hf = set()
+    for _il_adi3, _ilceler3 in _IL_ILCE_HARITASI.items():
+        _il_norm3 = _hf_norm(_il_adi3)
+        for _ilce_adi3 in _ilceler3:
+            _ilce_norm3 = _hf_norm(_ilce_adi3)
+            _desen3 = r'\b' + _hf_re.escape(_ilce_norm3) + r'\s*/\s*' + _hf_re.escape(_il_norm3) + r'\b'
+            for _m3 in _hf_re.finditer(_desen3, _adres_norm_hf):
+                _ekleme_noktalari_hf.add(_m3.end())
+    if _ekleme_noktalari_hf:
+        _sirali_noktalar = sorted(_ekleme_noktalari_hf)
+        _parcalar_yeni_hf = []
+        _onceki_konum_hf = 0
+        for _nokta_hf in _sirali_noktalar:
+            _parcalar_yeni_hf.append(_adres[_onceki_konum_hf:_nokta_hf].strip())
+            _onceki_konum_hf = _nokta_hf
+        _son_parca_hf = _adres[_onceki_konum_hf:].strip()
+        if _son_parca_hf:
+            _parcalar_yeni_hf.append(_son_parca_hf)
+        _adres = "\n".join(p for p in _parcalar_yeni_hf if p)
+
     return {
         "firma_adi": _tr_buyuk(_firma_adi.strip()),
         "gsm": "\n".join(_tel_gsm),
@@ -3486,7 +3512,7 @@ def not_dialog(cari_id, firma_adi=""):
             _hfc3, _hfc4 = st.columns(2)
             _hf_sabit = _hfc3.text_area("Sabit Tel (birden fazlaysa alt alta)", value=_hf_sonuc["sabit"], key=f"hf_sabit_{cari_id}", height=70)
             _hf_email = _hfc4.text_area("Email (birden fazlaysa alt alta)", value=_hf_sonuc["email"], key=f"hf_email_{cari_id}", height=70)
-            _hf_adres = st.text_area("Adres", value=_hf_sonuc["adres"], height=70, key=f"hf_adres_{cari_id}")
+            _hf_adres = st.text_area("Adres(ler) (birden fazlaysa alt alta)", value=_hf_sonuc["adres"], height=90, key=f"hf_adres_{cari_id}")
             _hfc5, _hfc6 = st.columns(2)
             _hf_il_opts = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
             _hf_il_idx = _hf_il_opts.index(_hf_sonuc["il"]) if _hf_sonuc["il"] in _hf_il_opts else 0
@@ -5882,7 +5908,7 @@ elif aktif == "hizli_firma":
         _hfsc3, _hfsc4 = st.columns(2)
         _hfs_sabit = _hfsc3.text_area("Sabit Tel (birden fazlaysa alt alta)", value=_hfs_sonuc["sabit"], key="hfs_sabit", height=70)
         _hfs_email = _hfsc4.text_area("Email (birden fazlaysa alt alta)", value=_hfs_sonuc["email"], key="hfs_email", height=70)
-        _hfs_adres = st.text_area("Adres", value=_hfs_sonuc["adres"], height=70, key="hfs_adres")
+        _hfs_adres = st.text_area("Adres(ler) (birden fazlaysa alt alta)", value=_hfs_sonuc["adres"], height=90, key="hfs_adres")
         _hfsc5, _hfsc6 = st.columns(2)
         _hfs_il_opts = ["-- İl seçilir --"] + sorted(_IL_ILCE_HARITASI.keys())
         _hfs_il_idx = _hfs_il_opts.index(_hfs_sonuc["il"]) if _hfs_sonuc["il"] in _hfs_il_opts else 0
