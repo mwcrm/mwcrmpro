@@ -4471,20 +4471,27 @@ def not_dialog(cari_id, firma_adi=""):
                 _onceki_sehir = _g[0]
             return "\n".join(_satirlar)
 
-        _fyb1, _fyb2 = st.columns([3, 1])
+        _fyb1, _fyb2, _fyb3 = st.columns([2.2, 1, 2.6])
         _fy_ayristir_tiklandi = _fyb1.button("🔍 Ayrıştır ve Hazırla", key=f"dlg_fiyat_ayristir_{cari_id}", use_container_width=True)
         if _fyb2.button("🔄 Yenile", key=f"dlg_fiyat_yenile_{cari_id}", use_container_width=True,
                         help="Kutuyu ve önizlemeyi temizler, sıfırdan başlarsın."):
             st.session_state.pop(f"_fy_hazir_{cari_id}", None)
             st.session_state[f"_fy_kutu_sfx_{cari_id}"] = _fy_kutu_sfx + 1
             st.rerun()
-        if _fy_ayristir_tiklandi:
+        # KULLANICI İSTEĞİ (2026-09): "İlleri İşaretle" ve "Ayrıştır ve
+        # Hazırla" AYNI ANDA çalışsın — aynı yapıştırdığın fiyat metnindeki
+        # şehirler hem fiyat tablosuna hem "Varış İlleri" işaretlemesine
+        # birden uygulanır, tek tek ayrı ayrı yapmana gerek kalmaz.
+        _fy_ikisi_tiklandi = _fyb3.button("🚀 İkisini Birden Çalıştır (İllerle İşaretle + Ayrıştır)",
+                                           key=f"dlg_fiyat_ikisi_{cari_id}", use_container_width=True)
+        if _fy_ayristir_tiklandi or _fy_ikisi_tiklandi:
             if not _vd_fiyat.strip():
                 st.warning("Önce bir şey yazın.")
             else:
                 import re as _fy_re
                 _fy_tum_iller = _IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI
                 _fy_il_norm_map = {_fy_norm(a): a.upper() for a in _fy_tum_iller}
+                _fy_iller_bulunan_set = set()  # "İkisini Birden" için: tespit edilen KANONİK il/diğer adları
 
                 def _fy_sayi_parse(_metin):
                     """Türkçe sayı yazımını DOĞRU okur — hiçbir matematik
@@ -4533,6 +4540,8 @@ def not_dialog(cari_id, firma_adi=""):
                         if _il_norm_fy in _s_norm:
                             _sehir_bulundu = _il_ad_fy
                             break
+                    if _sehir_bulundu:
+                        _fy_iller_bulunan_set.add(_sehir_bulundu)
                     if _sehir_bulundu:
                         if "\t" in _s:
                             _sehir_ham_fy = _s.split("\t")[0].strip()
@@ -4583,6 +4592,35 @@ def not_dialog(cari_id, firma_adi=""):
                     # Kaydetmeden önce DÜZ/HİZALI TABLO olarak göster — kullanıcı
                     # üzerinde elle oynayabilsin, hazır metin dayatılmasın.
                     st.session_state[f"_fy_hazir_{cari_id}"] = _fy_format_tablo(_fy_yeni_girisler)
+
+                    # ── "🚀 İkisini Birden Çalıştır" — KULLANICI İSTEĞİ (2026-09):
+                    # aynı fiyat metninde tespit edilen şehirler, "İlleri
+                    # İşaretle" ile AYNI mantıkla Varış İlleri'ne de işlenir —
+                    # ayrıca o kutuya tekrar yazmaya gerek kalmaz.
+                    if _fy_ikisi_tiklandi and _fy_iller_bulunan_set:
+                        try:
+                            _fy_tum_matris2 = dict(_il_gonderim_matrisi_yukle())
+                            _fy_id_str = str(int(cari_id))
+                            _fy_tum_matris2.setdefault(_fy_id_str, {})
+                            _fy_il_isaretlenen = []
+                            for _fy_il_bulunan in _fy_iller_bulunan_set:
+                                if _fy_il_bulunan in _IL_SUTUN_LISTESI and _fy_il_bulunan != "Diğer":
+                                    if not str(_fy_tum_matris2[_fy_id_str].get(_fy_il_bulunan, "")).strip():
+                                        _fy_tum_matris2[_fy_id_str][_fy_il_bulunan] = _fy_il_bulunan.upper()
+                                    _fy_il_isaretlenen.append(_fy_il_bulunan)
+                                elif _fy_il_bulunan in _IL_DIGER_LISTESI:
+                                    _mevcut_diger_fy = str(_fy_tum_matris2[_fy_id_str].get("Diğer", "") or "").strip()
+                                    _diger_satirlari_fy = [s.strip() for s in _mevcut_diger_fy.split("\n") if s.strip()]
+                                    if _fy_il_bulunan.upper() not in _diger_satirlari_fy:
+                                        _diger_satirlari_fy.append(_fy_il_bulunan.upper())
+                                    _fy_tum_matris2[_fy_id_str]["Diğer"] = "\n".join(_diger_satirlari_fy)
+                                    _fy_il_isaretlenen.append(_fy_il_bulunan)
+                            _il_gonderim_matrisi_kaydet(_fy_tum_matris2)
+                            _il_gonderim_matrisi_yukle.clear()
+                            if _fy_il_isaretlenen:
+                                st.toast(f"✅ Fiyat tablosu hazırlandı + İşaretlendi: {', '.join(_fy_il_isaretlenen)}", icon="🚀")
+                        except Exception as _fy_ikisi_hata:
+                            st.error(f"İl işaretleme hatası: {_fy_ikisi_hata}")
                     st.rerun()
 
         _fy_hazir = st.session_state.get(f"_fy_hazir_{cari_id}")
