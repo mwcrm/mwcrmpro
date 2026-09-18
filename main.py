@@ -3664,6 +3664,57 @@ def not_dialog(cari_id, firma_adi=""):
                         st.rerun()
                     else:
                         st.error("⚠️ Kaydedilemedi — lütfen tekrar dene.")
+
+            # ── KULLANICI İSTEĞİ (2026-09): eski/eksik bilgili bir müşteriye
+            # TIKLAYIP açtıysan, YENİ müşteri oluşturmak yerine aynı
+            # ayrıştırma sonucunu BU müşterinin (şu an açık olan) eksik
+            # alanlarına doldurabilirsin. Zaten DOLU olan alanlara ASLA
+            # dokunulmaz — sadece BOŞ olanlar bu ayrıştırılan verilerle
+            # doldurulur (mevcut veri kaybı riski yok). Çoklu değerli alanlar
+            # (GSM/Sabit/Email) için yeni satırlar mevcutlara EKLENİR
+            # (tekrarlanmayan satırlar).
+            st.divider()
+            if st.button(f"🔄 '{firma_adi}' Müşterisinin Eksik Bilgilerini Bu Verilerle Doldur",
+                         key=f"hf_mevcut_doldur_btn_{cari_id}", use_container_width=True):
+                try:
+                    _hf_mevcut_df = get_cari_listesi()
+                    _hf_mevcut_satir = _hf_mevcut_df[_hf_mevcut_df["id"] == int(cari_id)]
+                    if _hf_mevcut_satir.empty:
+                        st.error("⚠️ Bu müşteri bulunamadı — sayfayı yenileyip tekrar dene.")
+                    else:
+                        _hf_m = _hf_mevcut_satir.iloc[0]
+
+                        def _hf_coklu_birlestir(_eski, _yeni):
+                            _eski_satirlar = [s.strip() for s in str(_eski or "").split("\n") if s.strip()]
+                            _yeni_satirlar = [s.strip() for s in str(_yeni or "").split("\n") if s.strip()]
+                            for _ys in _yeni_satirlar:
+                                if _ys not in _eski_satirlar:
+                                    _eski_satirlar.append(_ys)
+                            return "\n".join(_eski_satirlar)
+
+                        _hf_guncelle_alan = {}
+                        _hf_guncelle_alan["gsm"] = _hf_coklu_birlestir(_hf_m.get("gsm", ""), _hf_gsm)
+                        _hf_guncelle_alan["sabit"] = _hf_coklu_birlestir(_hf_m.get("sabit", ""), _hf_sabit)
+                        _hf_guncelle_alan["email"] = _hf_coklu_birlestir(_hf_m.get("email", ""), _hf_email)
+                        if not str(_hf_m.get("adres", "") or "").strip() and _hf_adres.strip():
+                            _hf_guncelle_alan["adres"] = _tr_buyuk(_hf_adres)
+                        if not str(_hf_m.get("il", "") or "").strip() and _hf_il != "-- İl seçilir --":
+                            _hf_guncelle_alan["il"] = _tr_buyuk(_hf_il)
+                        if not str(_hf_m.get("ilce", "") or "").strip() and _hf_ilce != "-- Önce il seç --":
+                            _hf_guncelle_alan["ilce"] = _tr_buyuk(_hf_ilce)
+                        db_update("cari_kartlar", _hf_guncelle_alan, "id", int(cari_id))
+                        try: db_read.clear()
+                        except: pass
+                        try: get_cari_listesi.clear()
+                        except: pass
+                        st.session_state.pop(f"hf_sonuc_{cari_id}", None)
+                        st.session_state.pop(f"hf_ham_{cari_id}", None)
+                        for _hf_alan_k3 in ("firma", "gsm", "sabit", "email", "adres", "il", "ilce"):
+                            st.session_state.pop(f"hf_{_hf_alan_k3}_{cari_id}", None)
+                        st.toast(f"✅ '{firma_adi}' güncellendi — eksik alanlar dolduruldu", icon="🔄")
+                        st.rerun()
+                except Exception as _hf_doldur_hata:
+                    st.error(f"Hata: {_hf_doldur_hata}")
     with _tab_rdv:
         if firma_adi:
             st.markdown(f"**{firma_adi}** için randevu ekle")
@@ -6129,6 +6180,63 @@ elif aktif == "hizli_firma":
                     st.rerun()
                 else:
                     st.error("⚠️ Kaydedilemedi — lütfen tekrar dene.")
+
+        # ── KULLANICI İSTEĞİ (2026-09): eski/eksik bilgili bir müşteri
+        # SEÇİP, YENİ müşteri oluşturmak yerine aynı ayrıştırma sonucunu o
+        # müşterinin eksik alanlarına doldurabilirsin. Zaten DOLU olan
+        # alanlara ASLA dokunulmaz — sadece BOŞ olanlar doldurulur (veri
+        # kaybı riski yok). Çoklu değerli alanlar (GSM/Sabit/Email) için
+        # yeni satırlar mevcutlara EKLENİR (tekrarlanmayan satırlar).
+        st.divider()
+        with st.expander("🔄 Bunun yerine, eksik bilgili MEVCUT bir müşteriyi doldur"):
+            _hfs_mevcut_df2 = get_cari_listesi()
+            if _hfs_mevcut_df2.empty or "firma" not in _hfs_mevcut_df2.columns:
+                st.caption("Henüz müşteri kaydı yok.")
+            else:
+                _hfs_mevcut_secenekler = [f"[{int(i)}] {f}" for i, f in zip(_hfs_mevcut_df2["id"], _hfs_mevcut_df2["firma"]) if str(f) not in ["", "nan", "None"]]
+                _hfs_mevcut_sec = st.selectbox("Doldurulacak müşteri", ["-- Müşteri seçilir --"] + _hfs_mevcut_secenekler, key="hfs_mevcut_musteri_sec")
+                if _hfs_mevcut_sec != "-- Müşteri seçilir --" and st.button(
+                        "🔄 Seçili Müşterinin Eksik Bilgilerini Bu Verilerle Doldur",
+                        key="hfs_mevcut_doldur_btn", use_container_width=True):
+                    try:
+                        _hfs_mevcut_id = int(_hfs_mevcut_sec.split("]")[0].replace("[", "").strip())
+                        _hfs_mevcut_satir = _hfs_mevcut_df2[_hfs_mevcut_df2["id"] == _hfs_mevcut_id]
+                        if _hfs_mevcut_satir.empty:
+                            st.error("⚠️ Bu müşteri bulunamadı — sayfayı yenileyip tekrar dene.")
+                        else:
+                            _hfs_m = _hfs_mevcut_satir.iloc[0]
+
+                            def _hfs_coklu_birlestir(_eski, _yeni):
+                                _eski_satirlar = [s.strip() for s in str(_eski or "").split("\n") if s.strip()]
+                                _yeni_satirlar = [s.strip() for s in str(_yeni or "").split("\n") if s.strip()]
+                                for _ys in _yeni_satirlar:
+                                    if _ys not in _eski_satirlar:
+                                        _eski_satirlar.append(_ys)
+                                return "\n".join(_eski_satirlar)
+
+                            _hfs_guncelle_alan = {}
+                            _hfs_guncelle_alan["gsm"] = _hfs_coklu_birlestir(_hfs_m.get("gsm", ""), _hfs_gsm)
+                            _hfs_guncelle_alan["sabit"] = _hfs_coklu_birlestir(_hfs_m.get("sabit", ""), _hfs_sabit)
+                            _hfs_guncelle_alan["email"] = _hfs_coklu_birlestir(_hfs_m.get("email", ""), _hfs_email)
+                            if not str(_hfs_m.get("adres", "") or "").strip() and _hfs_adres.strip():
+                                _hfs_guncelle_alan["adres"] = _tr_buyuk(_hfs_adres)
+                            if not str(_hfs_m.get("il", "") or "").strip() and _hfs_il != "-- İl seçilir --":
+                                _hfs_guncelle_alan["il"] = _tr_buyuk(_hfs_il)
+                            if not str(_hfs_m.get("ilce", "") or "").strip() and _hfs_ilce != "-- Önce il seç --":
+                                _hfs_guncelle_alan["ilce"] = _tr_buyuk(_hfs_ilce)
+                            db_update("cari_kartlar", _hfs_guncelle_alan, "id", _hfs_mevcut_id)
+                            try: db_read.clear()
+                            except: pass
+                            try: get_cari_listesi.clear()
+                            except: pass
+                            st.session_state.pop("hfs_sonuc", None)
+                            st.session_state.pop("hfs_ham", None)
+                            for _hfs_alan_k3 in ("firma", "gsm", "sabit", "email", "adres", "il", "ilce"):
+                                st.session_state.pop(f"hfs_{_hfs_alan_k3}", None)
+                            st.success(f"✅ '{_hfs_m.get('firma','')}' güncellendi — eksik alanlar dolduruldu")
+                            st.rerun()
+                    except Exception as _hfs_doldur_hata:
+                        st.error(f"Hata: {_hfs_doldur_hata}")
 
 elif aktif == "mukerrer":
     sayfa_log("mukerrer")
