@@ -3696,11 +3696,19 @@ def not_dialog(cari_id, firma_adi=""):
                         _hf_guncelle_alan["gsm"] = _hf_coklu_birlestir(_hf_m.get("gsm", ""), _hf_gsm)
                         _hf_guncelle_alan["sabit"] = _hf_coklu_birlestir(_hf_m.get("sabit", ""), _hf_sabit)
                         _hf_guncelle_alan["email"] = _hf_coklu_birlestir(_hf_m.get("email", ""), _hf_email)
-                        if not str(_hf_m.get("adres", "") or "").strip() and _hf_adres.strip():
+                        # KULLANICI İSTEĞİ (2026-09 düzeltmesi): "sadece alan
+                        # BOŞSA doldur" kuralı çok katıydı — mevcut kayıtta
+                        # o alanda anlamsız bir kalıntı (boşluk, tire vb.)
+                        # varsa "zaten dolu" sayılıp hiç güncellenmiyordu, bu
+                        # yüzden "adres/il geçmedi" şikayetine yol açtı. Artık
+                        # ayrıştırılan veri VARSA doğrudan uygulanır (bu
+                        # buton zaten "eksik bilgileri BU verilerle doldur"
+                        # demek için tıklanıyor — kullanıcı bunu istiyor).
+                        if _hf_adres.strip():
                             _hf_guncelle_alan["adres"] = _tr_buyuk(_hf_adres)
-                        if not str(_hf_m.get("il", "") or "").strip() and _hf_il != "-- İl seçilir --":
+                        if _hf_il != "-- İl seçilir --":
                             _hf_guncelle_alan["il"] = _tr_buyuk(_hf_il)
-                        if not str(_hf_m.get("ilce", "") or "").strip() and _hf_ilce != "-- Önce il seç --":
+                        if _hf_ilce != "-- Önce il seç --":
                             _hf_guncelle_alan["ilce"] = _tr_buyuk(_hf_ilce)
                         db_update("cari_kartlar", _hf_guncelle_alan, "id", int(cari_id))
                         try: db_read.clear()
@@ -6218,11 +6226,16 @@ elif aktif == "hizli_firma":
                             _hfs_guncelle_alan["gsm"] = _hfs_coklu_birlestir(_hfs_m.get("gsm", ""), _hfs_gsm)
                             _hfs_guncelle_alan["sabit"] = _hfs_coklu_birlestir(_hfs_m.get("sabit", ""), _hfs_sabit)
                             _hfs_guncelle_alan["email"] = _hfs_coklu_birlestir(_hfs_m.get("email", ""), _hfs_email)
-                            if not str(_hfs_m.get("adres", "") or "").strip() and _hfs_adres.strip():
+                            # KULLANICI İSTEĞİ (2026-09 düzeltmesi): ayrıştırılan
+                            # veri VARSA doğrudan uygulanır — "sadece boşsa
+                            # doldur" kuralı, mevcut kayıttaki anlamsız
+                            # kalıntılar (boşluk, tire vb.) yüzünden "zaten
+                            # dolu" sayılıp adres/il hiç güncellenmiyordu.
+                            if _hfs_adres.strip():
                                 _hfs_guncelle_alan["adres"] = _tr_buyuk(_hfs_adres)
-                            if not str(_hfs_m.get("il", "") or "").strip() and _hfs_il != "-- İl seçilir --":
+                            if _hfs_il != "-- İl seçilir --":
                                 _hfs_guncelle_alan["il"] = _tr_buyuk(_hfs_il)
-                            if not str(_hfs_m.get("ilce", "") or "").strip() and _hfs_ilce != "-- Önce il seç --":
+                            if _hfs_ilce != "-- Önce il seç --":
                                 _hfs_guncelle_alan["ilce"] = _tr_buyuk(_hfs_ilce)
                             db_update("cari_kartlar", _hfs_guncelle_alan, "id", _hfs_mevcut_id)
                             try: db_read.clear()
