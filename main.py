@@ -5232,7 +5232,10 @@ ul[data-baseweb="menu"]::-webkit-scrollbar-track,
 [role="listbox"]::-webkit-scrollbar-track {
     background: #f1f5f9 !important;
 }
-button[data-testid="collapsedControl"] { display: none !important; }
+/* NOT: collapsedControl (sidebar'ı yeniden açan ok butonu) ARTIK
+   gizlenmiyor — eskiden gizliydi, ama sidebar bir şekilde (dar ekran,
+   yanlışlıkla tıklama vb.) kapanınca onu geri açacak hiçbir yol
+   kalmıyordu ("sol menü kayboldu" sorununun kök nedeni buydu). */
 section[data-testid="stSidebar"] .stButton>button {
     text-align: left !important;
     justify-content: flex-start !important;
