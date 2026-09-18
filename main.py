@@ -4550,6 +4550,13 @@ def not_dialog(cari_id, firma_adi=""):
                 import re as _fy_re
                 _fy_tum_iller = _IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI
                 _fy_il_norm_map = {_fy_norm(a): a.upper() for a in _fy_tum_iller}
+                # KANONİK (doğru harfli, _IL_SUTUN_LISTESI/_IL_DIGER_LISTESI'ndeki
+                # ile BİREBİR aynı) eşleme — "İkisini Birden Çalıştır" bunu
+                # kullanır. _fy_il_norm_map'in değeri (.upper()) Python'un
+                # Türkçe "i" hatası yüzünden "İZMIR" gibi YANLIŞ büyütülmüş
+                # olabiliyordu, bu da il listesiyle asla eşleşmeyip
+                # "İllerle İşaretle" kısmının hiç çalışmamasına yol açıyordu.
+                _fy_il_kanonik_map = {_fy_norm(a): a for a in _fy_tum_iller}
                 _fy_iller_bulunan_set = set()  # "İkisini Birden" için: tespit edilen KANONİK il/diğer adları
 
                 def _fy_sayi_parse(_metin):
@@ -4600,7 +4607,9 @@ def not_dialog(cari_id, firma_adi=""):
                             _sehir_bulundu = _il_ad_fy
                             break
                     if _sehir_bulundu:
-                        _fy_iller_bulunan_set.add(_sehir_bulundu)
+                        _fy_kanonik_bulunan = _fy_il_kanonik_map.get(_fy_norm(_sehir_bulundu))
+                        if _fy_kanonik_bulunan:
+                            _fy_iller_bulunan_set.add(_fy_kanonik_bulunan)
                     if _sehir_bulundu:
                         if "\t" in _s:
                             _sehir_ham_fy = _s.split("\t")[0].strip()
