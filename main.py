@@ -1919,11 +1919,22 @@ def il_ilce_bolge_bul(il, ilce):
 
 @st.cache_data(ttl=60)
 def get_cari_listesi():
-    """60 sn cache'li cari listesi — HTTP Range ile limitsiz çek"""
+    """60 sn cache'li cari listesi — HTTP Range ile limitsiz çek.
+    GÜVENLİ (2026-09 düzeltmesi): eskiden bir ara sayfa (batch) ağ hatasına
+    takılırsa liste SESSİZCE YARIM kalıp (ör. 3700 yerine 1800 kayıt)
+    DOĞRUYMUŞ gibi 60 saniye önbelleğe alınıyordu — kullanıcı 'müşteriler
+    kayboldu' diye endişeleniyordu, oysa hiçbir veri silinmemişti, sadece
+    YARIM YÜKLENİYORDU. Şimdi: her sayfa en fazla 3 kez denenir; TÜM
+    denemeler başarısız olursa o ana kadar toplanan (güvenilir olmayan)
+    sonuç TAMAMEN ATILIR ve ikinci yönteme (supabase-py ile, AYNI ŞEKİLDE
+    tam sayfalanmış) geçilir — asla yarım bir liste 'tam liste'ymiş gibi
+    döndürülmez."""
     import requests as _rq
+    import time as _cl_time
     _url = st.secrets.get("SUPABASE_URL","")
     _key = st.secrets.get("SUPABASE_SERVICE_KEY","") or st.secrets.get("SUPABASE_KEY","")
     _tum = []
+    _pagination_guvenilir = False
     if _url and _key:
         try:
             _offset = 0
@@ -1934,28 +1945,53 @@ def get_cari_listesi():
                     "Range-Unit": "items",
                     "Range": f"{_offset}-{_offset+999}"
                 }
-                _r = _rq.get(
-                    f"{_url}/rest/v1/cari_kartlar?select=*&order=id.asc",
-                    headers=_hdrs, timeout=30
-                )
-                if _r.status_code not in [200, 206]:
+                _batch = None
+                for _deneme_cl in range(3):
+                    try:
+                        _r = _rq.get(
+                            f"{_url}/rest/v1/cari_kartlar?select=*&order=id.asc",
+                            headers=_hdrs, timeout=30
+                        )
+                        if _r.status_code in [200, 206]:
+                            _batch = _r.json()
+                            break
+                    except Exception:
+                        pass
+                    _cl_time.sleep(0.5)
+                if _batch is None:
+                    # 3 denemede de başarısız — bu sonucu GÜVENİLİR SAYMA,
+                    # ikinci yönteme düş (yarım listeyi asla döndürme).
+                    _tum = []
+                    _pagination_guvenilir = False
                     break
-                _batch = _r.json()
                 if not _batch:
+                    _pagination_guvenilir = True
                     break
                 _tum.extend(_batch)
                 if len(_batch) < 1000:
+                    _pagination_guvenilir = True
                     break
                 _offset += 1000
-        except:
-            pass
-    if not _tum:
+        except Exception:
+            _tum = []
+            _pagination_guvenilir = False
+    if not _pagination_guvenilir:
         try:
             sb = get_sb_client()
             if sb:
-                _res = sb.table("cari_kartlar").select("*").order("id",desc=False).execute()
-                _tum = _res.data or []
-        except:
+                _tum2 = []
+                _offset2 = 0
+                while True:
+                    _r2 = sb.table("cari_kartlar").select("*").order("id", desc=False).range(
+                        _offset2, _offset2 + 999).execute()
+                    _batch2 = _r2.data or []
+                    _tum2.extend(_batch2)
+                    if len(_batch2) < 1000:
+                        break
+                    _offset2 += 1000
+                if _tum2:
+                    _tum = _tum2
+        except Exception:
             pass
     _df_g = pd.DataFrame(_tum) if _tum else pd.DataFrame()
     if not _df_g.empty:
