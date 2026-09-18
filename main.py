@@ -8158,7 +8158,7 @@ function kartSec(id){
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
         "🧾 Teklif":70,"💬 Mesaj":70,
-        "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"rut":90
+        "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"sektor":100,"rut":90
     }
     for _il_vars in _IL_SUTUN_LISTESI:
         _KOL_VARSAYILAN[_il_vars] = 10
@@ -8248,6 +8248,7 @@ function kartSec(id){
         "asama2":        st.column_config.SelectboxColumn("2. Aşama", options=_asama_secenek_guvenli("asama2", ["", "Teklif"]), width=_w("asama2")),
         "asama3":        st.column_config.SelectboxColumn("3. Aşama", options=_asama_secenek_guvenli("asama3", ["Tümü", "Deneme", "TAKİP", "Fiyat Hazırla", "Sözleşme"]), width=_w("asama3")),
         "ara_islem":     st.column_config.TextColumn("Ara İşlem", width=_w("ara_islem")),
+        "sektor":        st.column_config.TextColumn("Sektör", width=_w("sektor")),
         "rut":           st.column_config.TextColumn("🛣️ Rut", width=_w("rut"), disabled=True,
                              help="OTOMATİK hesaplanır — hangi İL sütun(lar)ına gönderim bilgisi girildiyse, o illerin kısaltması buraya otomatik yazılır. Elle düzenlenmez; değiştirmek için ilgili İL sütununu doldurun/boşaltın."),
         "sonuc":         st.column_config.SelectboxColumn("Sonuç", options=_asama_secenek_guvenli("sonuc", ["Tümü", "Kazanıldı", "Kaybedildi", "Devam Ediyor"]), width=_w("sonuc")),
@@ -8285,7 +8286,7 @@ function kartSec(id){
     col_order = ["Seç","tarih","guncelleme_tarihi","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
-                 "🧾 Teklif","💬 Mesaj","ara_islem","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
+                 "🧾 Teklif","💬 Mesaj","ara_islem","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
     _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
@@ -8293,7 +8294,7 @@ function kartSec(id){
                       "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
                       "🧾 Teklif":"🧾 Teklif","💬 Mesaj":"💬 Mesaj","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
-                      "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem","rut":"rut"}
+                      "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem","sektor":"sektor","rut":"rut"}
     col_order = [c for c in col_order if not any(c == _kol_gizli_map.get(g,g) for g in _GIZLI_KOLONLAR)]
 
     # ── SAYFALAMA KALDIRILDI — kullanıcı isteği üzerine, liste artık her zaman
@@ -8707,9 +8708,14 @@ function kartSec(id){
         _eksik_yeni = [c for c in col_order if c not in _kayitli_temiz]
         _aktif_col_order = _kayitli_temiz + _eksik_yeni
 
-    # "Rut" kullanıcı isteğiyle HER ZAMAN "Ara İşlem"in hemen sağında olmalı —
-    # kayıtlı (sürükle-bırak ile özelleştirilmiş) eski sütun sırası "rut"u
-    # tanımadığı için onu sona atabiliyordu; burada konumu zorla düzeltilir.
+    # "Rut" ve "Sektör" kullanıcı isteğiyle HER ZAMAN "Ara İşlem"in hemen
+    # sağında olmalı — kayıtlı (sürükle-bırak ile özelleştirilmiş) eski sütun
+    # sırası bunları tanımadığı için sona atabiliyordu; burada konumları
+    # zorla düzeltilir (sıra: Ara İşlem, Sektör, Rut).
+    if "sektor" in _aktif_col_order and "ara_islem" in _aktif_col_order:
+        _aktif_col_order = [c for c in _aktif_col_order if c != "sektor"]
+        _ai_pos2 = _aktif_col_order.index("ara_islem")
+        _aktif_col_order.insert(_ai_pos2 + 1, "sektor")
     if "rut" in _aktif_col_order and "ara_islem" in _aktif_col_order:
         _aktif_col_order = [c for c in _aktif_col_order if c != "rut"]
         _ai_pos = _aktif_col_order.index("ara_islem")
@@ -10387,7 +10393,7 @@ function updateBot(v){{
             "firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,
-            "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"rut":100,
+            "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"sektor":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
             "🧾 Teklif":70,"💬 Mesaj":70
         }
@@ -10399,7 +10405,7 @@ function updateBot(v){{
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
             "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
-            "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","rut":"🛣️ Rut",
+            "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","sektor":"Sektör","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
             "🧾 Teklif":"Teklif","💬 Mesaj":"Mesaj"
         }
