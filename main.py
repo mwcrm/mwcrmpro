@@ -5189,6 +5189,25 @@ section[data-testid="stSidebar"] {
     transform: translateX(0px) !important;
     overflow-y: auto !important;
     height: 100vh !important;
+    min-width: 260px !important;
+    width: 260px !important;
+    visibility: visible !important;
+    display: block !important;
+    margin-left: 0px !important;
+    position: relative !important;
+}
+/* KRİTİK: Streamlit "kapalı" durumdayken sidebar'a kendi iç stilinden
+   (aria-expanded="false") sıfır genişlik/gizli görünürlük veriyor — yukarıdaki
+   genel kural bunu her zaman yenemiyordu ("sol menü hiç yok" sorununun kök
+   nedeni buydu). Bu yüzden kapalı durumu AÇIKÇA hedefleyip aynı zorlamayı
+   burada da tekrarlıyoruz. */
+section[data-testid="stSidebar"][aria-expanded="false"] {
+    transform: translateX(0px) !important;
+    min-width: 260px !important;
+    width: 260px !important;
+    margin-left: 0px !important;
+    visibility: visible !important;
+    display: block !important;
 }
 section[data-testid="stSidebar"] > div:first-child {
     overflow-y: auto !important;
