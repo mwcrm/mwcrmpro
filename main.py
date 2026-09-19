@@ -4661,6 +4661,23 @@ def not_dialog(cari_id, firma_adi=""):
                     # üzerinde elle oynayabilsin, hazır metin dayatılmasın.
                     st.session_state[f"_fy_hazir_{cari_id}"] = _fy_format_tablo(_fy_yeni_girisler)
 
+                    # ── HEDEFLENEN CİRO — KULLANICI İSTEĞİ (2026-09): yapıştırılan
+                    # İl/Desi/Tutar satırlarındaki TUTAR'ların (DESİ'YE
+                    # DOKUNULMADAN, sadece 3. sütun — g[3]) TOPLAMI, bu
+                    # müşterinin Cari Liste'deki "Hedeflenen Ciro" (Hedef ₺)
+                    # alanına yazılır — böylece o an girilen tüm illerin
+                    # toplam potansiyel cirosu tek bakışta görülür.
+                    try:
+                        _fy_hedef_toplam = round(sum(_g[4] for _g in _fy_yeni_girisler), 2)
+                        db_update("cari_kartlar", {"beklenen_ciro": _fy_hedef_toplam}, "id", int(cari_id))
+                        try: db_read.clear()
+                        except: pass
+                        try: get_cari_listesi.clear()
+                        except: pass
+                        st.toast(f"🎯 Hedeflenen Ciro: {_kg_tr_format(_fy_hedef_toplam)} ₺ olarak Cari Liste'ye yazıldı", icon="🎯")
+                    except Exception as _fy_hedef_hata:
+                        st.error(f"Hedeflenen Ciro yazılırken hata: {_fy_hedef_hata}")
+
                     # ── "🚀 İkisini Birden Çalıştır" — KULLANICI İSTEĞİ (2026-09):
                     # aynı fiyat metninde tespit edilen şehirler, "İlleri
                     # İşaretle" ile AYNI mantıkla Varış İlleri'ne de işlenir —
