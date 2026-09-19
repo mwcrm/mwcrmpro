@@ -60,6 +60,58 @@ _IL_KISA_ETIKET = {"İstanbul":"İst","Bursa":"Brs","İzmir":"İzm","Manisa":"Ma
                     "Sakarya":"Sak","Samsun":"Sam","Trabzon":"Tra","Van":"Van","Şanlıurfa":"Şan","Diğer":"Diğ"}
 
 
+_CL_OZEL_FILTRE_SECENEKLERI = {
+    "": "-- Kullanılmıyor --",
+    "yetkili": "Yetkili",
+    "sektor": "Sektör",
+    "temsilci": "Temsilci",
+    "rakip_firma": "Özel (Rakip Firma)",
+    "durum": "Durum",
+    "il": "İl",
+    "ilce": "İlçe",
+    "ara_islem": "Ara İşlem",
+    "adres": "Adres",
+}
+
+
+def _cl_ozel_filtre_alani_yukle():
+    """KULLANICI İSTEĞİ (2026-09): Cari Liste'de HANGİ alanın ek bir filtre
+    olarak gösterileceği, Kullanıcılar > Kolon Ayarları'ndan seçilebilir
+    (örn. 'Yetkili'). Bu ayar kullanici_tercih'te saklanır — dönen değer,
+    seçili alanın İÇ ADI (örn. "yetkili") ya da hiç ayarlanmadıysa "" dır."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return ""
+        r = sb.table("kullanici_tercih").select("deger").eq(
+            "kullanici", "__liste_ui__").eq("anahtar", "_cl_ozel_filtre_alani").execute()
+        if r.data:
+            _v = r.data[0]["deger"]
+            return _v if _v in _CL_OZEL_FILTRE_SECENEKLERI else ""
+        return ""
+    except Exception:
+        return ""
+
+
+def _cl_ozel_filtre_alani_kaydet(_alan):
+    """GÜVENLİ (bkz. _tedarikci_kaydet ile aynı desen) — SİLME YOK, satır
+    varsa UPDATE, yoksa INSERT."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return False
+        _guncelle = sb.table("kullanici_tercih").update({"deger": _alan}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", "_cl_ozel_filtre_alani").execute()
+        if not _guncelle.data:
+            sb.table("kullanici_tercih").insert({
+                "kullanici": "__liste_ui__", "anahtar": "_cl_ozel_filtre_alani", "deger": _alan
+            }).execute()
+        return True
+    except Exception:
+        return False
+
+
+
 def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
     """KULLANICI İSTEĞİ (2026-09): "Rut" artık elle yazılmıyor — o müşterinin
     hangi İL sütun(lar)ına gönderim bilgisi girildiğine bakılarak OTOMATİK
@@ -7706,7 +7758,7 @@ function kartSec(id){
         # ── TEK SATIR — hepsi aynı hizada, eşit genişlikte: Yeni firma kontrol,
         # Özel, Aşama, Durum, İl, İlçe, Güncelleme Tarihi (Çoklu firma artık
         # bu panelin ÜSTÜNDE, kendi ayrı satırında — her zaman açık) ────────
-        _fc = st.columns(8)
+        _fc = st.columns(9)
 
         # ── YENİ FİRMA KONTROLÜ — "Satır Ekle" ile elle firma adı yazmadan önce,
         # aynı/benzer isimde zaten kayıtlı müşteri var mı diye anlık arama.
@@ -7781,9 +7833,26 @@ function kartSec(id){
             placeholder="🔍 Güncelleme Tarihi...", label_visibility="collapsed"
         )
 
+        # ── ÖZEL (AYARLANABİLİR) FİLTRE — KULLANICI İSTEĞİ (2026-09):
+        # Kullanıcılar > Kolon Ayarları > "🔍 Filtre Düzenle"de seçilen alana
+        # göre (örn. Yetkili) ek bir filtre kutusu. Alan seçilmemişse (--
+        # Kullanılmıyor --) bu kutu hiç gösterilmez.
+        _cl_ozel_filtre_alani = st.session_state.get("_cl_ozel_filtre_alani_cache")
+        if _cl_ozel_filtre_alani is None:
+            _cl_ozel_filtre_alani = _cl_ozel_filtre_alani_yukle()
+            st.session_state["_cl_ozel_filtre_alani_cache"] = _cl_ozel_filtre_alani
+        _cl_ozel_filtre_sec = []
+        if _cl_ozel_filtre_alani and _cl_ozel_filtre_alani in df.columns:
+            _cl_ozel_filtre_opts = sorted([x for x in df[_cl_ozel_filtre_alani].dropna().astype(str).unique().tolist() if x.strip() and x not in ["nan", "None"]])
+            _cl_ozel_filtre_etiket = _CL_OZEL_FILTRE_SECENEKLERI.get(_cl_ozel_filtre_alani, _cl_ozel_filtre_alani)
+            _cl_ozel_filtre_sec = _fc[8].multiselect(
+                "ozf", _cl_ozel_filtre_opts, key=f"_cl_fil_ozel_ayarlanabilir_{_cl_ozel_filtre_alani}",
+                placeholder=f"🔍 {_cl_ozel_filtre_etiket}...", label_visibility="collapsed"
+            )
+
         # Manuel filtre kutularından biri (Aşama, Durum, Arama, İl, İlçe, Tarih) kullanıldıysa
         # 'Toplam' modu otomatik kapanır — aksi halde seçim görünür ama uygulanmaz
-        if ara_txt or _asama_sec or _durum_sec or _il_sec or _ilce_sec or _guncelleme_tarih_sec or _ozel_sec or _rut_sec:
+        if ara_txt or _asama_sec or _durum_sec or _il_sec or _ilce_sec or _guncelleme_tarih_sec or _ozel_sec or _rut_sec or _cl_ozel_filtre_sec:
             st.session_state["_toplam_aktif"] = False
         # NOT: "Çoklu Firma Seçimi" artık bu panelin ÜSTÜNDE, kendi ayrı
         # satırında render ediliyor (_cok_secili_ham/_cok_secili_idler orada
@@ -8045,6 +8114,10 @@ function kartSec(id){
                 lambda _rv: bool({p.strip() for p in _rv.split(" - ") if p.strip()} & _rut_secili_set))]
         if _ozel_sec and "rakip_firma" in df_f.columns:
             df_f = df_f[df_f["rakip_firma"].astype(str).isin(_ozel_sec)]
+        # ── ÖZEL (AYARLANABİLİR) FİLTRE — Kullanıcılar > Kolon Ayarları'nda
+        # seçilen alana (örn. Yetkili) göre uygulanır.
+        if _cl_ozel_filtre_sec and _cl_ozel_filtre_alani and _cl_ozel_filtre_alani in df_f.columns:
+            df_f = df_f[df_f[_cl_ozel_filtre_alani].astype(str).isin(_cl_ozel_filtre_sec)]
         if _tem_sec:
             df_f = df_f[df_f["temsilci"].astype(str).isin(_tem_sec)]
         if _guncelleme_tarih_sec:
@@ -10659,6 +10732,31 @@ function updateBot(v){{
 
     # ── 📐 KOLON AYARLARI ─────────────────────────────────────────────────────
     with kul_tab_kolon:
+        # ── 🔍 FİLTRE DÜZENLE — KULLANICI İSTEĞİ (2026-09): Cari Liste'nin
+        # filtre satırında EK bir filtre gösterilsin, ama HANGİ alanın
+        # filtreleneceği burada seçilebilsin (örn. "Yetkili") — sabit kod
+        # yazmak yerine, istenirse başka bir alana da kolayca çevrilebilir.
+        st.markdown("### 🔍 Filtre Düzenle")
+        st.caption("Cari Liste'nin filtre satırında ek bir filtre kutusu göstermek için, hangi alanın filtreleneceğini seçin (örn. Yetkili).")
+        _cl_filtre_mevcut = st.session_state.get("_cl_ozel_filtre_alani_cache")
+        if _cl_filtre_mevcut is None:
+            _cl_filtre_mevcut = _cl_ozel_filtre_alani_yukle()
+            st.session_state["_cl_ozel_filtre_alani_cache"] = _cl_filtre_mevcut
+        _cl_filtre_secenek_liste = list(_CL_OZEL_FILTRE_SECENEKLERI.keys())
+        _cl_filtre_idx = _cl_filtre_secenek_liste.index(_cl_filtre_mevcut) if _cl_filtre_mevcut in _cl_filtre_secenek_liste else 0
+        _cl_filtre_sec_ui = st.selectbox(
+            "Filtrelenecek alan", _cl_filtre_secenek_liste, index=_cl_filtre_idx,
+            format_func=lambda k: _CL_OZEL_FILTRE_SECENEKLERI[k], key="cl_filtre_duzenle_sec"
+        )
+        if st.button("💾 Filtre Ayarını Kaydet", key="cl_filtre_duzenle_kaydet_btn"):
+            _cl_filtre_kaydet_ok = _cl_ozel_filtre_alani_kaydet(_cl_filtre_sec_ui)
+            if _cl_filtre_kaydet_ok:
+                st.session_state["_cl_ozel_filtre_alani_cache"] = _cl_filtre_sec_ui
+                st.success(f"✅ Cari Liste'de artık '{_CL_OZEL_FILTRE_SECENEKLERI[_cl_filtre_sec_ui]}' filtresi gösterilecek." if _cl_filtre_sec_ui else "✅ Ek filtre kapatıldı.")
+            else:
+                st.error("⚠️ Kaydedilemedi — lütfen tekrar dene.")
+        st.divider()
+
         st.markdown("### 📐 Cari Liste Kolon Ayarları")
         st.caption("Genişlik ayarlayın, gizlemek istediklerinizi kapatın → Kaydet")
         _KOL_VARS_UI = {
