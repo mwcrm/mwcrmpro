@@ -9047,7 +9047,8 @@ function kartSec(id){
     st.session_state.setdefault("_cl_tumu_haric_idler", set())
     if st.session_state.get("_cl_tumu_secili_mod", False) and "id" in df_edit.columns:
         _cl_haric = st.session_state["_cl_tumu_haric_idler"]
-        df_edit["Seç"] = ~df_edit["id"].astype(int).isin(_cl_haric)
+        _cl_id_sayisal = pd.to_numeric(df_edit["id"], errors="coerce").fillna(-1).astype(int)
+        df_edit["Seç"] = ~_cl_id_sayisal.isin(_cl_haric)
     _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
 
     with _tbl_col:
@@ -9077,8 +9078,9 @@ function kartSec(id){
         # kümesine TAM senkronize et — bir dahaki render'da doğru taban
         # buradan yeniden kurulacak.
         if st.session_state.get("_cl_tumu_secili_mod", False) and "id" in edited_df.columns:
+            _cl_id_sayisal2 = pd.to_numeric(edited_df["id"], errors="coerce").fillna(-1).astype(int)
             st.session_state["_cl_tumu_haric_idler"] = set(
-                edited_df.loc[edited_df["Seç"] == False, "id"].astype(int).tolist()
+                _cl_id_sayisal2[edited_df["Seç"] == False].tolist()
             )
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
@@ -9675,7 +9677,10 @@ function kartSec(id){
             if st.button(f"🗑️ Seçili {secili_sayi} Kaydı Sil", key="cl_secili_sil_btn", use_container_width=True):
                 try:
                     for _cl_sid in secili_idler:
-                        db_update("cari_kartlar", {"silindi": 1}, "id", int(_cl_sid))
+                        try:
+                            db_update("cari_kartlar", {"silindi": 1}, "id", int(_cl_sid))
+                        except (ValueError, TypeError):
+                            continue  # geçersiz/boş id — güvenlik için atla
                     try: db_read.clear()
                     except: pass
                     try: get_cari_listesi.clear()
