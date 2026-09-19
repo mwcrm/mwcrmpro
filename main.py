@@ -3685,12 +3685,16 @@ def not_dialog(cari_id, firma_adi=""):
                         _hf_m = _hf_mevcut_satir.iloc[0]
 
                         def _hf_coklu_birlestir(_eski, _yeni):
+                            # KULLANICI İSTEĞİ (2026-09): YENİ veriler ÜSTTE,
+                            # ESKİ veriler ALTTA görünsün — böylece en güncel
+                            # bilgi ilk bakışta görülür.
                             _eski_satirlar = [s.strip() for s in str(_eski or "").split("\n") if s.strip()]
                             _yeni_satirlar = [s.strip() for s in str(_yeni or "").split("\n") if s.strip()]
-                            for _ys in _yeni_satirlar:
-                                if _ys not in _eski_satirlar:
-                                    _eski_satirlar.append(_ys)
-                            return "\n".join(_eski_satirlar)
+                            _birlesik = list(_yeni_satirlar)
+                            for _es in _eski_satirlar:
+                                if _es not in _birlesik:
+                                    _birlesik.append(_es)
+                            return "\n".join(_birlesik)
 
                         _hf_guncelle_alan = {}
                         _hf_guncelle_alan["gsm"] = _hf_coklu_birlestir(_hf_m.get("gsm", ""), _hf_gsm)
@@ -6251,12 +6255,15 @@ elif aktif == "hizli_firma":
                             _hfs_m = _hfs_mevcut_satir.iloc[0]
 
                             def _hfs_coklu_birlestir(_eski, _yeni):
+                                # KULLANICI İSTEĞİ (2026-09): YENİ veriler
+                                # ÜSTTE, ESKİ veriler ALTTA görünsün.
                                 _eski_satirlar = [s.strip() for s in str(_eski or "").split("\n") if s.strip()]
                                 _yeni_satirlar = [s.strip() for s in str(_yeni or "").split("\n") if s.strip()]
-                                for _ys in _yeni_satirlar:
-                                    if _ys not in _eski_satirlar:
-                                        _eski_satirlar.append(_ys)
-                                return "\n".join(_eski_satirlar)
+                                _birlesik = list(_yeni_satirlar)
+                                for _es in _eski_satirlar:
+                                    if _es not in _birlesik:
+                                        _birlesik.append(_es)
+                                return "\n".join(_birlesik)
 
                             _hfs_guncelle_alan = {}
                             _hfs_guncelle_alan["gsm"] = _hfs_coklu_birlestir(_hfs_m.get("gsm", ""), _hfs_gsm)
