@@ -9030,14 +9030,23 @@ function kartSec(id){
 
     # ── "☑️ Tümünü Seç" / "⬜ Seçimi Temizle" — KULLANICI İSTEĞİ (2026-09):
     # tek tek işaretlemek yerine tüm (o an filtrede görünen) müşterileri bir
-    # tıkla seçebilmek için. Kargolar/Tedarikçi sayfalarındaki AYNI desen:
-    # sabit bir widget key'i, session_state'teki ESKİ (işaretsiz) durumu
-    # koruyup "Seç"=True dayatmamızı YOK SAYARDI — bu yüzden editör anahtarı
-    # artık VERSİYONLU; "Tümünü Seç"e her basışta versiyon artırılıp editör
-    # TAZE (ve bu sefer hepsi işaretli) olarak yeniden oluşturuluyor.
+    # tıkla seçebilmek için. Editör anahtarı VERSİYONLU; "Tümünü Seç"e her
+    # basışta versiyon artırılıp editör TAZE (ve bu sefer hepsi işaretli)
+    # olarak yeniden oluşturuluyor.
+    # 🚨 KRİTİK GÜVENLİK DÜZELTMESİ (2026-09): bu bayrak eskiden "Kaydet/Sil/
+    # Temizle"ye kadar HER render'da yeniden uygulanıyordu — bu da SENİN
+    # "Tümünü Seç"ten SONRA elle kaldırdığın işaretlerin bazı render'larda
+    # sessizce GERİ ZORLA İŞARETLENMESİNE ve o kayıtların da yanlışlıkla
+    # SİLİNMESİNE yol açıyordu. Şimdi TEK SEFERLİK: bayrak kullanılır
+    # kullanılmaz HEMEN sıfırlanır — "Seç"=True SADECE bu YENİ editörün İLK
+    # (taze) baz durumu olarak bir kez uygulanır, ondan sonraki HER şey
+    # (işaret kaldırma dahil) tamamen kullanıcının kendi tıklamalarına göre
+    # (widget'ın kendi hafızasına göre) belirlenir — kod bir daha ASLA
+    # üzerine yazmaz.
     st.session_state.setdefault("_cl_editor_versiyon", 0)
     if st.session_state.get("_cl_tumu_secili_mod", False):
         df_edit["Seç"] = True
+        st.session_state["_cl_tumu_secili_mod"] = False
     _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
 
     with _tbl_col:
