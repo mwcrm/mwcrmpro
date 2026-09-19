@@ -9621,7 +9621,25 @@ function kartSec(id){
         pass  # (Seçili → Arşive butonu kullanıcı isteğiyle kaldırıldı)
 
     with btn_s:
-        pass  # (Seçili → Sil butonu kullanıcı isteğiyle kaldırıldı)
+        # KULLANICI İSTEĞİ (2026-09): 2 veya daha fazla müşteri "Seç" ile
+        # işaretlenince, cariye tek tek girmeden TOPLU silme butonu çıkar.
+        # AYNI ESKİ KURAL: "Cari Komple Sil" (tek müşteri) gibi TEK TIKLA,
+        # onay istemeden, ANINDA çalışır — yumuşak silme (silindi=1),
+        # kalıcı veri kaybı yok.
+        if secili_sayi >= 2:
+            if st.button(f"🗑️ Seçili {secili_sayi} Kaydı Sil", key="cl_secili_sil_btn", use_container_width=True):
+                try:
+                    for _cl_sid in secili_idler:
+                        db_update("cari_kartlar", {"silindi": 1}, "id", int(_cl_sid))
+                    try: db_read.clear()
+                    except: pass
+                    try: get_cari_listesi.clear()
+                    except: pass
+                    st.session_state.pop("cari_editor", None)
+                    st.toast(f"🗑️ {secili_sayi} müşteri silindi", icon="🗑️")
+                    st.rerun()
+                except Exception as _cl_sil_hata:
+                    st.error(f"Silme hatası: {_cl_sil_hata}")
 
 
 
