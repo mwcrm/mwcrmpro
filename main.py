@@ -208,7 +208,7 @@ def _fy_eski_metni_yeni_formata_cevir(_eski_metin):
     return _fy_tablo_olustur_global(_girisler)
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def _tum_musteri_kargo_yekun_toplami():
     """KULLANICI İSTEĞİ (2026-09): Cari Liste'deki 'Gerçekleşen Ciro' artık
     HER MÜŞTERİ İÇİN, o müşterinin TÜM (silinmemiş) kargo kayıtlarındaki
@@ -916,6 +916,11 @@ def _kg_kayitlari_kaydet(_anahtar, _liste):
             _sb_kg2.table("kullanici_tercih").insert(
                 {"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}
             ).execute()
+        # Kargo değişti — Cari Liste'deki "Gerçekleşen Ciro" önbelleğini
+        # (performans için 5 dk'lık) hemen geçersiz kıl, bir sonraki
+        # açılışta güncel görünsün (2 dk beklemek zorunda kalmasın).
+        try: _tum_musteri_kargo_yekun_toplami.clear()
+        except Exception: pass
         return True
     except Exception:
         return False
@@ -15555,6 +15560,10 @@ elif aktif == "kargolar":
                 _sb_kt2.table("kullanici_tercih").insert(
                     {"kullanici": "__liste_ui__", "anahtar": _anahtar, "deger": _deger}
                 ).execute()
+            # Kargo değişti — Cari Liste'deki "Gerçekleşen Ciro" önbelleğini
+            # (performans için 5 dk'lık) hemen geçersiz kıl.
+            try: _tum_musteri_kargo_yekun_toplami.clear()
+            except Exception: pass
             return True
         except Exception:
             return False
