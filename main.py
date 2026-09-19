@@ -9030,23 +9030,24 @@ function kartSec(id){
 
     # ── "☑️ Tümünü Seç" / "⬜ Seçimi Temizle" — KULLANICI İSTEĞİ (2026-09):
     # tek tek işaretlemek yerine tüm (o an filtrede görünen) müşterileri bir
-    # tıkla seçebilmek için. Editör anahtarı VERSİYONLU; "Tümünü Seç"e her
-    # basışta versiyon artırılıp editör TAZE (ve bu sefer hepsi işaretli)
-    # olarak yeniden oluşturuluyor.
-    # 🚨 KRİTİK GÜVENLİK DÜZELTMESİ (2026-09): bu bayrak eskiden "Kaydet/Sil/
-    # Temizle"ye kadar HER render'da yeniden uygulanıyordu — bu da SENİN
-    # "Tümünü Seç"ten SONRA elle kaldırdığın işaretlerin bazı render'larda
-    # sessizce GERİ ZORLA İŞARETLENMESİNE ve o kayıtların da yanlışlıkla
-    # SİLİNMESİNE yol açıyordu. Şimdi TEK SEFERLİK: bayrak kullanılır
-    # kullanılmaz HEMEN sıfırlanır — "Seç"=True SADECE bu YENİ editörün İLK
-    # (taze) baz durumu olarak bir kez uygulanır, ondan sonraki HER şey
-    # (işaret kaldırma dahil) tamamen kullanıcının kendi tıklamalarına göre
-    # (widget'ın kendi hafızasına göre) belirlenir — kod bir daha ASLA
-    # üzerine yazmaz.
+    # tıkla seçebilmek için.
+    # 🚨 KRİTİK GÜVENLİK DÜZELTMESİ #2 (2026-09): "tek seferlik" yöntem YANLIŞTI
+    # — Streamlit her render'da "Seç" tabanını (df_edit'ten) TAZE alıp
+    # kullanıcının o anki tek tıklamasıyla birleştiriyor; taban bir dahaki
+    # render'da (tek seferlik olduğu için) varsayılan (boş/işaretsiz) haline
+    # dönünce, SADECE senin dokunduğun satır değil, DOKUNMADIĞIN TÜM satırlar
+    # da işaretsiz görünüyordu ("hepsini kaldırıyor" sorunu buydu).
+    # ŞİMDİ DOĞRU YÖNTEM: hangi id'lerin HARİÇ TUTULDUĞU (senin elle
+    # kaldırdıkların) kalıcı bir kümede (session_state) tutuluyor. HER
+    # render'da taban, bu kümeye göre yeniden kuruluyor (hariç tutulanlar
+    # işaretsiz, diğerleri işaretli) — ve render SONRASI, o anki gerçek
+    # işaretli/işaretsiz durum bu kümeye TAM olarak senkronize ediliyor
+    # (yeniden işaretlersen kümeden çıkar, kaldırırsan kümeye girer).
     st.session_state.setdefault("_cl_editor_versiyon", 0)
-    if st.session_state.get("_cl_tumu_secili_mod", False):
-        df_edit["Seç"] = True
-        st.session_state["_cl_tumu_secili_mod"] = False
+    st.session_state.setdefault("_cl_tumu_haric_idler", set())
+    if st.session_state.get("_cl_tumu_secili_mod", False) and "id" in df_edit.columns:
+        _cl_haric = st.session_state["_cl_tumu_haric_idler"]
+        df_edit["Seç"] = ~df_edit["id"].astype(int).isin(_cl_haric)
     _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
 
     with _tbl_col:
@@ -9054,11 +9055,13 @@ function kartSec(id){
         with _cl_ts1:
             if st.button("☑️ Tümünü Seç", key="cl_tumunu_sec_btn", use_container_width=True):
                 st.session_state["_cl_tumu_secili_mod"] = True
+                st.session_state["_cl_tumu_haric_idler"] = set()
                 st.session_state["_cl_editor_versiyon"] += 1
                 st.rerun()
         with _cl_ts2:
             if st.button("⬜ Seçimi Temizle", key="cl_secimi_temizle_btn", use_container_width=True):
                 st.session_state["_cl_tumu_secili_mod"] = False
+                st.session_state["_cl_tumu_haric_idler"] = set()
                 st.session_state["_cl_editor_versiyon"] += 1
                 st.rerun()
         edited_df = st.data_editor(
@@ -9070,6 +9073,13 @@ function kartSec(id){
             height=_cl_editor_yukseklik,
             key=_cl_editor_key
         )
+        # Render SONRASI: gerçek işaretli/işaretsiz durumu "hariç tutulanlar"
+        # kümesine TAM senkronize et — bir dahaki render'da doğru taban
+        # buradan yeniden kurulacak.
+        if st.session_state.get("_cl_tumu_secili_mod", False) and "id" in edited_df.columns:
+            st.session_state["_cl_tumu_haric_idler"] = set(
+                edited_df.loc[edited_df["Seç"] == False, "id"].astype(int).tolist()
+            )
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
 
@@ -9636,6 +9646,7 @@ function kartSec(id){
                 st.session_state.pop(_cl_editor_key, None)
                 st.session_state["_cl_editor_versiyon"] += 1
                 st.session_state["_cl_tumu_secili_mod"] = False
+                st.session_state["_cl_tumu_haric_idler"] = set()
                 if kayit_sayi > 0:
                     _ozet_msg = f"{kayit_sayi} satır kaydedildi!" + (f" · {_arsiv_sayi} not arşivlendi!" if _arsiv_sayi > 0 else "")
                     if _kaydedilen_firmalar:
@@ -9672,6 +9683,7 @@ function kartSec(id){
                     st.session_state.pop(_cl_editor_key, None)
                     st.session_state["_cl_editor_versiyon"] += 1
                     st.session_state["_cl_tumu_secili_mod"] = False
+                    st.session_state["_cl_tumu_haric_idler"] = set()
                     st.toast(f"🗑️ {secili_sayi} müşteri silindi", icon="🗑️")
                     st.rerun()
                 except Exception as _cl_sil_hata:
