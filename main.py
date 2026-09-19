@@ -9028,7 +9028,30 @@ function kartSec(id){
     df_edit.index = df_edit.index + 1
     df_edit.index.name = "S.No"
 
+    # ── "☑️ Tümünü Seç" / "⬜ Seçimi Temizle" — KULLANICI İSTEĞİ (2026-09):
+    # tek tek işaretlemek yerine tüm (o an filtrede görünen) müşterileri bir
+    # tıkla seçebilmek için. Kargolar/Tedarikçi sayfalarındaki AYNI desen:
+    # sabit bir widget key'i, session_state'teki ESKİ (işaretsiz) durumu
+    # koruyup "Seç"=True dayatmamızı YOK SAYARDI — bu yüzden editör anahtarı
+    # artık VERSİYONLU; "Tümünü Seç"e her basışta versiyon artırılıp editör
+    # TAZE (ve bu sefer hepsi işaretli) olarak yeniden oluşturuluyor.
+    st.session_state.setdefault("_cl_editor_versiyon", 0)
+    if st.session_state.get("_cl_tumu_secili_mod", False):
+        df_edit["Seç"] = True
+    _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
+
     with _tbl_col:
+        _cl_ts1, _cl_ts2, _cl_ts_bos = st.columns([1, 1, 6])
+        with _cl_ts1:
+            if st.button("☑️ Tümünü Seç", key="cl_tumunu_sec_btn", use_container_width=True):
+                st.session_state["_cl_tumu_secili_mod"] = True
+                st.session_state["_cl_editor_versiyon"] += 1
+                st.rerun()
+        with _cl_ts2:
+            if st.button("⬜ Seçimi Temizle", key="cl_secimi_temizle_btn", use_container_width=True):
+                st.session_state["_cl_tumu_secili_mod"] = False
+                st.session_state["_cl_editor_versiyon"] += 1
+                st.rerun()
         edited_df = st.data_editor(
             df_edit,
             use_container_width=True,
@@ -9036,7 +9059,7 @@ function kartSec(id){
             column_config=col_config,
             column_order=_aktif_col_order,
             height=_cl_editor_yukseklik,
-            key="cari_editor"
+            key=_cl_editor_key
         )
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
@@ -9044,7 +9067,7 @@ function kartSec(id){
 
     # Kolon sırası değiştiyse kaydet — hem session_state hem DB
     try:
-        _editor_meta = st.session_state.get("cari_editor", {})
+        _editor_meta = st.session_state.get(_cl_editor_key, {})
         _col_order_now = _editor_meta.get("column_order", [])
         if _col_order_now and _col_order_now != st.session_state.get("_cl_kolon_sira"):
             st.session_state["_cl_kolon_sira"] = _col_order_now
@@ -9115,7 +9138,7 @@ function kartSec(id){
     _do_kaydet = st.session_state.pop("_kaydet_flag", False)
     with btn_k:
         if _do_kaydet:
-            _editor_state = st.session_state.get("cari_editor", {})
+            _editor_state = st.session_state.get(_cl_editor_key, {})
             _edited_rows  = dict(_editor_state.get("edited_rows", {}))
             # ── GÜVENLİK AĞI: session_state'teki edited_rows bazen son hücreyi
             # kaçırabiliyor (widget'ın kendi zamanlama davranışı). Bu yüzden HER
@@ -9601,7 +9624,9 @@ function kartSec(id){
                 # Widget'ın eski edited_rows durumunu temizle — kaydedilenler artık
                 # veritabanında, bir sonraki render'da taze veriyle baştan başlasın.
                 # Bu, eski izlerin yeni bir düzenlemeyi maskelemesini de önler.
-                st.session_state.pop("cari_editor", None)
+                st.session_state.pop(_cl_editor_key, None)
+                st.session_state["_cl_editor_versiyon"] += 1
+                st.session_state["_cl_tumu_secili_mod"] = False
                 if kayit_sayi > 0:
                     _ozet_msg = f"{kayit_sayi} satır kaydedildi!" + (f" · {_arsiv_sayi} not arşivlendi!" if _arsiv_sayi > 0 else "")
                     if _kaydedilen_firmalar:
@@ -9635,7 +9660,9 @@ function kartSec(id){
                     except: pass
                     try: get_cari_listesi.clear()
                     except: pass
-                    st.session_state.pop("cari_editor", None)
+                    st.session_state.pop(_cl_editor_key, None)
+                    st.session_state["_cl_editor_versiyon"] += 1
+                    st.session_state["_cl_tumu_secili_mod"] = False
                     st.toast(f"🗑️ {secili_sayi} müşteri silindi", icon="🗑️")
                     st.rerun()
                 except Exception as _cl_sil_hata:
