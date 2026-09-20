@@ -62,15 +62,31 @@ _IL_KISA_ETIKET = {"İstanbul":"İst","Bursa":"Brs","İzmir":"İzm","Manisa":"Ma
 
 _CL_OZEL_FILTRE_SECENEKLERI = {
     "": "-- Kullanılmıyor --",
-    "yetkili": "Yetkili",
-    "sektor": "Sektör",
-    "temsilci": "Temsilci",
+    "firma": "Firma",
     "rakip_firma": "Özel (Rakip Firma)",
-    "durum": "Durum",
+    "yetkili": "Yetkili",
+    "gsm": "GSM",
+    "sabit": "Sabit Tel",
+    "email": "Email",
+    "adres": "Adres",
     "il": "İl",
     "ilce": "İlçe",
+    "durum": "Durum",
+    "temsilci": "Temsilci",
+    "islem_asamasi": "İlk Temas",
+    "vergi_no": "Vergi No",
+    "vergi_dairesi": "Vergi Dairesi",
+    "musteri_subesi": "Müşteri Şubesi",
+    "vade": "Vade",
+    "odeme": "Ödeme",
+    "aciklama": "Açıklama",
+    "asama1": "1. Aşama",
+    "asama2": "2. Aşama",
+    "asama3": "3. Aşama",
+    "sonuc": "Sonuç",
     "ara_islem": "Ara İşlem",
-    "adres": "Adres",
+    "sektor": "Sektör",
+    "rut": "Rut",
 }
 
 
@@ -4786,11 +4802,18 @@ def not_dialog(cari_id, firma_adi=""):
                     # KULLANICI İSTEĞİ (2026-09): bazı satırlarda 3. bir sayı
                     # daha olabilir (ör. "DENİZLİ  0  3.500  10.500" — 4 alan).
                     # Bu 3. sayı FİYAT TABLOSUNU (Koli/Palet) ETKİLEMEZ, sadece
-                    # Hedeflenen Ciro toplamına EK olarak eklenir. Yoksa 0 sayılır.
+                    # Hedeflenen Ciro toplamına EK olarak eklenir.
+                    # 🚨 DÜZELTME (2026-09): 3. sayı, 2. sayının (tutarın)
+                    # BİREBİR AYNISIYSA (bazı kaynaklarda tutar sütunu yanlışlıkla
+                    # tekrar ediyor) bu bir "ek tutar" DEĞİL, sadece tekrardır —
+                    # eklenirse Hedeflenen Ciro 2 KATINA çıkıyordu. Sadece
+                    # GERÇEKTEN FARKLI bir 3. sayı varsa eklenir.
                     _ek_hedef_tutar = 0.0
                     if len(_tum_sayi_m) >= 3:
                         try:
-                            _ek_hedef_tutar = _fy_sayi_parse(_tum_sayi_m[2])
+                            _ucuncu_sayi_deneme = _fy_sayi_parse(_tum_sayi_m[2])
+                            if abs(_ucuncu_sayi_deneme - _ikinci_sayi) > 0.01:
+                                _ek_hedef_tutar = _ucuncu_sayi_deneme
                         except Exception:
                             _ek_hedef_tutar = 0.0
                     _tip = "KOLİ" if _desi <= 100 else "PALET"
