@@ -4799,25 +4799,16 @@ def not_dialog(cari_id, firma_adi=""):
                     # satırdaki İKİNCİ sayının KENDİSİDİR (yazdığın veri
                     # dışında, hesaplanmış/uydurma bir tutar üretilmez).
                     _toplam = round(_ikinci_sayi, 2)
-                    # KULLANICI İSTEĞİ (2026-09): bazı satırlarda 3. bir sayı
-                    # daha olabilir (ör. "DENİZLİ  0  3.500  10.500" — 4 alan).
-                    # Bu 3. sayı FİYAT TABLOSUNU (Koli/Palet) ETKİLEMEZ, sadece
-                    # Hedeflenen Ciro toplamına EK olarak eklenir.
-                    # 🚨 DÜZELTME (2026-09): 3. sayı, 2. sayının (tutarın)
-                    # BİREBİR AYNISIYSA (bazı kaynaklarda tutar sütunu yanlışlıkla
-                    # tekrar ediyor) bu bir "ek tutar" DEĞİL, sadece tekrardır —
-                    # eklenirse Hedeflenen Ciro 2 KATINA çıkıyordu. Sadece
-                    # GERÇEKTEN FARKLI bir 3. sayı varsa eklenir.
-                    _ek_hedef_tutar = 0.0
-                    if len(_tum_sayi_m) >= 3:
-                        try:
-                            _ucuncu_sayi_deneme = _fy_sayi_parse(_tum_sayi_m[2])
-                            if abs(_ucuncu_sayi_deneme - _ikinci_sayi) > 0.01:
-                                _ek_hedef_tutar = _ucuncu_sayi_deneme
-                        except Exception:
-                            _ek_hedef_tutar = 0.0
+                    # KULLANICI İSTEĞİ (2026-09, KESİN KURAL — doğrulandı):
+                    # Hedeflenen Ciro'ya bu satırdan giden katkı, HER ZAMAN
+                    # satırdaki SON (en sondaki) sayıdır — 2 sayı varsa 2.si,
+                    # 3 sayı varsa 3.sü. ARADAKİ sayı (varsa) ASLA ayrıca
+                    # eklenmez — eklenirse toplam yanlış (fazla) çıkıyordu.
+                    # Örn. "İSTANBUL 15 300 4.200" → Hedef'e SADECE 4.200 gider,
+                    # 300 değil, 300+4.200 hiç değil.
+                    _hedef_katkisi = _fy_sayi_parse(_tum_sayi_m[-1])
                     _tip = "KOLİ" if _desi <= 100 else "PALET"
-                    _fy_yeni_girisler.append((_sehir, _tip, _desi, _ikinci_sayi, _toplam, _ek_hedef_tutar))
+                    _fy_yeni_girisler.append((_sehir, _tip, _desi, _ikinci_sayi, _toplam, _hedef_katkisi))
 
                 if not _fy_yeni_girisler:
                     st.warning("Yazdığın metinde tanınan bir il ismi + desi + birim fiyat bulunamadı.")
@@ -4837,7 +4828,7 @@ def not_dialog(cari_id, firma_adi=""):
                     # alanına yazılır — böylece o an girilen tüm illerin
                     # toplam potansiyel cirosu tek bakışta görülür.
                     try:
-                        _fy_hedef_toplam = round(sum(_g[4] + _g[5] for _g in _fy_yeni_girisler), 2)
+                        _fy_hedef_toplam = round(sum(_g[5] for _g in _fy_yeni_girisler), 2)
                         db_update("cari_kartlar", {"beklenen_ciro": _fy_hedef_toplam}, "id", int(cari_id))
                         try: db_read.clear()
                         except: pass
