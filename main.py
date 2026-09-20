@@ -5604,6 +5604,21 @@ button[data-testid="manage-app-button"] { display: none !important; }
         unsafe_allow_html=True
     )
 
+    # ── 🔄 YENİLE — KULLANICI İSTEĞİ (2026-09): şifreden/oturumdan ÇIKMADAN,
+    # hangi sayfada olursan ol her zaman ulaşabileceğin bir buton. Sadece
+    # veri önbelleklerini temizleyip sayfayı yeniden çizer — session_state'teki
+    # "kullanici"/"rol" (giriş bilgisi) HİÇ DOKUNULMAZ, oturum açık kalır.
+    if st.button("🔄 Yenile", key="_sb_yenile_btn", use_container_width=True,
+                 help="Şifreden çıkmadan, sadece veriyi tazeler."):
+        for _yenile_fn in [get_cari_listesi, _tum_musteri_kargo_yekun_toplami,
+                            _il_gonderim_matrisi_yukle]:
+            try: _yenile_fn.clear()
+            except Exception: pass
+        try: db_read.clear()
+        except Exception: pass
+        st.toast("🔄 Veriler tazelendi", icon="🔄")
+        st.rerun()
+
     # ── MENÜ LİSTESİ ──────────────────────────────────────────────────────────
     _sb_liste = get_menu_tercihi(st.session_state.get("kullanici",""))
     if st.session_state.get("rol") == "admin":
@@ -9310,17 +9325,29 @@ function kartSec(id){
             # edited_rows boşsa değil, her durumda. edited_df zaten ekranda o an
             # görünen/kaydedilmiş son hâl olduğu için bu karşılaştırma en güvenilir
             # kaynak.
+            # 🚨 KRİTİK DÜZELTME (2026-09): eskiden TÜM karşılaştırma TEK bir
+            # try/except içindeydi — TEK bir satırda/sütunda (ör. yeni eklenen
+            # bir sütunda) küçük bir uyumsuzluk olursa, o noktadan SONRAKİ TÜM
+            # satırların güvenlik ağı sessizce devre dışı kalıyordu. Bu da
+            # "birden fazla satırı birden düzenleyince sadece biri kaydediliyor"
+            # sorununun kök nedeniydi. Şimdi HER HÜCRE ayrı ayrı korunuyor —
+            # bir hücrede sorun olsa bile diğer TÜM satır/sütunlar etkilenmez.
             if "edited_df" in dir():
                 try:
                     _orig = df_edit.reset_index(drop=True)
                     _ed   = edited_df.reset_index(drop=True)
+                    _ortak_kolonlar = [c for c in _ed.columns if c in _orig.columns]
                     for _ei in range(min(len(_orig), len(_ed))):
                         _rd = dict(_edited_rows.get(str(_ei), {}))
-                        for _ec in _ed.columns:
-                            if str(_orig.at[_ei,_ec]) != str(_ed.at[_ei,_ec]):
-                                _rd[_ec] = _ed.at[_ei,_ec]
+                        for _ec in _ortak_kolonlar:
+                            try:
+                                if str(_orig.at[_ei,_ec]) != str(_ed.at[_ei,_ec]):
+                                    _rd[_ec] = _ed.at[_ei,_ec]
+                            except Exception:
+                                continue  # SADECE bu hücre atlanır, diğer satır/sütunlar etkilenmez
                         if _rd: _edited_rows[str(_ei)] = _rd
-                except: pass
+                except Exception:
+                    pass
             _tablo_json   = st.session_state.get("_ls_tablo")
             kayit_sayi = 0
             hata_list  = []
