@@ -159,6 +159,34 @@ def _cari_ek_bilgi_kaydet(_sozluk):
 
 
 
+def _alt_ilerleme_cubugu_html(_yuzde, _mesaj):
+    """KULLANICI İSTEĞİ (2026-09): kaydetme gibi işlemler sürerken, ekranın
+    ALT kısmında sabit, küçük ve şık bir ilerleme çubuğu — % arttıkça
+    BEYAZ'dan SARI'ya, SARI'dan YEŞİL'e geçiş yapar."""
+    _y = max(0, min(100, _yuzde))
+    if _y <= 50:
+        _o = _y / 50.0
+        _r = round(255 + (250 - 255) * _o); _g = round(255 + (204 - 255) * _o); _b = round(255 + (21 - 255) * _o)
+    else:
+        _o = (_y - 50) / 50.0
+        _r = round(250 + (34 - 250) * _o); _g = round(204 + (197 - 204) * _o); _b = round(21 + (94 - 21) * _o)
+    _renk = f"rgb({_r},{_g},{_b})"
+    return f"""
+<div style='position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#ffffff;
+            padding:8px 18px;box-shadow:0 -3px 10px rgba(0,0,0,0.10);
+            border-top:1px solid #e5e7eb;font-family:inherit;'>
+  <div style='display:flex;align-items:center;gap:12px;font-size:12px;color:#374151;'>
+    <span style='white-space:nowrap;'>⏳ {_mesaj}</span>
+    <div style='flex:1;height:9px;background:#f1f5f9;border-radius:5px;overflow:hidden;'>
+      <div style='width:{_y}%;height:100%;background:{_renk};transition:width 0.25s ease;border-radius:5px;'></div>
+    </div>
+    <span style='white-space:nowrap;font-weight:600;'>%{int(_y)}</span>
+  </div>
+</div>
+"""
+
+
+
 def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
     """KULLANICI İSTEĞİ (2026-09): "Rut" artık elle yazılmıyor — o müşterinin
     hangi İL sütun(lar)ına gönderim bilgisi girildiğine bakılarak OTOMATİK
@@ -9777,6 +9805,10 @@ function kartSec(id){
                 # ── SATIRLARI PARALEL KAYDET — sıra sıra beklemek yerine aynı anda
                 # gönderilir, N satır için toplam süre ~1 satırlık süreye yakın olur.
                 _kaydedilen_firmalar = []
+                _alt_bar_yer = st.empty()
+                _kayit_toplam_sayisi = len(_edited_rows)
+                _kayit_tamamlanan = 0
+                _alt_bar_yer.markdown(_alt_ilerleme_cubugu_html(0, f"Kaydediliyor... 0/{_kayit_toplam_sayisi}"), unsafe_allow_html=True)
                 with concurrent.futures.ThreadPoolExecutor(max_workers=8) as _havuz:
                     _gelecekler = {
                         _havuz.submit(_tek_satir_guncelle, idx_str, degisiklikler): idx_str
@@ -9795,6 +9827,16 @@ function kartSec(id){
                                     pass
                         except Exception as e_row:
                             hata_list.append(str(e_row))
+                        _kayit_tamamlanan += 1
+                        _kayit_yuzde = (_kayit_tamamlanan / _kayit_toplam_sayisi * 100) if _kayit_toplam_sayisi else 100
+                        _alt_bar_yer.markdown(
+                            _alt_ilerleme_cubugu_html(_kayit_yuzde, f"Kaydediliyor... {_kayit_tamamlanan}/{_kayit_toplam_sayisi}"),
+                            unsafe_allow_html=True
+                        )
+                _alt_bar_yer.markdown(_alt_ilerleme_cubugu_html(100, f"Tamamlandı — {_kayit_toplam_sayisi}/{_kayit_toplam_sayisi}"), unsafe_allow_html=True)
+                import time as _alt_bar_time
+                _alt_bar_time.sleep(0.6)
+                _alt_bar_yer.empty()
 
                 try: db_read.clear()
                 except: pass
