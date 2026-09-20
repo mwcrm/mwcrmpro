@@ -4787,7 +4787,14 @@ def not_dialog(cari_id, firma_adi=""):
                     # BİRİM FİYAT sayılır (ikisi de tam sayı olabilir, ör.
                     # "ANKARA 37 200", ya da fiyat ondalıklı olabilir, ör.
                     # "AMASYA 227 3.574" — ikisi de aynı sırayla çalışır).
-                    _tum_sayi_m = _fy_re.findall(r"\d+[.,]\d+|\d+", _s)
+                    # DÜZELTME (2026-09): eski desen "17.500,00" gibi HEM
+                    # binlik nokta HEM ondalık virgül içeren sayıları "17.500"
+                    # ve "00" diye İKİYE BÖLÜYORDU — bu da "son sayı" olarak
+                    # yanlışlıkla sadece "00" (yani 0) alınmasına yol açıyordu.
+                    # Yeni desen: önce "binlik gruplu" tam sayıyı (12.345.678,90
+                    # gibi çoklu grupları da dahil) TEK PARÇA yakalar, o hiç
+                    # yoksa düz rakam dizisini (virgüllü ondalıkla) yakalar.
+                    _tum_sayi_m = _fy_re.findall(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?", _s)
                     if len(_tum_sayi_m) < 2:
                         continue  # hem desi hem birim fiyat yoksa (örn. sadece şehir adı yazılan satır) atla
                     try:
