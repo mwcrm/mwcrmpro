@@ -112,6 +112,53 @@ def _cl_ozel_filtre_alani_kaydet(_alan):
 
 
 
+_CARI_EK_ALAN_ANAHTAR = "_cari_ek_bilgiler"
+_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme"]
+_CARI_EK_ALAN_ETIKET = {
+    "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi",
+    "musteri_subesi": "Müşteri Şubesi", "vade": "Vade", "odeme": "Ödeme",
+}
+
+
+def _cari_ek_bilgi_yukle():
+    """KULLANICI İSTEĞİ (2026-09): Vergi No / Vergi Dairesi / Müşteri Şubesi /
+    Vade / Ödeme alanları cari_kartlar'da GERÇEK birer sütun DEĞİL (proje
+    kuralı: yeni SQL migration yok) — Rut ile AYNI desen: mevcut
+    kullanici_tercih tablosunda TEK bir JSON blob olarak, {cari_id_str:
+    {alan: değer}} şeklinde saklanır."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return {}
+        r = sb.table("kullanici_tercih").select("deger").eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _CARI_EK_ALAN_ANAHTAR).execute()
+        if r.data:
+            return json.loads(r.data[0]["deger"])
+        return {}
+    except Exception:
+        return {}
+
+
+def _cari_ek_bilgi_kaydet(_sozluk):
+    """GÜVENLİ (bkz. _cari_rut_kaydet ile aynı desen) — SİLME YOK, satır
+    varsa UPDATE, yoksa INSERT."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return False
+        _deger = json.dumps(_sozluk, ensure_ascii=False)
+        _guncelle = sb.table("kullanici_tercih").update({"deger": _deger}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _CARI_EK_ALAN_ANAHTAR).execute()
+        if not _guncelle.data:
+            sb.table("kullanici_tercih").insert({
+                "kullanici": "__liste_ui__", "anahtar": _CARI_EK_ALAN_ANAHTAR, "deger": _deger
+            }).execute()
+        return True
+    except Exception:
+        return False
+
+
+
 def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
     """KULLANICI İSTEĞİ (2026-09): "Rut" artık elle yazılmıyor — o müşterinin
     hangi İL sütun(lar)ına gönderim bilgisi girildiğine bakılarak OTOMATİK
@@ -6797,6 +6844,15 @@ section[data-testid="stSidebar"] { display: none !important; }
         df["gerceklesen_ciro"] = df["id"].apply(
             lambda _rid: _kargo_yekun_toplamlari_erken.get(int(_rid), 0.0) if pd.notna(_rid) else 0.0)
 
+    # ── Vergi No / Vergi Dairesi / Müşteri Şubesi / Vade / Ödeme — KULLANICI
+    # İSTEĞİ (2026-09): cari_kartlar'da GERÇEK sütun DEĞİL (yeni SQL migration
+    # yok), Rut ile AYNI desen — kullanici_tercih'te {cari_id: {alan: değer}}.
+    _cari_ek_bilgi_erken = _cari_ek_bilgi_yukle()
+    if not df.empty and "id" in df.columns:
+        for _cek_alan in _CARI_EK_ALAN_LISTESI:
+            df[_cek_alan] = df["id"].apply(
+                lambda _rid, _a=_cek_alan: _cari_ek_bilgi_erken.get(str(int(_rid)), {}).get(_a, "") if pd.notna(_rid) else "")
+
     # ── Güncelleme Tarihi ön-hesabı — ÇOKLU TARİH filtre kutusu için burada
     # (filtrelemeden önce) hesaplanmalı. ÖNEMLİ: bir müşterinin sadece "EN SON"
     # tarihine bakılmıyor — o müşteriye ait HER işlemin (her not, her teklif,
@@ -8435,6 +8491,7 @@ function kartSec(id){
         "tarih":90,"guncelleme_tarihi":100,
         "firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
         "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
+        "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
         "🧾 Teklif":70,"💬 Mesaj":70,
@@ -8513,6 +8570,11 @@ function kartSec(id){
         "adres":         st.column_config.TextColumn("Adres",     width=_w("adres")),
         "il":            st.column_config.TextColumn("İl",        width=_w("il")),
         "ilce":          st.column_config.TextColumn("İlçe",      width=_w("ilce")),
+        "vergi_no":        st.column_config.TextColumn("Vergi No", width=_w("vergi_no")),
+        "vergi_dairesi":   st.column_config.TextColumn("Vergi Dairesi", width=_w("vergi_dairesi")),
+        "musteri_subesi":  st.column_config.TextColumn("Müşteri Şubesi", width=_w("musteri_subesi")),
+        "vade":            st.column_config.TextColumn("Vade", width=_w("vade")),
+        "odeme":           st.column_config.TextColumn("Ödeme", width=_w("odeme")),
         "durum":         st.column_config.SelectboxColumn("Durum", options=["Tümü"] + [x for x in tum_durum_opts if str(x).upper() not in ["NONE","NAN",""]], width=_w("durum")),
         "temsilci":      st.column_config.TextColumn("Temsilci",  width=_w("temsilci")),
         "islem_asamasi": st.column_config.SelectboxColumn("İlk Temas", options=["Tümü", "Arama", "Tekrar Ara", "Mesaj", "E-Mail"], width=_w("islem_asamasi")),
@@ -8564,12 +8626,14 @@ function kartSec(id){
             df_f = df_f.sort_values("_cl2_key").drop(columns=["_cl2_key"]).reset_index(drop=True)
 
     col_order = ["Seç","tarih","guncelleme_tarihi","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
+                 "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
                  "🧾 Teklif","💬 Mesaj","ara_islem","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
     _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
+                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
                       "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
@@ -9462,6 +9526,32 @@ function kartSec(id){
                     except:
                         pass
 
+                # ── Vergi No / Vergi Dairesi / Müşteri Şubesi / Vade / Ödeme —
+                # KULLANICI İSTEĞİ (2026-09): cari_kartlar'da GERÇEK sütun
+                # DEĞİL, Rut ile AYNI desen — kullanici_tercih'te
+                # {cari_id: {alan: değer}} olarak saklanır. GÜVENLİ (SİLME
+                # YOK, UPDATE-yoksa-INSERT) fonksiyon kullanılır.
+                _cek_guncel = _cari_ek_bilgi_yukle()
+                _cek_degisti = False
+                for _idx_str_cek, _deg_cek in _edited_rows.items():
+                    _idxn_cek = int(_idx_str_cek)
+                    if _idxn_cek >= len(_rows):
+                        continue
+                    _rid_cek = int(float(str(_rows[_idxn_cek].get("id", 0))))
+                    if not _rid_cek:
+                        continue
+                    for _cek_alan in _CARI_EK_ALAN_LISTESI:
+                        if _cek_alan in _deg_cek:
+                            _v_cek = str(_deg_cek[_cek_alan] or "").strip()
+                            _cek_guncel.setdefault(str(_rid_cek), {})
+                            if _v_cek:
+                                _cek_guncel[str(_rid_cek)][_cek_alan] = _v_cek
+                            else:
+                                _cek_guncel[str(_rid_cek)].pop(_cek_alan, None)
+                            _cek_degisti = True
+                if _cek_degisti:
+                    _cari_ek_bilgi_kaydet(_cek_guncel)
+
                 # NOT: "🛣️ Rut" artık elle düzenlenmiyor — İL sütunlarından
                 # otomatik hesaplanıyor (bkz. _cari_rut_hesapla_otomatik).
                 # Sütun disabled=True olduğu için _edited_rows'a hiç girmez;
@@ -9625,7 +9715,8 @@ function kartSec(id){
                         return None
                     guncelle = {}
                     for k, v in degisiklikler.items():
-                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma") or k in _IL_SUTUN_LISTESI: continue
+                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma",
+                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
                             except: guncelle[k] = 0
@@ -10768,6 +10859,7 @@ function updateBot(v){{
             "Seç":40,"tarih":90,"guncelleme_tarihi":100,
             "firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
+            "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,
             "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"sektor":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
@@ -10780,6 +10872,7 @@ function updateBot(v){{
             "firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
+            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme",
             "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
             "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","sektor":"Sektör","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
@@ -12746,7 +12839,8 @@ elif aktif == "excel":
 
     st.markdown("## 📥 Excel ile Toplu Veri Aktarımı")
 
-    sablon_kolonlar = ["firma","yetkili","gsm","sabit","email","adres","ilce","il","durum","temsilci","islem_asamasi","beklenen_ciro","gerceklesen_ciro"]
+    sablon_kolonlar = ["firma","yetkili","gsm","sabit","email","adres","ilce","il","durum","temsilci","islem_asamasi","beklenen_ciro","gerceklesen_ciro",
+                       "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme"]
 
     sablon_buf = io.BytesIO()
     pd.DataFrame(columns=sablon_kolonlar).to_excel(sablon_buf, index=False)
@@ -12865,6 +12959,17 @@ elif aktif == "excel":
                     "olusturan": st.session_state.get("kullanici",""),
                     "silindi": 0,
                 }
+                # KULLANICI İSTEĞİ (2026-09): Vergi No / Vergi Dairesi / Müşteri
+                # Şubesi / Vade / Ödeme — cari_kartlar'da GERÇEK sütun DEĞİL,
+                # bu yüzden INSERT payload'ına eklenmez; ayrı bir alt sözlükte
+                # geçici olarak taşınıp INSERT'ten SONRA (yeni id belli
+                # olunca) _cari_ek_bilgi_kaydet ile kaydedilir.
+                _ex_ek_bilgi_gecici = {}
+                for _ex_ek_alan in _CARI_EK_ALAN_LISTESI:
+                    _ex_ek_v = _ex_temiz_str(_row.get(_ex_ek_alan, ""))
+                    if _ex_ek_v:
+                        _ex_ek_bilgi_gecici[_ex_ek_alan] = _ex_ek_v
+                _ex_kayit["_ek_bilgi"] = _ex_ek_bilgi_gecici
                 _ex_ad_norm = _ex_firma.upper()
                 _ex_gsm_norm = _ex_tel_norm(_ex_kayit["gsm"])
                 _ex_sabit_norm = _ex_tel_norm(_ex_kayit["sabit"])
@@ -12908,16 +13013,32 @@ elif aktif == "excel":
                     BATCH = 25
                     bar = st.progress(0)
                     durum_text = st.empty()
+                    _ex_ek_bilgi_toplu = {}
 
                     for i in range(0, toplam, BATCH):
                         parca = kayitlar[i:i+BATCH]
+                        # Vergi No/Dairesi/Şube/Vade/Ödeme, cari_kartlar'a GERÇEK
+                        # sütun olmadığı için INSERT payload'ından çıkarılır —
+                        # sadece bu parçadaki (satır sırasına göre) geçici
+                        # listede tutulur, aşağıda yeni id'lerle eşleştirilir.
+                        _parca_ek_bilgiler = [p.pop("_ek_bilgi", {}) for p in parca]
                         try:
-                            sb.table("cari_kartlar").insert(parca).execute()
+                            _res_ex_ins = sb.table("cari_kartlar").insert(parca).execute()
                             basarili += len(parca)
+                            # Dönen kayıtların id'leri, gönderilen sırayla eşleşir
+                            # (Supabase/PostgREST tek bir INSERT çağrısında sırayı korur).
+                            for _yeni_satir, _ek_bilgi_bu in zip(_res_ex_ins.data or [], _parca_ek_bilgiler):
+                                if _ek_bilgi_bu and _yeni_satir.get("id"):
+                                    _ex_ek_bilgi_toplu[str(_yeni_satir["id"])] = _ek_bilgi_bu
                         except Exception as e:
                             hatalar.append(f"Satır {i+1}-{i+len(parca)}: {e}")
                         bar.progress(min((i+BATCH)/toplam, 1.0))
                         durum_text.text(f"{min(i+BATCH,toplam)}/{toplam} işlendi, {basarili} eklendi")
+
+                    if _ex_ek_bilgi_toplu:
+                        _ex_ek_bilgi_mevcut = _cari_ek_bilgi_yukle()
+                        _ex_ek_bilgi_mevcut.update(_ex_ek_bilgi_toplu)
+                        _cari_ek_bilgi_kaydet(_ex_ek_bilgi_mevcut)
 
                     st.success(f"🎉 Tamamlandı! {basarili}/{toplam} kayıt eklendi.")
                     if hatalar:
