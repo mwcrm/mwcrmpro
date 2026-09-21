@@ -9163,7 +9163,7 @@ function kartSec(id){
 
     with st.container():
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
-        _sb1, _sb2, _sb3, _sb4, _sb_bos = st.columns([1.4, 1.1, 1.1, 1.3, 3.7])
+        _sb1, _sb2, _sb3, _sb4, _sb5, _sb6, _sb_bos = st.columns([1.4, 1.1, 1.1, 1.3, 1.2, 1.3, 2.2])
         with _sb1:
             if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust"):
                 st.session_state["_kaydet_flag"] = True
@@ -9186,6 +9186,20 @@ function kartSec(id){
                                 file_name=f"cari_liste_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 key="cl_excel_indir_ust", use_container_width=True)
+        # KULLANICI İSTEĞİ (2026-09): "☑️ Tümünü Seç" / "⬜ Seçimi Temizle"
+        # artık AYRI bir satırda değil, aynı üst buton satırında.
+        with _sb5:
+            if st.button("☑️ Tümünü Seç", key="cl_tumunu_sec_btn", use_container_width=True):
+                st.session_state["_cl_tumu_secili_mod"] = True
+                st.session_state["_cl_tumu_haric_idler"] = set()
+                st.session_state["_cl_editor_versiyon"] += 1
+                st.rerun()
+        with _sb6:
+            if st.button("⬜ Seçimi Temizle", key="cl_secimi_temizle_btn", use_container_width=True):
+                st.session_state["_cl_tumu_secili_mod"] = False
+                st.session_state["_cl_tumu_haric_idler"] = set()
+                st.session_state["_cl_editor_versiyon"] += 1
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -9258,19 +9272,6 @@ function kartSec(id){
     _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
 
     with _tbl_col:
-        _cl_ts1, _cl_ts2, _cl_ts_bos = st.columns([1, 1, 6])
-        with _cl_ts1:
-            if st.button("☑️ Tümünü Seç", key="cl_tumunu_sec_btn", use_container_width=True):
-                st.session_state["_cl_tumu_secili_mod"] = True
-                st.session_state["_cl_tumu_haric_idler"] = set()
-                st.session_state["_cl_editor_versiyon"] += 1
-                st.rerun()
-        with _cl_ts2:
-            if st.button("⬜ Seçimi Temizle", key="cl_secimi_temizle_btn", use_container_width=True):
-                st.session_state["_cl_tumu_secili_mod"] = False
-                st.session_state["_cl_tumu_haric_idler"] = set()
-                st.session_state["_cl_editor_versiyon"] += 1
-                st.rerun()
         edited_df = st.data_editor(
             df_edit,
             use_container_width=True,
