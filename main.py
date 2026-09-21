@@ -813,26 +813,23 @@ Kullanıcıya hiçbir tabloda/alanda teknik boşluk göstergesi ("None", "NaN",
 bunu YAKALAMAZ). Kullanıcıya gösterilecek her DataFrame, render edilmeden
 hemen önce `_hic_none_gosterme(df)` içinden geçirilir.
 
-### 3d) Veri Girerken Sayfa Yanıp Sönmeyecek / Arka Planda Tarama Yapılmayacak — KALICI (2026-09)
-Kullanıcı bunu bizzat yaşayıp bildirdi ve KALICI kural olarak eklenmesini
-istedi: kullanıcı bir alana veri girerken (yazarken, bir hücre düzenlerken,
-metin yapıştırırken) — kullanıcı **Enter'a**, **"💾 Değişiklikleri Kaydet"e**
-ya da **"🔄 Yenile"ye** basmadan önce, sistem KENDİLİĞİNDEN hiçbir arama/
-tarama/yeniden hesaplama yapıp sayfayı yeniden çizmeyecek ("yanıp sönme").
-Veri girişi TAMAMLANIP kullanıcı bu üç eylemden birini (Enter / Değişiklikleri
-Kaydet / Yenile) yapana kadar arka planda HİÇBİR ŞEY taranmaz.
-UYGULAMA (NİHAİ ÇÖZÜM, kullanıcı geri bildirimiyle iki adımda bulundu):
-Cari Liste tablosu `st.form()` içinde çalışır (form içindeki widget'lar tek
-tek değil, SADECE "Kaydet" düğmesine ya da Enter'a basılınca script'i
-yeniden çalıştırır) — AMA form'un varsayılan görsel çerçevesi/kutusu
-`div[data-testid="stForm"] { border:none; padding:0; background:transparent; }`
-CSS'iyle TAMAMEN gizlenir, böylece görünüm eskisiyle birebir aynı kalır,
-sadece davranış (yanıp sönmeme) değişir. Form dışında ARTIK ayrı bir
-"Kaydet" butonu YOKTUR (form dışından bir buton, form'un henüz kaydedilmemiş
-hücre değişikliklerini YAKALAYAMAZ ve veri kaybına yol açabilirdi) — TEK
-"Kaydet" düğmesi, form'un kendi submit butonu olarak tablonun hemen altındadır.
-Yeni bir veri girişi alanı/tablo eklenirken bu iki parçanın (form + çerçeveyi
-gizleyen CSS) BİRLİKTE korunmasına dikkat edilmeli.
+### 3d) "Kaydet" Butonu HER ZAMAN Üstteki Buton Satırında Olacak — KALICI (2026-09, KESİN KARAR)
+Kullanıcı önce "veri girerken sayfa yanıp sönmesin" istedi, bunun için
+`st.form()` denendi (görsel çerçeve CSS ile gizlenerek). Ama bu çözüm
+"Kaydet" butonunun form'un submit butonu olması ZORUNLULUĞUNU getirdiği için
+"Kaydet" tablonun ALTINA inmek zorunda kaldı (üstteki Satır Ekle/Kolon
+Sıfırla/Tümünü Seç satırında duramadı). Kullanıcı bu iki seçenek arasında
+(sonda "yanıp sönmeme" mi, yoksa "Kaydet üstteki satırda mı") NET TERCİHİNİ
+"Kaydet üstteki satırda kalsın" yönünde yaptı — `st.form()` KESİN OLARAK
+KALDIRILDI, Cari Liste tablosu eski (form'suz) hâline döndürüldü. "Kaydet"
+HER ZAMAN üstteki sticky buton satırında (Satır Ekle, Kolon Sıfırla, Excel
+İndir, Tümünü Seç, Seçimi Temizle ile aynı satırda) kalacak. Bu konu
+BİR DAHA GÜNDEME GETİRİLMEYECEK / `st.form()` bir daha ÖNERİLMEYECEK —
+kullanıcı "veri girerken sistem tarama yapmasın" isteğini "Kaydet butonunun
+üstteki satırda kalması"na göre İKİNCİL öncelik olarak kabul etti. Ağır arka
+plan hesaplamaları (Rut, Gerçekleşen Ciro) yine de önbelleğe alınmış
+durumda kalır (performans için, form'dan bağımsız) — bkz.
+`_cl_il_rut_onbellek_*` ve `_tum_musteri_kargo_yekun_toplami` (ttl=300).
 
 ### 4) MacroDroid Entegrasyonu
 - Supabase proje: `asinwzxwmkkrcbtjrkoq.supabase.co` — tablolar: `islem_kaydi`, `cari_kartlar`, `kisiler`
@@ -9214,7 +9211,8 @@ function kartSec(id){
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
         # NOT: "💾 Değişiklikleri Kaydet" artık BURADA değil — tablonun HEMEN
         # ALTINDA, form'un kendi Kaydet düğmesi olarak duruyor (form dışından
-        # bir buton, henüz kaydedilmemiş hücre değişikliklerini YAKALAYAMAZ).
+        # bir buton, henüz kaydedilmemiş hücre değişikliklerini YAKALAYAMAZ,
+        # veri kaybına yol açardı).
         _sb2, _sb3, _sb4, _sb5, _sb6 = st.columns([1.3, 1.3, 1.5, 1.4, 1.5])
         with _sb2:
             if st.button("➕ Satır Ekle", key="cl_hizli_ekle_btn_ust", use_container_width=True):
@@ -9321,12 +9319,8 @@ function kartSec(id){
     _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
 
     with _tbl_col:
-        # ── KULLANICI İSTEĞİ (2026-09, KALICI KURAL 3d — GÜÇLENDİRİLDİ):
-        # hücreye yazarken/düzenlerken sistem HİÇBİR ŞEY taramayacak, SADECE
-        # Enter'a ya da "Kaydet"e basılınca işlenecek. st.form() bunu sağlıyor
-        # AMA görsel bir çerçeve/kutu ekliyor — kullanıcı bunu istemedi. Çözüm:
-        # form'un DAVRANIŞINI (sadece submit'te rerun) korurken, görsel
-        # çerçevesini CSS ile TAMAMEN gizliyoruz — görünüm eskisi gibi kalır.
+        # Form'un varsayılan görsel çerçevesi/kutusu CSS ile gizlenir — görünüm
+        # form'suz haliyle birebir aynı kalır, sadece davranış değişir.
         st.markdown("""
 <style>
 div[data-testid="stForm"] {
@@ -9346,6 +9340,8 @@ div[data-testid="stForm"] {
                 key=_cl_editor_key
             )
             _form_kaydet_tiklandi = st.form_submit_button("💾 Değişiklikleri Kaydet", type="primary", use_container_width=True)
+        if _form_kaydet_tiklandi:
+            st.session_state["_kaydet_flag"] = True
         # Render SONRASI: gerçek işaretli/işaretsiz durumu "hariç tutulanlar"
         # kümesine TAM senkronize et — bir dahaki render'da doğru taban
         # buradan yeniden kurulacak.
@@ -9354,8 +9350,6 @@ div[data-testid="stForm"] {
             st.session_state["_cl_tumu_haric_idler"] = set(
                 _cl_id_sayisal2[edited_df["Seç"] == False].tolist()
             )
-        if _form_kaydet_tiklandi:
-            st.session_state["_kaydet_flag"] = True
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
 
