@@ -894,34 +894,24 @@ Kullanıcıya hiçbir tabloda/alanda teknik boşluk göstergesi ("None", "NaN",
 bunu YAKALAMAZ). Kullanıcıya gösterilecek her DataFrame, render edilmeden
 hemen önce `_hic_none_gosterme(df)` içinden geçirilir.
 
-### 3d) Veri Girerken Yanıp Sönme YOK — Form Kalıcı, Kaydet Tablonun Altında — KALICI (2026-09, KESİN VE NİHAİ KARAR)
-Kullanıcı ile birkaç kez ileri-geri denendi, NİHAİ ve KESİN karar şu (bir
-daha değişmeyecek, bir daha sorulmayacak):
-1. Cari Liste tablosu `st.form()` içindedir — hücreye yazarken/düzenlerken
-   sistem KENDİLİĞİNDEN hiçbir şey taramaz/yeniden çizmez. SADECE "💾
-   Değişiklikleri Kaydet"e (form'un submit butonu, TABLONUN HEMEN ALTINDA)
-   ya da bir hücrede Enter'a basılınca işlenir. Bu davranış kullanıcının
-   "EN BÜYÜK SORUN" dediği şeydi ve ÖNCELİKLİDİR.
-2. Form'un varsayılan görsel çerçevesi/kutusu CSS ile TAMAMEN gizlenir:
-   `div[data-testid="stForm"] { border:none; padding:0; background:transparent; }`
-   — görünüm form'suz haliyle birebir aynı kalır.
-3. "Kaydet" butonu ARTIK üstteki sticky buton satırında (Satır Ekle/Kolon
-   Sıfırla/Excel İndir/Tümünü Seç/Seçimi Temizle ile) DEĞİL, tablonun HEMEN
-   ALTINDADIR — çünkü form dışından bir buton, form'un henüz kaydedilmemiş
-   hücre değişikliklerini YAKALAYAMAZ (veri kaybı riski).
-4. KULLANICI BUNU BİLİNÇLİ KABUL ETTİ: "Seç" kutusu işaretleme (toplu silme
-   için sayının güncellenmesi), İl işaretleme gibi TEK TEK etkileşimle
-   ANINDA tepki gerektiren işlemler, form nedeniyle SADECE "Kaydet"e
-   basıldıktan SONRA sisteme yansır/doğru çalışır. "☑️ Tümünü Seç" ve
-   "⬜ Seçimi Temizle" butonları (form DIŞINDA, ayrı butonlar) İSTİSNADIR —
-   bunlar anında çalışır çünkü formun kendisini DEĞİL, YENİ bir taban
-   oluşturup formu YENİDEN kurarlar. Ama tek tek elle işaret kaldırıp/
-   ekleyip HEMEN bir sonraki adıma (ör. Sil) geçmek için önce Kaydet'e
-   basılması GEREKİR — bu KASITLI bir kısıtlamadır, hata değildir.
-Bu davranış ASLA değiştirilmeyecek/tartışmaya açılmayacak. Ağır arka plan
-hesaplamaları (Rut, Gerçekleşen Ciro) da ayrıca önbelleğe alınmış durumda
-kalır (performans için) — bkz. `_cl_il_rut_onbellek_*` ve
-`_tum_musteri_kargo_yekun_toplami` (ttl=300).
+### 3d) `st.form()` KESİN OLARAK KALDIRILDI — Bir Daha Önerilmeyecek — KALICI (2026-09, MUTLAK NİHAİ KARAR)
+Cari Liste tablosuna "veri girerken yanıp sönmesin" diye `st.form()` eklendi,
+sonra kaldırıldı, sonra tekrar eklendi — İKİ KEZ. İkinci denemede form,
+"Seç" kutusuyla açılan Notlar/Randevu penceresinin (bkz. `not_dialog`)
+BEKLENMEDİK şekilde kapanmasına, kullanıcının "İl işaretleme / Fiyat
+Tablosu / Hedeflenen Ciro" gibi işlemlerinin form'un "sadece Kaydet'te
+gönderir" davranışı yüzünden HİÇ KAYDEDİLMEMİŞ olabileceği şüphesine yol
+açtı. Kullanıcı bunun üzerine formu KESİN OLARAK kaldırmamızı istedi.
+MUTLAK NİHAİ KARAR: Cari Liste tablosu ARTIK VE HER ZAMAN form'suz, düz
+`st.data_editor()` olarak kalacak. "Kaydet" HER ZAMAN üstteki sticky buton
+satırındadır (Satır Ekle/Kolon Sıfırla/Excel İndir/Tümünü Seç/Seçimi
+Temizle ile aynı satırda). "Seç" kutusu işaretlenince Notlar/Randevu
+penceresi ANINDA açılır (bkz. `if secili_sayi == 1: not_dialog(...)`).
+`st.form()` BU TABLO İÇİN BİR DAHA ASLA ÖNERİLMEYECEK/DENENMEYECEK — "veri
+girerken yanıp sönme" konusu KAPANMIŞTIR, bir daha gündeme getirilmeyecek.
+Yerine tercih edilen çözüm: ağır arka plan hesaplamalarını (Rut,
+Gerçekleşen Ciro) önbelleğe alarak yeniden çizim MALİYETİNİ düşürmek —
+bkz. `_cl_il_rut_onbellek_*` ve `_tum_musteri_kargo_yekun_toplami` (ttl=300).
 
 ### 4) MacroDroid Entegrasyonu
 - Supabase proje: `asinwzxwmkkrcbtjrkoq.supabase.co` — tablolar: `islem_kaydi`, `cari_kartlar`, `kisiler`
@@ -8108,7 +8098,21 @@ function kartSec(id){
             st.session_state["_cl_ozel_filtre_alani_cache"] = _cl_ozel_filtre_alani
         _cl_ozel_filtre_sec = []
         if _cl_ozel_filtre_alani and _cl_ozel_filtre_alani in df.columns:
-            _cl_ozel_filtre_opts = sorted([x for x in df[_cl_ozel_filtre_alani].dropna().astype(str).unique().tolist() if x.strip() and x not in ["nan", "None"]])
+            # DOĞAL (SAYISAL) SIRALAMA — KULLANICI İSTEĞİ (2026-09): "MW1,
+            # MW2...MW4800" gibi sonu rakamla biten değerler, düz metin
+            # sıralamasında "MW12, MW120, MW1200, MW2..." gibi karışık
+            # çıkıyordu (harf harf karşılaştırma). Sondaki sayı varsa SAYI
+            # olarak, yoksa normal metin olarak sıralanır.
+            import re as _cl_re_nat
+            def _cl_dogal_sirala_anahtar(_v):
+                _m = _cl_re_nat.match(r'^(.*?)(\d+)$', str(_v))
+                if _m:
+                    return (0, _m.group(1), int(_m.group(2)))
+                return (1, str(_v), 0)
+            _cl_ozel_filtre_opts = sorted(
+                [x for x in df[_cl_ozel_filtre_alani].dropna().astype(str).unique().tolist() if x.strip() and x not in ["nan", "None"]],
+                key=_cl_dogal_sirala_anahtar
+            )
             _cl_ozel_filtre_etiket = _CL_OZEL_FILTRE_SECENEKLERI.get(_cl_ozel_filtre_alani, _cl_ozel_filtre_alani)
             _cl_ozel_filtre_sec = _fc[8].multiselect(
                 "ozf", _cl_ozel_filtre_opts, key=f"_cl_fil_ozel_ayarlanabilir_{_cl_ozel_filtre_alani}",
@@ -9332,11 +9336,10 @@ function kartSec(id){
 
     with st.container():
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
-        # NOT: "💾 Değişiklikleri Kaydet" artık BURADA değil — tablonun HEMEN
-        # ALTINDA, form'un kendi Kaydet düğmesi olarak duruyor (form dışından
-        # bir buton, henüz kaydedilmemiş hücre değişikliklerini YAKALAYAMAZ,
-        # veri kaybına yol açardı).
-        _sb2, _sb3, _sb4, _sb5, _sb6 = st.columns([1.3, 1.3, 1.5, 1.4, 1.5])
+        _sb1, _sb2, _sb3, _sb4, _sb5, _sb6, _sb7 = st.columns([1.3, 1.0, 1.0, 1.2, 1.1, 1.2, 1.1])
+        with _sb1:
+            if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust", use_container_width=True):
+                st.session_state["_kaydet_flag"] = True
         with _sb2:
             if st.button("➕ Satır Ekle", key="cl_hizli_ekle_btn_ust", use_container_width=True):
                 st.session_state["_cl_taslak_sayisi"] = st.session_state.get("_cl_taslak_sayisi", 0) + 1
@@ -9370,6 +9373,14 @@ function kartSec(id){
                 st.session_state["_cl_tumu_haric_idler"] = set()
                 st.session_state["_cl_editor_versiyon"] += 1
                 st.rerun()
+        with _sb7:
+            # KULLANICI İSTEĞİ (2026-09): "🗑️ Seçili Kaydı Sil" de AYNI üst
+            # satıra taşındı. Tablo henüz çizilmediği için kaç kaydın işaretli
+            # olduğu burada BİLİNMİYOR — bu yüzden buton her zaman görünür,
+            # tıklanınca sadece bir NİYET bayrağı ayarlar; gerçek silme,
+            # tablo çizilip seçili sayısı netleşince (aşağıda) yapılır.
+            if st.button("🗑️ Seçili Kaydı Sil", key="cl_sil_niyet_btn", use_container_width=True):
+                st.session_state["_cl_sil_niyeti"] = True
         st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -9442,47 +9453,15 @@ function kartSec(id){
     _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
 
     with _tbl_col:
-        # Form'un varsayılan görsel çerçevesi/kutusu CSS ile gizlenir — görünüm
-        # form'suz haliyle birebir aynı kalır, sadece davranış değişir.
-        st.markdown("""
-<style>
-div[data-testid="stForm"] {
-    border: none !important;
-    padding: 0 !important;
-    background: transparent !important;
-}
-</style>""", unsafe_allow_html=True)
-        with st.form("cari_liste_form", clear_on_submit=False):
-            edited_df = st.data_editor(
-                df_edit,
-                use_container_width=True,
-                num_rows="fixed",
-                column_config=col_config,
-                column_order=_aktif_col_order,
-                height=_cl_editor_yukseklik,
-                key=_cl_editor_key
-            )
-            _fbc1, _fbc2 = st.columns([1.6, 1])
-            _form_kaydet_tiklandi = _fbc1.form_submit_button("💾 Değişiklikleri Kaydet", type="primary", use_container_width=True)
-            _form_musteri_ac_tiklandi = _fbc2.form_submit_button("📋 Seçili Müşteriyi Aç", use_container_width=True)
-        if _form_kaydet_tiklandi:
-            st.session_state["_kaydet_flag"] = True
-        # KULLANICI İSTEĞİ (2026-09): "Seç" kutusunu işaretleyip bu ayrı
-        # butona basınca, o müşterinin Notlar/Randevu/Yetkililer/Dış Nakliye/
-        # Kargo Girişi/Özel Teklif/Sözleşme/Varış-Fiyat/Cari Kartı Düzenle/
-        # Cari Sil penceresi açılır — TÜM işlemler orada kesintisiz yapılabilir
-        # (bkz. not_dialog'un kalıcı-bayrak düzeltmesi, artık kapanmıyor).
-        if _form_musteri_ac_tiklandi:
-            _acil_secili_df = edited_df[edited_df["Seç"] == True]
-            if len(_acil_secili_df) == 1:
-                _acil_id = int(_acil_secili_df.iloc[0]["id"])
-                _acil_firma = str(_acil_secili_df.iloc[0].get("firma", ""))
-                st.session_state["_not_dialog_kalici_id"] = _acil_id
-                st.session_state["_not_dialog_kalici_firma"] = _acil_firma
-            elif len(_acil_secili_df) == 0:
-                st.warning("⚠️ Önce açmak istediğin müşterinin 'Seç' kutusunu işaretle.")
-            else:
-                st.warning("⚠️ Sadece TEK bir müşteri seçiliyken açabilirsin — birden fazla işaretli.")
+        edited_df = st.data_editor(
+            df_edit,
+            use_container_width=True,
+            num_rows="fixed",
+            column_config=col_config,
+            column_order=_aktif_col_order,
+            height=_cl_editor_yukseklik,
+            key=_cl_editor_key
+        )
         # Render SONRASI: gerçek işaretli/işaretsiz durumu "hariç tutulanlar"
         # kümesine TAM senkronize et — bir dahaki render'da doğru taban
         # buradan yeniden kurulacak.
@@ -9491,11 +9470,6 @@ div[data-testid="stForm"] {
             st.session_state["_cl_tumu_haric_idler"] = set(
                 _cl_id_sayisal2[edited_df["Seç"] == False].tolist()
             )
-        # Diyalog kalıcı bayrağı ayarlıysa (yukarıdaki buton ya da eski otomatik
-        # tetiklemeden) her render'da gösterilir — SADECE "❌ Bu Pencereyi
-        # Kapat" ile kapanır.
-        if st.session_state.get("_not_dialog_kalici_id"):
-            not_dialog(st.session_state["_not_dialog_kalici_id"], st.session_state.get("_not_dialog_kalici_firma", ""))
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
 
@@ -9555,9 +9529,19 @@ div[data-testid="stForm"] {
     # ── "Seç" işaretli firmaları taslak olarak kaydetme paneli kullanıcı
     # isteğiyle kaldırıldı (arşivleme/silme butonlarıyla birlikte, aşağıda) ──
 
-    # NOT: "📋 Seçili Müşteriyi Aç" tetikleyicisi ve diyaloğun kalıcı-bayrak
-    # kontrolü artık YUKARIDA, form bloğunun hemen ardında — burada TEKRAR
-    # çağrılmaz (aynı diyaloğun iki kez render edilip çakışmasını önlemek için).
+    # ── NOT DİALOG — sadece TEK bir müşteri seçili olunca ANINDA açılır ────
+    # (Form kaldırıldığı için "Seç" kutusu artık anında Python'a ulaşıyor,
+    # bu yüzden ekstra bir "Seçili Müşteriyi Aç" butonuna gerek kalmadı.)
+    # Diyaloğun kendi kalıcı bayrağı (_not_dialog_kalici_id) sayesinde,
+    # diyalog içinde bir işlem yapılıp sayfa yenilense bile açık kalır —
+    # SADECE "❌ Bu Pencereyi Kapat" ile kapanır.
+    if secili_sayi == 1:
+        _sel_id = int(secili_idler[0])
+        _sel_rows = df_edit[df_edit["id"] == _sel_id]
+        _sel_firma = str(_sel_rows.iloc[0].get("firma","")) if not _sel_rows.empty else ""
+        not_dialog(_sel_id, _sel_firma)
+    elif st.session_state.get("_not_dialog_kalici_id"):
+        not_dialog(st.session_state["_not_dialog_kalici_id"], st.session_state.get("_not_dialog_kalici_firma", ""))
 
 
     # ── BUTONLAR ──────────────────────────────────────────────────────────────
@@ -10130,13 +10114,13 @@ div[data-testid="stForm"] {
         pass  # (Seçili → Arşive butonu kullanıcı isteğiyle kaldırıldı)
 
     with btn_s:
-        # KULLANICI İSTEĞİ (2026-09): 2 veya daha fazla müşteri "Seç" ile
-        # işaretlenince, cariye tek tek girmeden TOPLU silme butonu çıkar.
-        # AYNI ESKİ KURAL: "Cari Komple Sil" (tek müşteri) gibi TEK TIKLA,
-        # onay istemeden, ANINDA çalışır — yumuşak silme (silindi=1),
-        # kalıcı veri kaybı yok.
-        if secili_sayi >= 1:
-            if st.button(f"🗑️ Seçili {secili_sayi} Kaydı Sil", key="cl_secili_sil_btn", use_container_width=True):
+        # KULLANICI İSTEĞİ (2026-09): buton artık BURADA değil, üst sticky
+        # satırında ("🗑️ Seçili Kaydı Sil") — orada tıklanınca sadece bir
+        # NİYET bayrağı ayarlanıyor, gerçek silme burada (seçili sayı netleşince) yapılıyor.
+        if st.session_state.pop("_cl_sil_niyeti", False):
+            if secili_sayi < 1:
+                st.warning("⚠️ Önce silmek istediğin müşteri(ler)in 'Seç' kutusunu işaretle.")
+            else:
                 try:
                     for _cl_sid in secili_idler:
                         try:
