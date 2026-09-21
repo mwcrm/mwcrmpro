@@ -174,6 +174,87 @@ def _cari_ek_bilgi_kaydet(_sozluk):
         return False
 
 
+# ── MÜŞTERİ KODU (MW1, MW2, ...) — KULLANICI İSTEĞİ (2026-09): gerçek
+# veritabanı "id"sine (kargo/not/randevu/il gönderim gibi ONLARCA yerde
+# kullanılan asıl anahtar) ASLA dokunulmaz — o sabit kalır. Bunun yerine
+# SADECE GÖRÜNTÜLEME/REFERANS amaçlı, kayıt tarihine göre sıralı, boşluksuz
+# "MW1, MW2, ..." şeklinde AYRI bir kod tutulur (kullanici_tercih'te,
+# {cari_id_str: "MW<n>"} olarak). Bir müşteri silinirse, o numara "boşta"
+# sayılır ve BİR SONRAKİ yeni müşteriye otomatik verilir (numara tekrar
+# kullanılır) — ama bu SADECE bu kozmetik kod içindir, gerçek id etkilenmez.
+_MUSTERI_KODU_ANAHTAR = "_musteri_kodu_haritasi"
+
+
+def _musteri_kodu_yukle():
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return {}
+        r = sb.table("kullanici_tercih").select("deger").eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _MUSTERI_KODU_ANAHTAR).execute()
+        if r.data:
+            return json.loads(r.data[0]["deger"])
+        return {}
+    except Exception:
+        return {}
+
+
+def _musteri_kodu_kaydet(_sozluk):
+    """GÜVENLİ — SİLME YOK, satır varsa UPDATE, yoksa INSERT."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return False
+        _deger = json.dumps(_sozluk, ensure_ascii=False)
+        _guncelle = sb.table("kullanici_tercih").update({"deger": _deger}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _MUSTERI_KODU_ANAHTAR).execute()
+        if not _guncelle.data:
+            sb.table("kullanici_tercih").insert({
+                "kullanici": "__liste_ui__", "anahtar": _MUSTERI_KODU_ANAHTAR, "deger": _deger
+            }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def _musteri_kodu_yeniden_baslat(_df_tum):
+    """KULLANICI İSTEĞİ (2026-09): TÜM (silinmemiş) müşterileri KAYIT
+    TARİHİNE göre sıralayıp MW1'den başlayarak boşluksuz yeniden numaralar.
+    _df_tum: en az "id" ve "tarih" sütunlu, silinmiş kayıtları İÇERMEYEN
+    DataFrame (get_cari_listesi() zaten silindi=1 olanları eledi)."""
+    if _df_tum.empty or "id" not in _df_tum.columns:
+        return {}
+    _siralama_sutunu = "tarih" if "tarih" in _df_tum.columns else "id"
+    _sirali = _df_tum.sort_values(by=_siralama_sutunu, na_position="last")
+    _yeni_harita = {}
+    for _sira_no, (_idx, _satir) in enumerate(_sirali.iterrows(), start=1):
+        try:
+            _cid = str(int(_satir["id"]))
+        except Exception:
+            continue
+        _yeni_harita[_cid] = f"MW{_sira_no}"
+    return _yeni_harita
+
+
+def _musteri_kodu_sonraki_bul(_harita, _tum_gecerli_idler):
+    """Yeni bir müşteri eklendiğinde çağrılır. Silinen (artık "harita"da id'si
+    olmayan ama sayısı hâlâ kullanılan) numaraları BULUP boşta olanı
+    (en küçük boşluğu) döndürür — yoksa bir sonraki (max+1) numarayı verir."""
+    _kullanilan_no = set()
+    for _cid_str, _kod in _harita.items():
+        if _cid_str in _tum_gecerli_idler and str(_kod or "").startswith("MW"):
+            try:
+                _kullanilan_no.add(int(str(_kod)[2:]))
+            except Exception:
+                pass
+    if not _kullanilan_no:
+        return "MW1"
+    _n = 1
+    while _n in _kullanilan_no:
+        _n += 1
+    return f"MW{_n}"
+
+
 
 def _alt_ilerleme_cubugu_html(_yuzde, _mesaj):
     """KULLANICI İSTEĞİ (2026-09): kaydetme gibi işlemler sürerken, ekranın
@@ -6956,6 +7037,26 @@ section[data-testid="stSidebar"] { display: none !important; }
             df[_cek_alan] = df["id"].apply(
                 lambda _rid, _a=_cek_alan: _cari_ek_bilgi_erken.get(str(int(_rid)), {}).get(_a, "") if pd.notna(_rid) else "")
 
+    # ── MÜŞTERİ KODU (MW1, MW2, ...) — KULLANICI İSTEĞİ (2026-09): eski
+    # karışık ID'ler yerine kayıt tarihine göre sıralı, boşluksuz "MW1,
+    # MW2..." kodu görüntülenir. Gerçek "id" (kargo/not/randevu/il gönderim
+    # gibi onlarca yerde kullanılan asıl anahtar) HİÇ DEĞİŞMEZ — sadece bu
+    # YENİ kod GÖRÜNTÜLEME/REFERANS için eklenir. Henüz kodu olmayan (yeni
+    # eklenmiş) müşterilere otomatik, silinen müşterilerin boşta kalan
+    # numarası öncelikli olacak şekilde kod atanır.
+    _musteri_kodu_erken = _musteri_kodu_yukle()
+    if not df.empty and "id" in df.columns:
+        _mk_gecerli_idler = set(str(int(_r)) for _r in df["id"] if pd.notna(_r))
+        _mk_degisti = False
+        for _mk_id in _mk_gecerli_idler:
+            if _mk_id not in _musteri_kodu_erken:
+                _musteri_kodu_erken[_mk_id] = _musteri_kodu_sonraki_bul(_musteri_kodu_erken, _mk_gecerli_idler)
+                _mk_degisti = True
+        if _mk_degisti:
+            _musteri_kodu_kaydet(_musteri_kodu_erken)
+        df["musteri_kodu"] = df["id"].apply(
+            lambda _rid: _musteri_kodu_erken.get(str(int(_rid)), "") if pd.notna(_rid) else "")
+
     # ── Güncelleme Tarihi ön-hesabı — ÇOKLU TARİH filtre kutusu için burada
     # (filtrelemeden önce) hesaplanmalı. ÖNEMLİ: bir müşterinin sadece "EN SON"
     # tarihine bakılmıyor — o müşteriye ait HER işlemin (her not, her teklif,
@@ -8595,7 +8696,7 @@ function kartSec(id){
         "firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
         "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
         "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,
-        "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,
+        "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,"musteri_kodu":80,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
         "🧾 Teklif":70,"💬 Mesaj":70,
         "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"sektor":100,"rut":90
@@ -8659,6 +8760,7 @@ function kartSec(id){
         "Seç":           st.column_config.CheckboxColumn("Seç", default=False, width=_w("Seç")),
         "tarih":         st.column_config.TextColumn("İşlem Tarih", disabled=True, width=_w("tarih")),
         "guncelleme_tarihi": st.column_config.TextColumn("Güncelleme Tarihi", disabled=True, width=_w("guncelleme_tarihi"), help="Bu müşteriye en son ne zaman not, teklif veya mesaj/işlem eklendiğini gösterir."),
+        "musteri_kodu":  st.column_config.TextColumn("Müşteri Kodu", disabled=True, width=_w("musteri_kodu"), help="Kayıt tarihine göre sıralı, boşluksuz referans kodu. Silinen müşterinin kodu yeni bir müşteriye yeniden verilir."),
         "id":            st.column_config.NumberColumn("ID", disabled=True, width=_w("id")),
         "olusturan": None, "silindi": None,
         "beklenen_ciro":    st.column_config.NumberColumn("Hedef ₺",  format="%,.0f ₺", width=_w("beklenen_ciro")),
@@ -8728,7 +8830,7 @@ function kartSec(id){
             df_f["_cl2_key"] = df_f["id"].map(_cl2_map).fillna(len(_cl2_sirali))
             df_f = df_f.sort_values("_cl2_key").drop(columns=["_cl2_key"]).reset_index(drop=True)
 
-    col_order = ["Seç","tarih","guncelleme_tarihi","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
+    col_order = ["Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
@@ -8736,7 +8838,7 @@ function kartSec(id){
     # Gizli kolonları çıkar
     _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
-                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme",
+                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
                       "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
@@ -9893,7 +9995,7 @@ div[data-testid="stForm"] {
                     guncelle = {}
                     for k, v in degisiklikler.items():
                         if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma",
-                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme") or k in _IL_SUTUN_LISTESI: continue
+                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
                             except: guncelle[k] = 0
@@ -11044,6 +11146,32 @@ function updateBot(v){{
                 st.error("⚠️ Kaydedilemedi — lütfen tekrar dene.")
         st.divider()
 
+        # ── 🔢 MÜŞTERİ KODU YENİDEN BAŞLAT — KULLANICI İSTEĞİ (2026-09) ──────
+        st.markdown("### 🔢 Müşteri Kodu (MW1, MW2, ...) Yeniden Başlat")
+        st.caption("Gerçek veritabanı ID'sine (kargo/not/randevu gibi onlarca yerde kullanılan asıl anahtar) DOKUNULMAZ, o hep sabit kalır. Bu SADECE görüntülenen 'Müşteri Kodu' sütununu, kayıt tarihine göre sıralı, boşluksuz MW1'den başlayarak yeniden numaralar. Bundan sonra silinen bir müşterinin kodu, yeni eklenen bir müşteriye otomatik verilir.")
+        if st.button("🔄 Müşteri Kodlarını MW1'den Yeniden Başlat", key="mk_yeniden_baslat_btn"):
+            st.session_state["_mk_yeniden_baslat_onay"] = True
+        if st.session_state.get("_mk_yeniden_baslat_onay"):
+            st.warning("⚠️ Bu, TÜM müşterilerin görüntülenen kodunu değiştirir (kayıt tarihine göre MW1, MW2, ...). Emin misin?")
+            _mkc1, _mkc2 = st.columns(2)
+            if _mkc1.button("✅ Evet, Yeniden Başlat", key="mk_yeniden_baslat_evet", use_container_width=True):
+                _mk_tum_df = get_cari_listesi()
+                _mk_yeni_harita = _musteri_kodu_yeniden_baslat(_mk_tum_df)
+                if _mk_yeni_harita:
+                    _mk_ok = _musteri_kodu_kaydet(_mk_yeni_harita)
+                    if _mk_ok:
+                        st.session_state.pop("_mk_yeniden_baslat_onay", None)
+                        st.success(f"✅ {len(_mk_yeni_harita)} müşterinin kodu MW1'den yeniden numaralandırıldı (kayıt tarihine göre).")
+                        st.rerun()
+                    else:
+                        st.error("⚠️ Kaydedilemedi — lütfen tekrar dene.")
+                else:
+                    st.warning("Müşteri bulunamadı.")
+            if _mkc2.button("❌ Vazgeç", key="mk_yeniden_baslat_vazgec", use_container_width=True):
+                st.session_state.pop("_mk_yeniden_baslat_onay", None)
+                st.rerun()
+        st.divider()
+
         st.markdown("### 📐 Cari Liste Kolon Ayarları")
         st.caption("Genişlik ayarlayın, gizlemek istediklerinizi kapatın → Kaydet")
         _KOL_VARS_UI = {
@@ -11051,7 +11179,7 @@ function updateBot(v){{
             "firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
             "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,
-            "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,
+            "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,"musteri_kodu":80,
             "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"sektor":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
             "🧾 Teklif":70,"💬 Mesaj":70
@@ -11063,7 +11191,7 @@ function updateBot(v){{
             "firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
-            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme",
+            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu",
             "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
             "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","sektor":"Sektör","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
