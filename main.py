@@ -9350,9 +9350,27 @@ div[data-testid="stForm"] {
                 height=_cl_editor_yukseklik,
                 key=_cl_editor_key
             )
-            _form_kaydet_tiklandi = st.form_submit_button("💾 Değişiklikleri Kaydet", type="primary", use_container_width=True)
+            _fbc1, _fbc2 = st.columns([1.6, 1])
+            _form_kaydet_tiklandi = _fbc1.form_submit_button("💾 Değişiklikleri Kaydet", type="primary", use_container_width=True)
+            _form_musteri_ac_tiklandi = _fbc2.form_submit_button("📋 Seçili Müşteriyi Aç", use_container_width=True)
         if _form_kaydet_tiklandi:
             st.session_state["_kaydet_flag"] = True
+        # KULLANICI İSTEĞİ (2026-09): "Seç" kutusunu işaretleyip bu ayrı
+        # butona basınca, o müşterinin Notlar/Randevu/Yetkililer/Dış Nakliye/
+        # Kargo Girişi/Özel Teklif/Sözleşme/Varış-Fiyat/Cari Kartı Düzenle/
+        # Cari Sil penceresi açılır — TÜM işlemler orada kesintisiz yapılabilir
+        # (bkz. not_dialog'un kalıcı-bayrak düzeltmesi, artık kapanmıyor).
+        if _form_musteri_ac_tiklandi:
+            _acil_secili_df = edited_df[edited_df["Seç"] == True]
+            if len(_acil_secili_df) == 1:
+                _acil_id = int(_acil_secili_df.iloc[0]["id"])
+                _acil_firma = str(_acil_secili_df.iloc[0].get("firma", ""))
+                st.session_state["_not_dialog_kalici_id"] = _acil_id
+                st.session_state["_not_dialog_kalici_firma"] = _acil_firma
+            elif len(_acil_secili_df) == 0:
+                st.warning("⚠️ Önce açmak istediğin müşterinin 'Seç' kutusunu işaretle.")
+            else:
+                st.warning("⚠️ Sadece TEK bir müşteri seçiliyken açabilirsin — birden fazla işaretli.")
         # Render SONRASI: gerçek işaretli/işaretsiz durumu "hariç tutulanlar"
         # kümesine TAM senkronize et — bir dahaki render'da doğru taban
         # buradan yeniden kurulacak.
@@ -9361,6 +9379,11 @@ div[data-testid="stForm"] {
             st.session_state["_cl_tumu_haric_idler"] = set(
                 _cl_id_sayisal2[edited_df["Seç"] == False].tolist()
             )
+        # Diyalog kalıcı bayrağı ayarlıysa (yukarıdaki buton ya da eski otomatik
+        # tetiklemeden) her render'da gösterilir — SADECE "❌ Bu Pencereyi
+        # Kapat" ile kapanır.
+        if st.session_state.get("_not_dialog_kalici_id"):
+            not_dialog(st.session_state["_not_dialog_kalici_id"], st.session_state.get("_not_dialog_kalici_firma", ""))
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
 
@@ -9420,14 +9443,9 @@ div[data-testid="stForm"] {
     # ── "Seç" işaretli firmaları taslak olarak kaydetme paneli kullanıcı
     # isteğiyle kaldırıldı (arşivleme/silme butonlarıyla birlikte, aşağıda) ──
 
-    # ── NOT DİALOG — sadece seçili olunca açılır ────────────────────────────
-    if secili_sayi == 1:
-        _sel_id = int(secili_idler[0])
-        _sel_rows = df_edit[df_edit["id"] == _sel_id]
-        _sel_firma = str(_sel_rows.iloc[0].get("firma","")) if not _sel_rows.empty else ""
-        not_dialog(_sel_id, _sel_firma)
-
-
+    # NOT: "📋 Seçili Müşteriyi Aç" tetikleyicisi ve diyaloğun kalıcı-bayrak
+    # kontrolü artık YUKARIDA, form bloğunun hemen ardında — burada TEKRAR
+    # çağrılmaz (aynı diyaloğun iki kez render edilip çakışmasını önlemek için).
 
 
     # ── BUTONLAR ──────────────────────────────────────────────────────────────
