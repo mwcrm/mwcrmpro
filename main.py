@@ -813,23 +813,34 @@ Kullanıcıya hiçbir tabloda/alanda teknik boşluk göstergesi ("None", "NaN",
 bunu YAKALAMAZ). Kullanıcıya gösterilecek her DataFrame, render edilmeden
 hemen önce `_hic_none_gosterme(df)` içinden geçirilir.
 
-### 3d) "Kaydet" Butonu HER ZAMAN Üstteki Buton Satırında Olacak — KALICI (2026-09, KESİN KARAR)
-Kullanıcı önce "veri girerken sayfa yanıp sönmesin" istedi, bunun için
-`st.form()` denendi (görsel çerçeve CSS ile gizlenerek). Ama bu çözüm
-"Kaydet" butonunun form'un submit butonu olması ZORUNLULUĞUNU getirdiği için
-"Kaydet" tablonun ALTINA inmek zorunda kaldı (üstteki Satır Ekle/Kolon
-Sıfırla/Tümünü Seç satırında duramadı). Kullanıcı bu iki seçenek arasında
-(sonda "yanıp sönmeme" mi, yoksa "Kaydet üstteki satırda mı") NET TERCİHİNİ
-"Kaydet üstteki satırda kalsın" yönünde yaptı — `st.form()` KESİN OLARAK
-KALDIRILDI, Cari Liste tablosu eski (form'suz) hâline döndürüldü. "Kaydet"
-HER ZAMAN üstteki sticky buton satırında (Satır Ekle, Kolon Sıfırla, Excel
-İndir, Tümünü Seç, Seçimi Temizle ile aynı satırda) kalacak. Bu konu
-BİR DAHA GÜNDEME GETİRİLMEYECEK / `st.form()` bir daha ÖNERİLMEYECEK —
-kullanıcı "veri girerken sistem tarama yapmasın" isteğini "Kaydet butonunun
-üstteki satırda kalması"na göre İKİNCİL öncelik olarak kabul etti. Ağır arka
-plan hesaplamaları (Rut, Gerçekleşen Ciro) yine de önbelleğe alınmış
-durumda kalır (performans için, form'dan bağımsız) — bkz.
-`_cl_il_rut_onbellek_*` ve `_tum_musteri_kargo_yekun_toplami` (ttl=300).
+### 3d) Veri Girerken Yanıp Sönme YOK — Form Kalıcı, Kaydet Tablonun Altında — KALICI (2026-09, KESİN VE NİHAİ KARAR)
+Kullanıcı ile birkaç kez ileri-geri denendi, NİHAİ ve KESİN karar şu (bir
+daha değişmeyecek, bir daha sorulmayacak):
+1. Cari Liste tablosu `st.form()` içindedir — hücreye yazarken/düzenlerken
+   sistem KENDİLİĞİNDEN hiçbir şey taramaz/yeniden çizmez. SADECE "💾
+   Değişiklikleri Kaydet"e (form'un submit butonu, TABLONUN HEMEN ALTINDA)
+   ya da bir hücrede Enter'a basılınca işlenir. Bu davranış kullanıcının
+   "EN BÜYÜK SORUN" dediği şeydi ve ÖNCELİKLİDİR.
+2. Form'un varsayılan görsel çerçevesi/kutusu CSS ile TAMAMEN gizlenir:
+   `div[data-testid="stForm"] { border:none; padding:0; background:transparent; }`
+   — görünüm form'suz haliyle birebir aynı kalır.
+3. "Kaydet" butonu ARTIK üstteki sticky buton satırında (Satır Ekle/Kolon
+   Sıfırla/Excel İndir/Tümünü Seç/Seçimi Temizle ile) DEĞİL, tablonun HEMEN
+   ALTINDADIR — çünkü form dışından bir buton, form'un henüz kaydedilmemiş
+   hücre değişikliklerini YAKALAYAMAZ (veri kaybı riski).
+4. KULLANICI BUNU BİLİNÇLİ KABUL ETTİ: "Seç" kutusu işaretleme (toplu silme
+   için sayının güncellenmesi), İl işaretleme gibi TEK TEK etkileşimle
+   ANINDA tepki gerektiren işlemler, form nedeniyle SADECE "Kaydet"e
+   basıldıktan SONRA sisteme yansır/doğru çalışır. "☑️ Tümünü Seç" ve
+   "⬜ Seçimi Temizle" butonları (form DIŞINDA, ayrı butonlar) İSTİSNADIR —
+   bunlar anında çalışır çünkü formun kendisini DEĞİL, YENİ bir taban
+   oluşturup formu YENİDEN kurarlar. Ama tek tek elle işaret kaldırıp/
+   ekleyip HEMEN bir sonraki adıma (ör. Sil) geçmek için önce Kaydet'e
+   basılması GEREKİR — bu KASITLI bir kısıtlamadır, hata değildir.
+Bu davranış ASLA değiştirilmeyecek/tartışmaya açılmayacak. Ağır arka plan
+hesaplamaları (Rut, Gerçekleşen Ciro) da ayrıca önbelleğe alınmış durumda
+kalır (performans için) — bkz. `_cl_il_rut_onbellek_*` ve
+`_tum_musteri_kargo_yekun_toplami` (ttl=300).
 
 ### 4) MacroDroid Entegrasyonu
 - Supabase proje: `asinwzxwmkkrcbtjrkoq.supabase.co` — tablolar: `islem_kaydi`, `cari_kartlar`, `kisiler`
