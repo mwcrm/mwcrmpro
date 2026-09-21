@@ -8732,13 +8732,41 @@ function kartSec(id){
     # önbelleği paylaşır, biri kaydedince diğeri de hemen güncel görür.
     _il_gonderim_matrisi = _il_gonderim_matrisi_yukle()
     if "id" in df_edit.columns:
-        for _il_kol in _IL_SUTUN_LISTESI:
-            df_edit[_il_kol] = df_edit["id"].apply(
-                lambda _rid: (_il_gonderim_matrisi.get(str(int(_rid)), {}).get(_il_kol, "") or "") if pd.notna(_rid) else "")
-        # "Rut" — KULLANICI İSTEĞİ (2026-09): artık elle yazılmıyor, hangi İL
-        # sütun(lar)ına gönderim bilgisi girildiyse OTOMATİK hesaplanır (bkz.
-        # _cari_rut_hesapla_otomatik, dosya başında tanımlı GLOBAL fonksiyon).
-        df_edit["rut"] = df_edit["id"].apply(lambda _rid: _cari_rut_hesapla_otomatik(_rid, _il_gonderim_matrisi))
+        # 🚀 PERFORMANS (2026-09, KULLANICI İSTEĞİ): bu hesaplama ~4800 satır ×
+        # 30+ sütun için HER YENİDEN ÇİZİMDE (her tuş vuruşunda/etkileşimde)
+        # baştan yapılıyordu — bu da yazarken "donma/yanıp sönme" hissine yol
+        # açıyordu. Artık İl gönderim matrisi GERÇEKTEN değişmediyse (aynı
+        # içerik) önceden hesaplanmış {id: değer} sözlükleri session_state'ten
+        # DOĞRUDAN kullanılır (hızlı .map()), tekrar hesaplanmaz.
+        import hashlib as _cl_hl
+        _il_matris_ozet = _cl_hl.md5(str(sorted(_il_gonderim_matrisi.items())).encode("utf-8", "ignore")).hexdigest() if _il_gonderim_matrisi else "bos"
+        _cl_rut_onbellek_anahtari = f"_cl_il_rut_onbellek_{_il_matris_ozet}"
+        _cl_rut_onbellek = st.session_state.get(_cl_rut_onbellek_anahtari)
+        _id_str_serisi = df_edit["id"].apply(lambda _r: str(int(_r)) if pd.notna(_r) else "")
+        if _cl_rut_onbellek is not None:
+            _il_map_sozlugu, _rut_map_sozlugu = _cl_rut_onbellek
+            for _il_kol in _IL_SUTUN_LISTESI:
+                df_edit[_il_kol] = _id_str_serisi.map(_il_map_sozlugu.get(_il_kol, {})).fillna("")
+            df_edit["rut"] = _id_str_serisi.map(_rut_map_sozlugu).fillna("")
+        else:
+            for _il_kol in _IL_SUTUN_LISTESI:
+                df_edit[_il_kol] = df_edit["id"].apply(
+                    lambda _rid: (_il_gonderim_matrisi.get(str(int(_rid)), {}).get(_il_kol, "") or "") if pd.notna(_rid) else "")
+            # "Rut" — KULLANICI İSTEĞİ (2026-09): artık elle yazılmıyor, hangi İL
+            # sütun(lar)ına gönderim bilgisi girildiyse OTOMATİK hesaplanır (bkz.
+            # _cari_rut_hesapla_otomatik, dosya başında tanımlı GLOBAL fonksiyon).
+            df_edit["rut"] = df_edit["id"].apply(lambda _rid: _cari_rut_hesapla_otomatik(_rid, _il_gonderim_matrisi))
+            # Sonucu ÖNBELLEĞE al — {sütun: {id_str: değer}} olarak (bir dahaki
+            # render'da matris DEĞİŞMEDİYSE doğrudan bu kullanılacak).
+            try:
+                _il_map_sozlugu_yeni = {
+                    _il_kol: dict(zip(_id_str_serisi, df_edit[_il_kol]))
+                    for _il_kol in _IL_SUTUN_LISTESI
+                }
+                _rut_map_sozlugu_yeni = dict(zip(_id_str_serisi, df_edit["rut"]))
+                st.session_state[_cl_rut_onbellek_anahtari] = (_il_map_sozlugu_yeni, _rut_map_sozlugu_yeni)
+            except Exception:
+                pass
     elif "rut" not in df_edit.columns:
         df_edit["rut"] = ""
 
