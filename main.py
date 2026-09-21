@@ -820,11 +820,15 @@ metin yapıştırırken) — kullanıcı **Enter'a**, **"💾 Değişiklikleri K
 ya da **"🔄 Yenile"ye** basmadan önce, sistem KENDİLİĞİNDEN hiçbir arama/
 tarama/yeniden hesaplama yapıp sayfayı yeniden çizmeyecek ("yanıp sönme").
 Veri girişi TAMAMLANIP kullanıcı bu üç eylemden birini (Enter / Değişiklikleri
-Kaydet / Yenile) yapana kadar arka planda HİÇBİR ŞEY taranmaz. Bu, yeni kod
-yazılırken de korunacak bir davranış kuralıdır — Cari Liste tablosu bu yüzden
-`st.form()` içinde çalışır (form içindeki widget'lar tek tek değil, SADECE
-form'un "Kaydet" düğmesine basılınca script'i yeniden çalıştırır). Yeni bir
-veri girişi alanı eklenirken bu davranışın bozulmadığından emin olunmalı.
+Kaydet / Yenile) yapana kadar arka planda HİÇBİR ŞEY taranmaz.
+ÖNEMLİ (kullanıcı geri bildirimi, 2026-09): bunu `st.form()` ile çözmeyi
+denedik ama kullanıcı tablonun etrafında oluşan görsel ÇERÇEVEYİ istemedi —
+form yöntemi KALDIRILDI, Cari Liste tablosu eski (form'suz) hâline
+döndürüldü. Bu kural hâlâ geçerli bir HEDEFTİR; ama çözüm yolu olarak
+`st.form()` bir daha önerilmeyecek/kullanılmayacak (görsel çerçeve istenmiyor).
+Bunun yerine ağır arka plan hesaplamalarını (Rut, Gerçekleşen Ciro vb.)
+önbelleğe alarak yeniden çizimin MALİYETİNİ düşürme yolu tercih edilir —
+bkz. `_cl_il_rut_onbellek_*` ve `_tum_musteri_kargo_yekun_toplami` (ttl=300).
 
 ### 4) MacroDroid Entegrasyonu
 - Supabase proje: `asinwzxwmkkrcbtjrkoq.supabase.co` — tablolar: `islem_kaydi`, `cari_kartlar`, `kisiler`
@@ -9204,14 +9208,10 @@ function kartSec(id){
 
     with st.container():
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
-        # NOT (2026-09, KALICI KURAL 3d): "💾 Değişiklikleri Kaydet" artık
-        # BURADA değil — tablonun HEMEN ALTINDA, form'un kendi Kaydet
-        # düğmesi olarak duruyor. Bunun tek nedeni: tablo artık bir
-        # st.form() içinde, form DIŞINDAN bir buton form'un o anki
-        # (henüz kaydedilmemiş) hücre değişikliklerini YAKALAYAMAZ —
-        # burada bıraksaydık, yanlışlıkla tıklanırsa yazdığın veri
-        # kaybolabilirdi. Güvenlik için buradan kaldırıldı.
-        _sb2, _sb3, _sb4, _sb5, _sb6 = st.columns([1.3, 1.3, 1.5, 1.4, 1.5])
+        _sb1, _sb2, _sb3, _sb4, _sb5, _sb6 = st.columns([1.4, 1.1, 1.1, 1.3, 1.2, 1.3])
+        with _sb1:
+            if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust", use_container_width=True):
+                st.session_state["_kaydet_flag"] = True
         with _sb2:
             if st.button("➕ Satır Ekle", key="cl_hizli_ekle_btn_ust", use_container_width=True):
                 st.session_state["_cl_taslak_sayisi"] = st.session_state.get("_cl_taslak_sayisi", 0) + 1
@@ -9317,24 +9317,15 @@ function kartSec(id){
     _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
 
     with _tbl_col:
-        # ── KULLANICI İSTEĞİ (2026-09, KALICI KURAL 3d): veri girerken
-        # (hücreye yazarken) sayfa yanıp sönmesin/yeniden çizilmesin —
-        # SADECE Enter'a ya da "Kaydet"e basınca işlensin. st.form() TAM
-        # OLARAK bunu yapar: form İÇİNDEKİ widget'lar (burada data_editor)
-        # TEK TEK değil, SADECE form_submit_button'a basılınca (ya da
-        # form içindeki bir metin kutusunda Enter'a basılınca) script'i
-        # yeniden çalıştırır — yazarken ara ara "taranmaz".
-        with st.form("cari_liste_form", clear_on_submit=False):
-            edited_df = st.data_editor(
-                df_edit,
-                use_container_width=True,
-                num_rows="fixed",
-                column_config=col_config,
-                column_order=_aktif_col_order,
-                height=_cl_editor_yukseklik,
-                key=_cl_editor_key
-            )
-            _form_kaydet_tiklandi = st.form_submit_button("💾 Değişiklikleri Kaydet", type="primary", use_container_width=True)
+        edited_df = st.data_editor(
+            df_edit,
+            use_container_width=True,
+            num_rows="fixed",
+            column_config=col_config,
+            column_order=_aktif_col_order,
+            height=_cl_editor_yukseklik,
+            key=_cl_editor_key
+        )
         # Render SONRASI: gerçek işaretli/işaretsiz durumu "hariç tutulanlar"
         # kümesine TAM senkronize et — bir dahaki render'da doğru taban
         # buradan yeniden kurulacak.
@@ -9343,8 +9334,6 @@ function kartSec(id){
             st.session_state["_cl_tumu_haric_idler"] = set(
                 _cl_id_sayisal2[edited_df["Seç"] == False].tolist()
             )
-        if _form_kaydet_tiklandi:
-            st.session_state["_kaydet_flag"] = True
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
 
