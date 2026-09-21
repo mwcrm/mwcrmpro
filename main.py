@@ -10005,7 +10005,7 @@ div[data-testid="stForm"] {
         # AYNI ESKİ KURAL: "Cari Komple Sil" (tek müşteri) gibi TEK TIKLA,
         # onay istemeden, ANINDA çalışır — yumuşak silme (silindi=1),
         # kalıcı veri kaybı yok.
-        if secili_sayi >= 2:
+        if secili_sayi >= 1:
             if st.button(f"🗑️ Seçili {secili_sayi} Kaydı Sil", key="cl_secili_sil_btn", use_container_width=True):
                 try:
                     for _cl_sid in secili_idler:
