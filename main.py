@@ -821,14 +821,18 @@ ya da **"🔄 Yenile"ye** basmadan önce, sistem KENDİLİĞİNDEN hiçbir arama
 tarama/yeniden hesaplama yapıp sayfayı yeniden çizmeyecek ("yanıp sönme").
 Veri girişi TAMAMLANIP kullanıcı bu üç eylemden birini (Enter / Değişiklikleri
 Kaydet / Yenile) yapana kadar arka planda HİÇBİR ŞEY taranmaz.
-ÖNEMLİ (kullanıcı geri bildirimi, 2026-09): bunu `st.form()` ile çözmeyi
-denedik ama kullanıcı tablonun etrafında oluşan görsel ÇERÇEVEYİ istemedi —
-form yöntemi KALDIRILDI, Cari Liste tablosu eski (form'suz) hâline
-döndürüldü. Bu kural hâlâ geçerli bir HEDEFTİR; ama çözüm yolu olarak
-`st.form()` bir daha önerilmeyecek/kullanılmayacak (görsel çerçeve istenmiyor).
-Bunun yerine ağır arka plan hesaplamalarını (Rut, Gerçekleşen Ciro vb.)
-önbelleğe alarak yeniden çizimin MALİYETİNİ düşürme yolu tercih edilir —
-bkz. `_cl_il_rut_onbellek_*` ve `_tum_musteri_kargo_yekun_toplami` (ttl=300).
+UYGULAMA (NİHAİ ÇÖZÜM, kullanıcı geri bildirimiyle iki adımda bulundu):
+Cari Liste tablosu `st.form()` içinde çalışır (form içindeki widget'lar tek
+tek değil, SADECE "Kaydet" düğmesine ya da Enter'a basılınca script'i
+yeniden çalıştırır) — AMA form'un varsayılan görsel çerçevesi/kutusu
+`div[data-testid="stForm"] { border:none; padding:0; background:transparent; }`
+CSS'iyle TAMAMEN gizlenir, böylece görünüm eskisiyle birebir aynı kalır,
+sadece davranış (yanıp sönmeme) değişir. Form dışında ARTIK ayrı bir
+"Kaydet" butonu YOKTUR (form dışından bir buton, form'un henüz kaydedilmemiş
+hücre değişikliklerini YAKALAYAMAZ ve veri kaybına yol açabilirdi) — TEK
+"Kaydet" düğmesi, form'un kendi submit butonu olarak tablonun hemen altındadır.
+Yeni bir veri girişi alanı/tablo eklenirken bu iki parçanın (form + çerçeveyi
+gizleyen CSS) BİRLİKTE korunmasına dikkat edilmeli.
 
 ### 4) MacroDroid Entegrasyonu
 - Supabase proje: `asinwzxwmkkrcbtjrkoq.supabase.co` — tablolar: `islem_kaydi`, `cari_kartlar`, `kisiler`
@@ -9208,10 +9212,10 @@ function kartSec(id){
 
     with st.container():
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
-        _sb1, _sb2, _sb3, _sb4, _sb5, _sb6 = st.columns([1.4, 1.1, 1.1, 1.3, 1.2, 1.3])
-        with _sb1:
-            if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust", use_container_width=True):
-                st.session_state["_kaydet_flag"] = True
+        # NOT: "💾 Değişiklikleri Kaydet" artık BURADA değil — tablonun HEMEN
+        # ALTINDA, form'un kendi Kaydet düğmesi olarak duruyor (form dışından
+        # bir buton, henüz kaydedilmemiş hücre değişikliklerini YAKALAYAMAZ).
+        _sb2, _sb3, _sb4, _sb5, _sb6 = st.columns([1.3, 1.3, 1.5, 1.4, 1.5])
         with _sb2:
             if st.button("➕ Satır Ekle", key="cl_hizli_ekle_btn_ust", use_container_width=True):
                 st.session_state["_cl_taslak_sayisi"] = st.session_state.get("_cl_taslak_sayisi", 0) + 1
@@ -9317,15 +9321,31 @@ function kartSec(id){
     _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
 
     with _tbl_col:
-        edited_df = st.data_editor(
-            df_edit,
-            use_container_width=True,
-            num_rows="fixed",
-            column_config=col_config,
-            column_order=_aktif_col_order,
-            height=_cl_editor_yukseklik,
-            key=_cl_editor_key
-        )
+        # ── KULLANICI İSTEĞİ (2026-09, KALICI KURAL 3d — GÜÇLENDİRİLDİ):
+        # hücreye yazarken/düzenlerken sistem HİÇBİR ŞEY taramayacak, SADECE
+        # Enter'a ya da "Kaydet"e basılınca işlenecek. st.form() bunu sağlıyor
+        # AMA görsel bir çerçeve/kutu ekliyor — kullanıcı bunu istemedi. Çözüm:
+        # form'un DAVRANIŞINI (sadece submit'te rerun) korurken, görsel
+        # çerçevesini CSS ile TAMAMEN gizliyoruz — görünüm eskisi gibi kalır.
+        st.markdown("""
+<style>
+div[data-testid="stForm"] {
+    border: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+}
+</style>""", unsafe_allow_html=True)
+        with st.form("cari_liste_form", clear_on_submit=False):
+            edited_df = st.data_editor(
+                df_edit,
+                use_container_width=True,
+                num_rows="fixed",
+                column_config=col_config,
+                column_order=_aktif_col_order,
+                height=_cl_editor_yukseklik,
+                key=_cl_editor_key
+            )
+            _form_kaydet_tiklandi = st.form_submit_button("💾 Değişiklikleri Kaydet", type="primary", use_container_width=True)
         # Render SONRASI: gerçek işaretli/işaretsiz durumu "hariç tutulanlar"
         # kümesine TAM senkronize et — bir dahaki render'da doğru taban
         # buradan yeniden kurulacak.
@@ -9334,6 +9354,8 @@ function kartSec(id){
             st.session_state["_cl_tumu_haric_idler"] = set(
                 _cl_id_sayisal2[edited_df["Seç"] == False].tolist()
             )
+        if _form_kaydet_tiklandi:
+            st.session_state["_kaydet_flag"] = True
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
 
