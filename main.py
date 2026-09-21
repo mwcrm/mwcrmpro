@@ -925,6 +925,16 @@ def _il_gonderim_matrisi_kaydet(_matris):
             _sb_ilm2.table("kullanici_tercih").insert(
                 {"kullanici": "__liste_ui__", "anahtar": "_il_gonderim_matrisi", "deger": _deger}
             ).execute()
+        # 🚨 DÜZELTME (2026-09): Cari Liste'nin Rut/İl sütunları performans için
+        # session_state'te önbelleğe alınıyor (bkz. _cl_il_rut_onbellek_*).
+        # İl matrisi HER değiştiğinde bu önbellek de KESİN olarak temizlenir —
+        # aksi halde işaretleme kaydedilse bile tabloda eski (güncellenmemiş)
+        # Rut değeri görünmeye devam edebiliyordu.
+        try:
+            for _k_temiz in [k for k in list(st.session_state.keys()) if k.startswith("_cl_il_rut_onbellek_")]:
+                st.session_state.pop(_k_temiz, None)
+        except Exception:
+            pass
         return True
     except Exception:
         return False
