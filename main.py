@@ -8289,6 +8289,13 @@ function kartSec(id){
             secili_kart = "-- Müşteri Seçin --"
 
     # Varsayılan: hiçbir filtre seçilmemişse tüm liste gelsin
+    # NOT: "Filtre Düzenle" ile eklenen özel filtrenin widget anahtarı DİNAMİK
+    # (seçilen alana göre değişir) — bu yüzden burada AYRICA kontrol edilir.
+    _cl_ozel_filtre_alani_erken = st.session_state.get("_cl_ozel_filtre_alani_cache")
+    if _cl_ozel_filtre_alani_erken is None:
+        _cl_ozel_filtre_alani_erken = _cl_ozel_filtre_alani_yukle()
+        st.session_state["_cl_ozel_filtre_alani_cache"] = _cl_ozel_filtre_alani_erken
+    _cl_ozel_filtre_widget_anahtari_erken = f"_cl_fil_ozel_ayarlanabilir_{_cl_ozel_filtre_alani_erken}" if _cl_ozel_filtre_alani_erken else None
     if not st.session_state.get("_toplam_aktif") and \
        not st.session_state.get("_cl_fil_durum_multi") and \
        not st.session_state.get("_cl_fil_asama_multi") and \
@@ -8302,6 +8309,7 @@ function kartSec(id){
        not st.session_state.get("_cl_fil_ilce_multi") and \
        not st.session_state.get("_cl_fil_ozel_multi") and \
        not st.session_state.get("_cl_fil_guncelleme_tarih_multi") and \
+       not (_cl_ozel_filtre_widget_anahtari_erken and st.session_state.get(_cl_ozel_filtre_widget_anahtari_erken)) and \
        not st.session_state.get("_cl_fil_rut_multi"):
         st.session_state["_toplam_aktif"] = True
 
