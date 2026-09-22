@@ -9529,19 +9529,23 @@ function kartSec(id){
     # ── "Seç" işaretli firmaları taslak olarak kaydetme paneli kullanıcı
     # isteğiyle kaldırıldı (arşivleme/silme butonlarıyla birlikte, aşağıda) ──
 
-    # ── NOT DİALOG — sadece TEK bir müşteri seçili olunca ANINDA açılır ────
-    # (Form kaldırıldığı için "Seç" kutusu artık anında Python'a ulaşıyor,
-    # bu yüzden ekstra bir "Seçili Müşteriyi Aç" butonuna gerek kalmadı.)
-    # Diyaloğun kendi kalıcı bayrağı (_not_dialog_kalici_id) sayesinde,
-    # diyalog içinde bir işlem yapılıp sayfa yenilense bile açık kalır —
-    # SADECE "❌ Bu Pencereyi Kapat" ile kapanır.
+    # ── NOT DİALOG — SADECE tam olarak TEK bir müşteri o an "Seç" ile
+    # işaretliyken açılır. (Form kaldırıldığı için "Seç" kutusu artık anında
+    # ve DOĞRU şekilde Python'a ulaşıyor — dialog içinde bir işlem yapılıp
+    # sayfa yenilense bile, checkbox'ın kendi widget hafızası sayesinde
+    # işaretli kalmaya devam eder, ekstra bir "kalıcı bayrak" gerekmez.)
+    # 🚨 DÜZELTME (2026-09): eski "kalıcı bayrak" fallback'i (form'un
+    # checkbox'ı sıfırlama sorununu aşmak için eklenmişti) KALDIRILDI —
+    # form artık yok, ama bayrak "❌ Kapat"a basılmadan sürüp gittiği için
+    # HİÇBİR müşteri seçili değilken bile pencere açık kalmaya devam ediyordu.
     if secili_sayi == 1:
         _sel_id = int(secili_idler[0])
         _sel_rows = df_edit[df_edit["id"] == _sel_id]
         _sel_firma = str(_sel_rows.iloc[0].get("firma","")) if not _sel_rows.empty else ""
         not_dialog(_sel_id, _sel_firma)
-    elif st.session_state.get("_not_dialog_kalici_id"):
-        not_dialog(st.session_state["_not_dialog_kalici_id"], st.session_state.get("_not_dialog_kalici_firma", ""))
+    else:
+        st.session_state.pop("_not_dialog_kalici_id", None)
+        st.session_state.pop("_not_dialog_kalici_firma", None)
 
 
     # ── BUTONLAR ──────────────────────────────────────────────────────────────
