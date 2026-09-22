@@ -9449,8 +9449,14 @@ function kartSec(id){
     # Streamlit'te index kolonu zaten otomatik olarak sol tarafta SABİT kalır
     # (kaydırmada kaymaz). Eskiden burada firma id'sinin ham/karışık index'i
     # görünüyordu (17, 1692, 0, 5...) — artık temiz 1'den başlayan sıra no var.
+    # 🚨 DÜZELTME (2026-09): kullanıcı hâlâ karışık (1688, 3589, 862...) sıra
+    # numaraları gördüğünü bildirdi — "reset_index(drop=True)" bazı özel
+    # durumlarda (ör. Çoklu Firma karşılaştırma modu) beklendiği gibi
+    # davranmıyor olabilir. Artık index'i SIFIRLAMAYA güvenmek yerine,
+    # DOĞRUDAN 1'den len(df_edit)'e kadar bir sıra ATANIYOR — bu, önceki
+    # index'in ne olduğundan TAMAMEN bağımsız, HER ZAMAN garanti 1,2,3...
     df_edit = df_edit.reset_index(drop=True)
-    df_edit.index = df_edit.index + 1
+    df_edit.index = range(1, len(df_edit) + 1)
     df_edit.index.name = "S.No"
 
     # ── "☑️ Tümünü Seç" / "⬜ Seçimi Temizle" — KULLANICI İSTEĞİ (2026-09):
