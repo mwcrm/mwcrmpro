@@ -5036,10 +5036,43 @@ def not_dialog(cari_id, firma_adi=""):
                     st.rerun()
 
         _fy_hazir = st.session_state.get(f"_fy_hazir_{cari_id}")
+        # KULLANICI İSTEĞİ (2026-09): sadece YENİ bir "Ayrıştır" sonrası değil,
+        # bu sekme her açıldığında, o müşteri için ZATEN KAYITLI bir fiyat
+        # tablosu varsa da AYNI (hizalı/monospace) kutuda gösterilsin —
+        # görüntülemek için tekrar ayrıştırmaya gerek kalmasın.
+        if _fy_hazir is None:
+            try:
+                _fy_kayitli_harita = st.session_state.get("_koli_palet_manuel", {})
+                if not _fy_kayitli_harita:
+                    _r_fy_mevcut = _vd_sb.table("kullanici_tercih").select("deger").eq(
+                        "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                    if _r_fy_mevcut.data:
+                        import json as _fy_mevcut_j
+                        _fy_kayitli_harita = _fy_mevcut_j.loads(_r_fy_mevcut.data[0]["deger"])
+                        st.session_state["_koli_palet_manuel"] = _fy_kayitli_harita
+                _fy_kayitli_deger = str(_fy_kayitli_harita.get(str(int(cari_id)), "") or "").strip()
+                if _fy_kayitli_deger:
+                    _fy_hazir = _fy_kayitli_deger
+            except Exception:
+                pass
         if _fy_hazir is not None:
             st.markdown("**Hazırlanan tablo — istersen elle düzenle, sonra kaydet:**")
+            # 🚨 GÜÇLENDİRİLDİ (2026-09): kullanıcı hem bu kutuda hem Cari
+            # Liste'nin ana tablosundaki "Koli/Palet" hücresinde bilgilerin
+            # dağınık/iç içe göründüğünü bildirdi. Bu kutu için CSS seçicisi
+            # daha SAĞLAM hale getirildi (aria-label + genel yedek seçici
+            # birlikte). ÖNEMLİ: Cari Liste'nin ANA tablosundaki hücre,
+            # Streamlit'in "canvas" tabanlı (HTML/CSS ile stillendirilemeyen)
+            # bir bileşenle çiziliyor — o hücrenin yazı tipini CSS ile
+            # değiştirmek TEKNİK OLARAK MÜMKÜN DEĞİL. Bu YÜZDEN, kaydedilen
+            # tablo HER ZAMAN burada (bu sekmede) da hizalı/monospace olarak
+            # görüntülenebilsin diye yukarıdaki "her zaman göster" eklendi.
             st.markdown("""<style>
-textarea[aria-label="Koli/Palet önizleme"] { font-family: 'Courier New', monospace !important; white-space: pre !important; }
+textarea[aria-label="Koli/Palet önizleme"] {
+    font-family: 'Courier New', Courier, monospace !important;
+    white-space: pre !important;
+    font-size: 13px !important;
+}
 </style>""", unsafe_allow_html=True)
             _fy_son_metin = st.text_area("Koli/Palet önizleme", value=_fy_hazir, height=200,
                                           key=f"_fy_son_metin_{cari_id}", label_visibility="collapsed")
