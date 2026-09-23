@@ -8896,6 +8896,41 @@ function kartSec(id){
                       "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem","sektor":"sektor","rut":"rut"}
     col_order = [c for c in col_order if not any(c == _kol_gizli_map.get(g,g) for g in _GIZLI_KOLONLAR)]
 
+    # ── 🔀 KALICI SIRALAMA — KULLANICI İSTEĞİ (2026-09): tarayıcının kendi
+    # "sütun başlığına tıkla sırala" özelliği Python'un hiç haberi olmadığı
+    # için Kaydet gibi bir işlemde (sayfa yenilenince) kayboluyordu. Bunun
+    # yerine GERÇEK, KALICI bir sıralama — seçim session_state'te tutulur,
+    # sen değiştirene kadar (Kaydet dahil) HİÇBİR ŞEY onu sıfırlamaz.
+    _CL_SIRALA_SECENEKLERI = {
+        "": "-- Sıralama Yok (varsayılan) --",
+        "firma": "Firma Adı", "beklenen_ciro": "Hedeflenen Ciro", "gerceklesen_ciro": "Gerçekleşen Ciro",
+        "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
+        "musteri_subesi": "Müşteri Şubesi", "sektor": "Sektör", "yetkili": "Yetkili",
+        "tarih": "Kayıt Tarihi", "guncelleme_tarihi": "Güncelleme Tarihi", "vade": "Vade",
+        "vergi_dairesi": "Vergi Dairesi", "ara_islem": "Ara İşlem", "sonuc": "Sonuç",
+    }
+    _cl_sirala_c1, _cl_sirala_c2, _cl_sirala_bos = st.columns([1.6, 1.2, 4])
+    with _cl_sirala_c1:
+        _cl_sirala_alan = st.selectbox("🔀 Sırala", list(_CL_SIRALA_SECENEKLERI.keys()),
+                                        format_func=lambda k: _CL_SIRALA_SECENEKLERI[k],
+                                        key="_cl_sirala_alan_sec", label_visibility="collapsed")
+    with _cl_sirala_c2:
+        _cl_sirala_yon = st.selectbox("Yön", ["Artan (A→Z, küçük→büyük)", "Azalan (Z→A, büyük→küçük)"],
+                                       key="_cl_sirala_yon_sec", label_visibility="collapsed",
+                                       disabled=not _cl_sirala_alan)
+    if _cl_sirala_alan and _cl_sirala_alan in df_f.columns:
+        _cl_sirala_azalan = _cl_sirala_yon.startswith("Azalan")
+        try:
+            if _cl_sirala_alan in ("beklenen_ciro", "gerceklesen_ciro"):
+                df_f = df_f.sort_values(by=_cl_sirala_alan, ascending=not _cl_sirala_azalan, na_position="last")
+            else:
+                df_f = df_f.sort_values(
+                    by=_cl_sirala_alan, key=lambda _s: _s.astype(str).str.lower(),
+                    ascending=not _cl_sirala_azalan, na_position="last"
+                )
+        except Exception:
+            pass
+
     # ── SAYFALAMA KALDIRILDI — kullanıcı isteği üzerine, liste artık her zaman
     # tam (Tümü) gösteriliyor, sayfa butonları tamamen kaldırıldı. ────────────
     _cl_toplam_kayit = len(df_f)
