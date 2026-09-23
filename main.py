@@ -4808,8 +4808,29 @@ def not_dialog(cari_id, firma_adi=""):
             _toplam_sayi_w = max(len(t) for t in _toplam_metinleri)
             _toplam_metinleri = [f"{t.rjust(_toplam_sayi_w)} TL" for t in _toplam_metinleri]
             _toplam_w = max(len("TOPLAM"), max(len(t) for t in _toplam_metinleri))
+
+            # ── KULLANICI İSTEĞİ (2026-09): "İL TOPLAM CİRO" — YENİ bir sütun.
+            # Eski format (V.İLİ/TÜR/DESİ-KG/TOPLAM) HİÇ DEĞİŞTİRİLMEDİ, sadece
+            # sona bu sütun EKLENDİ. Her il grubunun SADECE İLK satırında, o
+            # ile ait TÜM satırların TOPLAM'larının toplamı gösterilir; aynı
+            # ilin diğer satırlarında bu sütun BOŞ kalır (tekrar etmesin diye).
+            _il_toplam_ciro_map = {}
+            for _g in _girisler:
+                _il_anahtar_norm = _fy_norm(_g[0])
+                _il_toplam_ciro_map[_il_anahtar_norm] = _il_toplam_ciro_map.get(_il_anahtar_norm, 0.0) + _g[4]
+            _il_ciro_metinleri = []
+            _gosterilen_iller = set()
+            for _g in _girisler:
+                _il_anahtar_norm = _fy_norm(_g[0])
+                if _il_anahtar_norm not in _gosterilen_iller:
+                    _il_ciro_metinleri.append(f"{_il_toplam_ciro_map[_il_anahtar_norm]:.2f} TL")
+                    _gosterilen_iller.add(_il_anahtar_norm)
+                else:
+                    _il_ciro_metinleri.append("")
+            _il_ciro_w = max([len("İL TOPLAM CİRO")] + [len(t) for t in _il_ciro_metinleri])
+
             _baslik = (f"{'V.İLİ'.ljust(_sehir_w)}   {'TÜR'.ljust(_tur_w)}   {'DESİ-KG'.ljust(_desi_w)}   "
-                       f"{'TOPLAM'.ljust(_toplam_w)}")
+                       f"{'TOPLAM'.ljust(_toplam_w)}   {'İL TOPLAM CİRO'.ljust(_il_ciro_w)}")
             _ayrac = "-" * len(_baslik)
             _satirlar = ["FİYAT İNCELE", _ayrac, "", _baslik, _ayrac]
             _onceki_sehir = None
@@ -4817,7 +4838,7 @@ def not_dialog(cari_id, firma_adi=""):
                 if _onceki_sehir is not None and _fy_norm(_g[0]) != _fy_norm(_onceki_sehir):
                     _satirlar.append(_ayrac)
                 _satirlar.append(f"{_g[0].ljust(_sehir_w)}   {_tur_metinleri[_i].ljust(_tur_w)}   {_desi_metinleri[_i].ljust(_desi_w)}   "
-                                  f"{_toplam_metinleri[_i].ljust(_toplam_w)}")
+                                  f"{_toplam_metinleri[_i].ljust(_toplam_w)}   {_il_ciro_metinleri[_i].ljust(_il_ciro_w)}")
                 _onceki_sehir = _g[0]
             return "\n".join(_satirlar)
 
