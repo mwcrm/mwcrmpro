@@ -79,6 +79,7 @@ _CL_OZEL_FILTRE_SECENEKLERI = {
     "musteri_subesi": "Müşteri Şubesi",
     "vade": "Vade",
     "odeme": "Ödeme",
+    "teklif_fiyat": "Teklif Fiyat",
     "aciklama": "Açıklama",
     "asama1": "1. Aşama",
     "asama2": "2. Aşama",
@@ -129,10 +130,11 @@ def _cl_ozel_filtre_alani_kaydet(_alan):
 
 
 _CARI_EK_ALAN_ANAHTAR = "_cari_ek_bilgiler"
-_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme"]
+_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "teklif_fiyat"]
 _CARI_EK_ALAN_ETIKET = {
     "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi",
     "musteri_subesi": "Müşteri Şubesi", "vade": "Vade", "odeme": "Ödeme",
+    "teklif_fiyat": "Teklif Fiyat",
 }
 
 
@@ -8745,7 +8747,7 @@ function kartSec(id){
         "tarih":90,"guncelleme_tarihi":100,
         "firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
         "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
-        "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,
+        "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,"musteri_kodu":80,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
         "🧾 Teklif":70,"💬 Mesaj":70,
@@ -8830,6 +8832,7 @@ function kartSec(id){
         "musteri_subesi":  st.column_config.TextColumn("Müşteri Şubesi", width=_w("musteri_subesi")),
         "vade":            st.column_config.TextColumn("Vade", width=_w("vade")),
         "odeme":           st.column_config.TextColumn("Ödeme", width=_w("odeme")),
+        "teklif_fiyat":    st.column_config.TextColumn("Teklif Fiyat", width=_w("teklif_fiyat")),
         "durum":         st.column_config.SelectboxColumn("Durum", options=["Tümü"] + [x for x in tum_durum_opts if str(x).upper() not in ["NONE","NAN",""]], width=_w("durum")),
         "temsilci":      st.column_config.TextColumn("Temsilci",  width=_w("temsilci")),
         "islem_asamasi": st.column_config.SelectboxColumn("İlk Temas", options=["Tümü", "Arama", "Tekrar Ara", "Mesaj", "E-Mail"], width=_w("islem_asamasi")),
@@ -8882,13 +8885,13 @@ function kartSec(id){
 
     col_order = ["Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
-                 "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","islem_asamasi",
+                 "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
                  "🧾 Teklif","💬 Mesaj","ara_islem","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
     _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
-                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu",
+                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
                       "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
@@ -8907,7 +8910,7 @@ function kartSec(id){
         "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
         "musteri_subesi": "Müşteri Şubesi", "sektor": "Sektör", "yetkili": "Yetkili",
         "tarih": "Kayıt Tarihi", "guncelleme_tarihi": "Güncelleme Tarihi", "vade": "Vade",
-        "vergi_dairesi": "Vergi Dairesi", "ara_islem": "Ara İşlem", "sonuc": "Sonuç",
+        "vergi_dairesi": "Vergi Dairesi", "ara_islem": "Ara İşlem", "sonuc": "Sonuç", "teklif_fiyat": "Teklif Fiyat",
     }
     _cl_sirala_c1, _cl_sirala_c2, _cl_sirala_bos = st.columns([1.6, 1.2, 4])
     with _cl_sirala_c1:
@@ -10061,7 +10064,7 @@ function kartSec(id){
                     guncelle = {}
                     for k, v in degisiklikler.items():
                         if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma",
-                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu") or k in _IL_SUTUN_LISTESI: continue
+                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
                             except: guncelle[k] = 0
@@ -11244,7 +11247,7 @@ function updateBot(v){{
             "Seç":40,"tarih":90,"guncelleme_tarihi":100,
             "firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
-            "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,
+            "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,"musteri_kodu":80,
             "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"sektor":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
@@ -11257,7 +11260,7 @@ function updateBot(v){{
             "firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
-            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu",
+            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat",
             "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
             "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","sektor":"Sektör","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
@@ -13225,7 +13228,7 @@ elif aktif == "excel":
     st.markdown("## 📥 Excel ile Toplu Veri Aktarımı")
 
     sablon_kolonlar = ["firma","yetkili","gsm","sabit","email","adres","ilce","il","durum","temsilci","islem_asamasi","beklenen_ciro","gerceklesen_ciro",
-                       "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme"]
+                       "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme","teklif_fiyat"]
 
     sablon_buf = io.BytesIO()
     pd.DataFrame(columns=sablon_kolonlar).to_excel(sablon_buf, index=False)
