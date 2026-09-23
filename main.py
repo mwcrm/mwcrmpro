@@ -6077,34 +6077,6 @@ button[data-testid="manage-app-button"] { display: none !important; }
     # ── ALT BÖLÜM ─────────────────────────────────────────────────────────────
     st.divider()
 
-    with st.expander("🖥️ Görünüm"):
-        _gv_su_an_mobil = st.session_state.get("_mobil_mod", False)
-        st.caption(f"Şu an: {'📱 Telefon/Tablet görünümü' if _gv_su_an_mobil else '🖥️ Masaüstü görünümü'}")
-        _gv_yeni = st.toggle("Masaüstü görünümünü kullan (telefonda bile)", value=not _gv_su_an_mobil, key="gv_masaustu_toggle")
-        if _gv_yeni == _gv_su_an_mobil:  # yani tersine dönmüş, değişiklik istendi
-            st.session_state["_mobil_mod"] = not _gv_yeni
-            # localStorage'daki kayıtlı cihaz tercihini de güncelle — bir dahaki
-            # otomatik girişte eski (yanlış) tercih geri yüklenmesin.
-            st.markdown(f"""<script>
-try{{
-  var _eski = localStorage.getItem('mwcrm_oturum');
-  if(_eski){{
-    var _o = JSON.parse(_eski);
-    _o.mobil = {str(not _gv_yeni).lower()};
-    localStorage.setItem('mwcrm_oturum', JSON.stringify(_o));
-  }}
-}}catch(e){{}}
-</script>""", unsafe_allow_html=True)
-            st.rerun()
-
-    with st.expander("❓ Yardım"):
-        st.markdown("📞 [5400344228](tel:05400344228)")
-        st.button("📱 WhatsApp", use_container_width=True, disabled=True, help="Geçici olarak devre dışı")
-        talep = st.text_area("Talep:", height=60, key="sidebar_talep")
-        if st.button("📨 Gönder", key="sidebar_wa_btn"):
-            if talep.strip():
-                st.caption("👉 Gönder (geçici devre dışı)")
-
     if st.session_state.get("rol") == "admin":
         with st.expander("🎛️ Menü Sırası"):
             mevcut_sira_m = get_menu_tercihi(st.session_state["kullanici"])
