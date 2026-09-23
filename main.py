@@ -5798,12 +5798,22 @@ button[data-testid="manage-app-button"] { display: none !important; }
     # "kullanici"/"rol" (giriş bilgisi) HİÇ DOKUNULMAZ, oturum açık kalır.
     if st.button("🔄 Yenile", key="_sb_yenile_btn", use_container_width=True,
                  help="Şifreden çıkmadan, sadece veriyi tazeler."):
+        # KULLANICI İSTEĞİ (2026-09): daha önce sadece 4 önbellek temizleniyordu,
+        # dosyaya eklenen YENİ önbellekli fonksiyonlar (Kargolar, Bildirimler,
+        # Kullanıcı Listesi, Notlar vb.) bu listeye dahil edilmemişti — bu
+        # yüzden "Yenile" bazı güncel verileri getirmiyordu. Artık dosyadaki
+        # TÜM @st.cache_data fonksiyonları tek tek temizleniyor.
         for _yenile_fn in [get_cari_listesi, _tum_musteri_kargo_yekun_toplami,
-                            _il_gonderim_matrisi_yukle]:
+                            _il_gonderim_matrisi_yukle, _kg_manuel_alici_yukle,
+                            _kg_kayitlari_yukle, get_kullanici_listesi, _notlar_yukle]:
             try: _yenile_fn.clear()
             except Exception: pass
         try: db_read.clear()
         except Exception: pass
+        # Filtre/sıralama gibi arayüz önbelleklerini de sıfırla — böylece
+        # sayfa, en güncel ayarları (ör. Kolon Ayarları'nda az önce
+        # kaydedilen bir tercih) DOĞRUDAN veritabanından yeniden okur.
+        st.session_state.pop("_cl_ozel_filtre_alani_cache", None)
         st.toast("🔄 Veriler tazelendi", icon="🔄")
         st.rerun()
 
@@ -8046,7 +8056,7 @@ function kartSec(id){
         # ── TEK SATIR — hepsi aynı hizada, eşit genişlikte: Yeni firma kontrol,
         # Özel, Aşama, Durum, İl, İlçe, Güncelleme Tarihi (Çoklu firma artık
         # bu panelin ÜSTÜNDE, kendi ayrı satırında — her zaman açık) ────────
-        _fc = st.columns(9)
+        _fc = st.columns(12)
 
         # ── YENİ FİRMA KONTROLÜ — "Satır Ekle" ile elle firma adı yazmadan önce,
         # aynı/benzer isimde zaten kayıtlı müşteri var mı diye anlık arama.
@@ -8121,6 +8131,35 @@ function kartSec(id){
             placeholder="🔍 Güncelleme Tarihi...", label_visibility="collapsed"
         )
 
+        # ── SONUÇ FİLTRESİ — KULLANICI İSTEĞİ (2026-09): "Devam Ediyor",
+        # "Kazanıldı", "Kaybedildi" gibi Sonuç değerine göre doğrudan,
+        # ayarlara girmeden filtreleme — Durum/Aşama ile aynı satırda.
+        _sonuc_filtre_sec = _fc[9].multiselect(
+            "sn", ["Kazanıldı", "Kaybedildi", "Devam Ediyor"], key="_cl_fil_sonuc_multi",
+            placeholder="🏆 Sonuç...", label_visibility="collapsed"
+        )
+
+        # ── 🔀 KALICI SIRALAMA — KULLANICI İSTEĞİ (2026-09): tarayıcının kendi
+        # "sütun başlığına tıkla sırala" özelliği Python'un hiç haberi olmadığı
+        # için Kaydet gibi bir işlemde (sayfa yenilenince) kayboluyordu. Bunun
+        # yerine GERÇEK, KALICI bir sıralama — seçim session_state'te tutulur,
+        # sen değiştirene kadar (Kaydet dahil) HİÇBİR ŞEY onu sıfırlamaz.
+        # Kullanıcı isteğiyle diğer filtrelerle AYNI tek satırda gösterilir.
+        _CL_SIRALA_SECENEKLERI = {
+            "": "-- Sıralama Yok (varsayılan) --",
+            "firma": "Firma Adı", "beklenen_ciro": "Hedeflenen Ciro", "gerceklesen_ciro": "Gerçekleşen Ciro",
+            "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
+            "musteri_subesi": "Müşteri Şubesi", "sektor": "Sektör", "yetkili": "Yetkili",
+            "tarih": "Kayıt Tarihi", "guncelleme_tarihi": "Güncelleme Tarihi", "vade": "Vade",
+            "vergi_dairesi": "Vergi Dairesi", "ara_islem": "Ara İşlem", "sonuc": "Sonuç", "teklif_fiyat": "Teklif Fiyat",
+        }
+        _cl_sirala_alan = _fc[10].selectbox("🔀 Sırala", list(_CL_SIRALA_SECENEKLERI.keys()),
+                                             format_func=lambda k: _CL_SIRALA_SECENEKLERI[k],
+                                             key="_cl_sirala_alan_sec", label_visibility="collapsed")
+        _cl_sirala_yon = _fc[11].selectbox("Yön", ["Artan (A→Z, küçük→büyük)", "Azalan (Z→A, büyük→küçük)"],
+                                            key="_cl_sirala_yon_sec", label_visibility="collapsed",
+                                            disabled=not _cl_sirala_alan)
+
         # ── ÖZEL (AYARLANABİLİR) FİLTRE — KULLANICI İSTEĞİ (2026-09):
         # Kullanıcılar > Kolon Ayarları > "🔍 Filtre Düzenle"de seçilen alana
         # göre (örn. Yetkili) ek bir filtre kutusu. Alan seçilmemişse (--
@@ -8154,7 +8193,7 @@ function kartSec(id){
 
         # Manuel filtre kutularından biri (Aşama, Durum, Arama, İl, İlçe, Tarih) kullanıldıysa
         # 'Toplam' modu otomatik kapanır — aksi halde seçim görünür ama uygulanmaz
-        if ara_txt or _asama_sec or _durum_sec or _il_sec or _ilce_sec or _guncelleme_tarih_sec or _ozel_sec or _rut_sec or _cl_ozel_filtre_sec:
+        if ara_txt or _asama_sec or _durum_sec or _il_sec or _ilce_sec or _guncelleme_tarih_sec or _ozel_sec or _rut_sec or _cl_ozel_filtre_sec or _sonuc_filtre_sec:
             st.session_state["_toplam_aktif"] = False
         # NOT: "Çoklu Firma Seçimi" artık bu panelin ÜSTÜNDE, kendi ayrı
         # satırında render ediliyor (_cok_secili_ham/_cok_secili_idler orada
@@ -8343,6 +8382,7 @@ function kartSec(id){
        not st.session_state.get("_cl_fil_ozel_multi") and \
        not st.session_state.get("_cl_fil_guncelleme_tarih_multi") and \
        not (_cl_ozel_filtre_widget_anahtari_erken and st.session_state.get(_cl_ozel_filtre_widget_anahtari_erken)) and \
+       not st.session_state.get("_cl_fil_sonuc_multi") and \
        not st.session_state.get("_cl_fil_rut_multi"):
         st.session_state["_toplam_aktif"] = True
 
@@ -8444,6 +8484,11 @@ function kartSec(id){
     # filtreyi seçtiğinde her zaman geçerli olmalı.
     if _cl_ozel_filtre_sec and _cl_ozel_filtre_alani and _cl_ozel_filtre_alani in df_f.columns:
         df_f = df_f[df_f[_cl_ozel_filtre_alani].astype(str).isin(_cl_ozel_filtre_sec)]
+
+    # ── SONUÇ FİLTRESİ — aynı gerekçeyle (yukarıdaki gibi) Toplam modundan
+    # BAĞIMSIZ, her zaman uygulanır.
+    if _sonuc_filtre_sec and "sonuc" in df_f.columns:
+        df_f = df_f[df_f["sonuc"].astype(str).isin(_sonuc_filtre_sec)]
 
     # Bölgeler ekranından gelen gizli bölge filtresi (ilçe pill'leri taşmasın diye görünmez uygulanır)
     if st.session_state.get("_bl_ilce_filtre") and "ilce" in df_f.columns:
@@ -8899,28 +8944,8 @@ function kartSec(id){
                       "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem","sektor":"sektor","rut":"rut"}
     col_order = [c for c in col_order if not any(c == _kol_gizli_map.get(g,g) for g in _GIZLI_KOLONLAR)]
 
-    # ── 🔀 KALICI SIRALAMA — KULLANICI İSTEĞİ (2026-09): tarayıcının kendi
-    # "sütun başlığına tıkla sırala" özelliği Python'un hiç haberi olmadığı
-    # için Kaydet gibi bir işlemde (sayfa yenilenince) kayboluyordu. Bunun
-    # yerine GERÇEK, KALICI bir sıralama — seçim session_state'te tutulur,
-    # sen değiştirene kadar (Kaydet dahil) HİÇBİR ŞEY onu sıfırlamaz.
-    _CL_SIRALA_SECENEKLERI = {
-        "": "-- Sıralama Yok (varsayılan) --",
-        "firma": "Firma Adı", "beklenen_ciro": "Hedeflenen Ciro", "gerceklesen_ciro": "Gerçekleşen Ciro",
-        "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
-        "musteri_subesi": "Müşteri Şubesi", "sektor": "Sektör", "yetkili": "Yetkili",
-        "tarih": "Kayıt Tarihi", "guncelleme_tarihi": "Güncelleme Tarihi", "vade": "Vade",
-        "vergi_dairesi": "Vergi Dairesi", "ara_islem": "Ara İşlem", "sonuc": "Sonuç", "teklif_fiyat": "Teklif Fiyat",
-    }
-    _cl_sirala_c1, _cl_sirala_c2, _cl_sirala_bos = st.columns([1.6, 1.2, 4])
-    with _cl_sirala_c1:
-        _cl_sirala_alan = st.selectbox("🔀 Sırala", list(_CL_SIRALA_SECENEKLERI.keys()),
-                                        format_func=lambda k: _CL_SIRALA_SECENEKLERI[k],
-                                        key="_cl_sirala_alan_sec", label_visibility="collapsed")
-    with _cl_sirala_c2:
-        _cl_sirala_yon = st.selectbox("Yön", ["Artan (A→Z, küçük→büyük)", "Azalan (Z→A, büyük→küçük)"],
-                                       key="_cl_sirala_yon_sec", label_visibility="collapsed",
-                                       disabled=not _cl_sirala_alan)
+    # ── 🔀 KALICI SIRALAMA UYGULAMASI — widget'lar artık YUKARIDA (filtre
+    # satırında) oluşturuluyor, burada SADECE seçime göre df_f sıralanıyor.
     if _cl_sirala_alan and _cl_sirala_alan in df_f.columns:
         _cl_sirala_azalan = _cl_sirala_yon.startswith("Azalan")
         try:
