@@ -341,13 +341,16 @@ def _cari_arsiv_goruntule_dialog():
 
 
 def _fy_il_ciro_ozet_cikar(_metin):
-    """KULLANICI İSTEĞİ (2026-09): 'Fiyat İncele' metninden (Koli/Palet alanı,
-    _fy_format_tablo'nun ürettiği format), her ilin İL TOPLAM CİROSUNU (bir
-    satırda İKİNCİ 'TL' değeri — ilk 'TL' o satırın kendi TOPLAM'ı, ikincisi
-    varsa o ilin GENEL toplamıdır, sadece grubun ilk satırında bulunur) çıkarıp
-    'İL <TAB> TUTAR' satırlarından oluşan, cirosu EN YÜKSEK ilden başlayarak
-    sıralı bir özet metin üretir. Format eşleşmezse (elle çok değiştirilmiş
-    metin gibi) boş döner — hata fırlatmaz."""
+    """KULLANICI İSTEĞİ (2026-09, GÜNCELLENDİ): 'Fiyat İncele' metninden
+    (Koli/Palet alanı, _fy_format_tablo'nun ürettiği format), her ilin İL
+    TOPLAM CİROSUNU (bir satırda İKİNCİ 'TL' değeri) çıkarır. Çıktı yapısı:
+    1) ÖNCELİKLİ iller (varsa, SABİT sırayla): İstanbul, İzmir, Bursa,
+       Manisa, Tekirdağ, Kocaeli + bunların ARA TOPLAMI.
+    2) Diğer TÜM iller (cirosu en yüksekten en düşüğe sıralı) + onların da
+       ARA TOPLAMI.
+    3) İkisinin toplamı olan GENEL TOPLAM.
+    Format eşleşmezse (elle çok değiştirilmiş metin gibi) boş döner — hata
+    fırlatmaz."""
     import re as _fyre2
     try:
         _sonuc = {}
@@ -365,8 +368,32 @@ def _fy_il_ciro_ozet_cikar(_metin):
                 _sonuc[_sehir] = _sonuc.get(_sehir, 0.0) + _tutar
         if not _sonuc:
             return ""
-        _sirali = sorted(_sonuc.items(), key=lambda x: -x[1])
-        return "\n".join(f"{_il}\t{_tutar:,.0f}".replace(",", ".") for _il, _tutar in _sirali)
+
+        def _icy_fmt(_il, _tutar):
+            return f"{_il}\t{_tutar:,.0f}".replace(",", ".")
+
+        _oncelik_sira = ["İSTANBUL", "İZMİR", "BURSA", "MANİSA", "TEKİRDAĞ", "KOCAELİ"]
+        _satirlar = []
+        _oncelik_toplam = 0.0
+        for _ad in _oncelik_sira:
+            if _ad in _sonuc:
+                _satirlar.append(_icy_fmt(_ad, _sonuc[_ad]))
+                _oncelik_toplam += _sonuc[_ad]
+        if _satirlar:
+            _satirlar.append(_icy_fmt("Ara Toplam", _oncelik_toplam))
+            _satirlar.append("---")
+
+        _diger = sorted([(k, v) for k, v in _sonuc.items() if k not in _oncelik_sira], key=lambda x: -x[1])
+        _diger_toplam = 0.0
+        for _ad, _tutar in _diger:
+            _satirlar.append(_icy_fmt(_ad, _tutar))
+            _diger_toplam += _tutar
+        if _diger:
+            _satirlar.append(_icy_fmt("Ara Toplam", _diger_toplam))
+            _satirlar.append("---")
+
+        _satirlar.append(_icy_fmt("GENEL TOPLAM", _oncelik_toplam + _diger_toplam))
+        return "\n".join(_satirlar)
     except Exception:
         return ""
 
