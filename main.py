@@ -2278,7 +2278,6 @@ def sayfa_log(sayfa):
         "yeni": "Yeni Kart", "liste": "Cari Liste",
         "randevu": "Randevular", "ozel_teklif": "Özel Teklif", "sozlesme": "Sözleşmeler",
         "excel": "Excel", "kullanici": "Kullanıcılar",
-        "harita": "Müşteri Haritası",
         "dis_nakliye": "Dış Nakliye", "dis_nakliye_toplu": "Dış Nakliyeler Listesi",
     }
     _ad = _menu_adlari.get(sayfa, sayfa)
@@ -2530,7 +2529,6 @@ _sayfa_adlari_cfg = {
     "yeni":"Yeni Kart","liste":"Cari Liste",
     "randevu":"Randevular","ozel_teklif":"Özel Teklif","sozlesme":"Sözleşmeler",
     "excel":"Excel","kullanici":"Kullanıcılar",
-    "harita":"Müşteri Haritası",
     "dis_nakliye":"Dış Nakliye","dis_nakliye_toplu":"Dış Nakliyeler Listesi",
 }
 _aktif_cfg = st.session_state.get("aktif_tab","liste")
@@ -2628,7 +2626,6 @@ _sayfa_adlari = {
     "yeni":"Yeni Kart","liste":"Cari Liste",
     "randevu":"Randevular","ozel_teklif":"Özel Teklif","sozlesme":"Sözleşmeler",
     "excel":"Excel","kullanici":"Kullanıcılar",
-    "harita":"Müşteri Haritası",
     "dis_nakliye":"Dış Nakliye","dis_nakliye_toplu":"Dış Nakliyeler Listesi",
 }
 _aktif_sayfa = st.session_state.get("aktif_tab","liste")
@@ -2874,9 +2871,6 @@ body.mw-mobil-aktif [data-testid="stAlert"] {
 }
 body.mw-mobil-aktif footer { display: none !important; }
 body.mw-mobil-aktif [data-testid="stHeader"] { display: none !important; }
-body.mw-mobil-aktif iframe[src*="leaflet"], body.mw-mobil-aktif iframe[title*="harita"] {
-  width: 100% !important; min-height: 320px !important; border-radius: 10px !important;
-}
 body.mw-mobil-aktif [data-testid="stModal"] > div {
   width: 95vw !important; max-width: 95vw !important;
   margin: 10px auto !important; border-radius: 14px !important;
@@ -2930,7 +2924,7 @@ except Exception:
 # Mobil nav — query param ile tab geçişi (sadece mobil nav için)
 try:
     _mob_nav_qp = st.query_params.get("_nav", "")
-    _mob_nav_tablar = ["liste","randevu","harita","yeni"]
+    _mob_nav_tablar = ["liste","randevu","yeni"]
     if _mob_nav_qp and _mob_nav_qp in _mob_nav_tablar:
         st.session_state["aktif_tab"] = _mob_nav_qp
         st.query_params.clear()
@@ -4995,7 +4989,7 @@ def not_paneli(cari_id, firma_adi="", key_prefix="np"):
 
 
 
-_TAB_LISTESI_DEFAULT = ["yeni", "hizli_firma", "liste", "randevu", "ozel_teklif", "sozlesme", "kayitli_teklifler", "excel", "kullanici", "harita", "mukerrer", "kargolar", "tedarikci"]
+_TAB_LISTESI_DEFAULT = ["yeni", "hizli_firma", "liste", "randevu", "ozel_teklif", "sozlesme", "kayitli_teklifler", "excel", "kullanici", "mukerrer", "kargolar", "tedarikci"]
 _TAB_ETIKETLER = {
     "yeni": "➕ Yeni Kart Ekle",
     "hizli_firma": "⚡ Hızlı Firma Ekle",
@@ -5010,7 +5004,6 @@ _TAB_ETIKETLER = {
     "randevu": "📅 Randevular",
     "kullanici": "👥 Kullanıcı Yönetimi",
     "mesajlar": "💬 Mesajlar",
-    "harita": "🗺️ Müşteri Haritası",
     "kargolar": "🚚 Kargolar",
     "mukerrer": "🔍 Mükerrer Bul",
     "tedarikci": "🚛 Tedarikçi",
@@ -5511,7 +5504,6 @@ button[data-testid="manage-app-button"] { display: none !important; }
         ("🧾 Cari işlemleri",    ["yeni", "hizli_firma", "liste", "kargolar", "excel", "mukerrer"]),
         ("🚛 Tedarikçi",         ["tedarikci"]),
         ("📅 Randevu ve teklif", ["randevu", "ozel_teklif", "sozlesme", "kayitli_teklifler"]),
-        ("🚚 Saha",              ["harita"]),
         ("⚙️ Yönetim",          ["kullanici"]),
     ]
 
@@ -5585,94 +5577,6 @@ button[data-testid="manage-app-button"] { display: none !important; }
 
     # ── ALT BÖLÜM ─────────────────────────────────────────────────────────────
     st.divider()
-
-    if st.session_state.get("rol") == "admin":
-        with st.expander("🎛️ Menü Sırası"):
-            mevcut_sira_m = get_menu_tercihi(st.session_state["kullanici"])
-            _gizli_menu = st.session_state.get("_gizli_menu_list", [])
-            _goster = []
-            for _t in mevcut_sira_m:
-                if _t not in _goster:
-                    _goster.append(_t)
-            mevcut_sira_m = _goster
-            for idx_m, tab_key in enumerate(mevcut_sira_m):
-                c1, c2, c3, c4 = st.columns([3,1,1,1])
-                _gizli_mi_m = tab_key in _gizli_menu
-                c1.caption(("~~" if _gizli_mi_m else "") + _TAB_ETIKETLER.get(tab_key, tab_key))
-                if c2.button("🙈" if not _gizli_mi_m else "👁", key=f"giz_{tab_key}"):
-                    if _gizli_mi_m:
-                        _gizli_menu.remove(tab_key)
-                    else:
-                        _gizli_menu.append(tab_key)
-                    st.session_state["_gizli_menu_list"] = _gizli_menu
-                    try:
-                        _sb_gm = get_sb_client()
-                        if _sb_gm:
-                            import json as _gmj
-                            _sb_gm.table("kullanici_tercih").upsert({
-                                "kullanici": st.session_state["kullanici"],
-                                "anahtar": "_gizli_menu",
-                                "deger": _gmj.dumps(_gizli_menu)
-                            }, on_conflict="kullanici,anahtar").execute()
-                    except: pass
-                    st.rerun()
-                if idx_m > 0 and c3.button("▲", key=f"up_{tab_key}"):
-                    yeni_s = mevcut_sira_m.copy()
-                    yeni_s[idx_m], yeni_s[idx_m-1] = yeni_s[idx_m-1], yeni_s[idx_m]
-                    save_menu_tercihi(st.session_state["kullanici"], yeni_s)
-                    st.rerun()
-                if idx_m < len(mevcut_sira_m)-1 and c4.button("▼", key=f"dn_{tab_key}"):
-                    yeni_s = mevcut_sira_m.copy()
-                    yeni_s[idx_m], yeni_s[idx_m+1] = yeni_s[idx_m+1], yeni_s[idx_m]
-                    save_menu_tercihi(st.session_state["kullanici"], yeni_s)
-                    st.rerun()
-            if st.button("↺ Sıfırla", use_container_width=True, key="menu_sifirla"):
-                save_menu_tercihi(st.session_state["kullanici"], _TAB_LISTESI_DEFAULT.copy() + ["kullanici"])
-                st.session_state["_gizli_menu_list"] = []
-                st.rerun()
-
-        with st.expander("📢 Duyuru"):
-            with st.form("duyuru_form"):
-                d_b = st.text_input("Başlık:")
-                d_i = st.text_area("İçerik:", height=50)
-                d_t = st.selectbox("Tip:", ["bilgi","uyari","hata"])
-                if st.form_submit_button("📢 Yayınla") and d_b:
-                    _sb_d = get_sb_client()
-                    if _sb_d:
-                        try:
-                            _sb_d.table("duyurular").insert({
-                                "baslik":d_b,"icerik":d_i,"tip":d_t,
-                                "olusturan":st.session_state["kullanici"],"aktif":1
-                            }).execute()
-                            st.success("✅ Yayınlandı!")
-                        except Exception as _ed:
-                            st.error(f"Hata: {_ed}")
-                    else:
-                        db_insert("duyurular", {"baslik":d_b,"icerik":d_i,"tip":d_t,
-                            "olusturan":st.session_state["kullanici"],"aktif":1})
-                        st.success("✅ Yayınlandı!")
-                    st.rerun()
-            try:
-                _sb_dy = get_sb_client()
-                if _sb_dy:
-                    _dy_res = _sb_dy.table("duyurular").select("*").eq("aktif",1).order("tarih",desc=True).execute()
-                    _df_dy = pd.DataFrame(_dy_res.data) if _dy_res.data else pd.DataFrame()
-                else:
-                    _df_dy = db_read("duyurular", extra_sql="WHERE aktif=1 ORDER BY tarih DESC")
-                if not _df_dy.empty:
-                    for _, _dy in _df_dy.iterrows():
-                        _tip = _dy.get("tip","bilgi")
-                        _renk_d = "#1f6feb" if _tip=="bilgi" else "#ff9800" if _tip=="uyari" else "#f44336"
-                        st.markdown(
-                            f"<div style='border-left:3px solid {_renk_d};padding:4px 8px;margin:2px 0;font-size:11px;'>"
-                            f"<b>{_dy.get('baslik','')}</b><br>{_dy.get('icerik','')}</div>",
-                            unsafe_allow_html=True
-                        )
-                        if st.button("🗑️", key=f"dy_sil_{_dy.get('id',0)}"):
-                            if _sb_dy:
-                                _sb_dy.table("duyurular").update({"aktif":0}).eq("id",int(_dy.get("id",0))).execute()
-                            st.rerun()
-            except: pass
 
     st.divider()
 
@@ -14279,425 +14183,6 @@ function waGonder(){
 </script></body></html>"""
 
             _rut_comp.html(_rut_html, height=525, scrolling=False)
-
-elif aktif == "harita":
-    sayfa_log("harita")
-    import json as _hj
-    st.markdown("## 🗺️ Müşteri Haritası")
-    _hdf_raw = db_read("cari_kartlar", extra_sql="ORDER BY firma")
-    _hdf_raw = _atama_filtresi_uygula(_hdf_raw)
-    if not _hdf_raw.empty and "silindi" in _hdf_raw.columns:
-        _hdf = _hdf_raw[~_hdf_raw["silindi"].isin([1, "1", True, "true"])]
-    else:
-        _hdf = _hdf_raw
-    if _hdf.empty:
-        st.warning("Cari listede müşteri bulunamadı.")
-    else:
-        # ── 📍 BÖLGE — KULLANICI İSTEĞİ (2026-09): İstanbul Anadolu/Avrupa AYRI
-        # birer "il" gibi, diğer TÜM iller de (kaç tane müşterisi varsa) İSİM
-        # İSİM ayrı buton olarak (açılır liste YOK artık). Bu bölüm try/except
-        # ile korunuyor — burada bir hata olsa bile aşağıdaki harita (adres/
-        # konum tabanlı, ayrı ve dokunulmamış bir sistem) ASLA etkilenmez.
-        try:
-            _bl_df_nav = _hdf
-            _bl_ilce_kol_nav = "ilce" if "ilce" in _bl_df_nav.columns else None
-            if "il" in _bl_df_nav.columns:
-                _bl_bolge_ham_nav = _bl_df_nav.apply(
-                    lambda r: il_ilce_bolge_bul(r.get("il", ""), r.get(_bl_ilce_kol_nav, "") if _bl_ilce_kol_nav else ""), axis=1)
-                _bl_bolge_nav = _bl_bolge_ham_nav.fillna("Havuz (Bölgesiz)")
-                _bl_sayim_nav = _bl_bolge_nav.value_counts()
-                _bl_kisa_ad_nav = {"İstanbul Anadolu": "İst. Anadolu", "İstanbul Avrupa": "İst. Avrupa"}
-                _hbl_secili = st.session_state.get("_harita_secili_bolge")
-
-                # Sıralama: İstanbul Anadolu, İstanbul Avrupa ÖNCE (sabit), sonra
-                # TÜM diğer bölgeler müşteri sayısına göre (çoktan aza), en sonda Havuz.
-                _hbl_oncelik = [b for b in ["İstanbul Anadolu", "İstanbul Avrupa"] if b in _bl_sayim_nav.index and _bl_sayim_nav[b] > 0]
-                _hbl_digerleri = sorted(
-                    [b for b in _bl_sayim_nav.index if b not in _hbl_oncelik and b != "Havuz (Bölgesiz)" and _bl_sayim_nav[b] > 0],
-                    key=lambda b: -_bl_sayim_nav[b])
-                _hbl_havuz = ["Havuz (Bölgesiz)"] if ("Havuz (Bölgesiz)" in _bl_sayim_nav.index and _bl_sayim_nav["Havuz (Bölgesiz)"] > 0) else []
-                _hbl_tum_sirali = _hbl_oncelik + _hbl_digerleri + _hbl_havuz
-
-                st.caption(f"📍 Bölge · {len(_bl_sayim_nav)} il/bölge")
-                # Tüm bölgeler + "Tümü" — 8'erli satırlar halinde (tek satırda hepsi
-                # sığmaz, çok fazla il varsa taşar) EŞİT genişlikte butonlar.
-                _hbl_hepsi = ["__TUMU__"] + _hbl_tum_sirali
-                _hbl_satir_boyu = 8
-                for _hbl_bas in range(0, len(_hbl_hepsi), _hbl_satir_boyu):
-                    _hbl_satir_ogeleri = _hbl_hepsi[_hbl_bas:_hbl_bas + _hbl_satir_boyu]
-                    _hbl_kolonlar = st.columns(len(_hbl_satir_ogeleri))
-                    for _hbl_j, _hbl_ad in enumerate(_hbl_satir_ogeleri):
-                        with _hbl_kolonlar[_hbl_j]:
-                            if _hbl_ad == "__TUMU__":
-                                if st.button(f"Tümü ({len(_hdf)})", key="hbl_tumu_btn",
-                                             type="primary" if not _hbl_secili else "secondary", use_container_width=True):
-                                    st.session_state["_harita_secili_bolge"] = None
-                                    st.rerun()
-                            else:
-                                _hbl_etiket = _bl_kisa_ad_nav.get(_hbl_ad, _hbl_ad)
-                                if _hbl_ad == "Havuz (Bölgesiz)":
-                                    _hbl_etiket = "📦 Havuz"
-                                if st.button(f"{_hbl_etiket} ({_bl_sayim_nav[_hbl_ad]})", key=f"hbl_btn_{_hbl_ad}",
-                                             type="primary" if _hbl_secili == _hbl_ad else "secondary", use_container_width=True):
-                                    st.session_state["_harita_secili_bolge"] = _hbl_ad
-                                    st.rerun()
-                st.divider()
-        except Exception as _hbl_hata:
-            st.warning(f"⚠️ Bölge butonları yüklenirken bir sorun oluştu (harita etkilenmez): {_hbl_hata}")
-
-        _hc1,_hc2,_hc3,_hc4,_hc5 = st.columns(5)
-        _h_il    = _hc1.multiselect("İl filtrele", sorted(_hdf["il"].dropna().unique().tolist()) if "il" in _hdf.columns else [], key="h_il")
-        _h_ilce_opts = sorted(_hdf[_hdf["il"].isin(_h_il)]["ilce"].dropna().unique().tolist()) if _h_il and "ilce" in _hdf.columns else (sorted(_hdf["ilce"].dropna().unique().tolist()) if "ilce" in _hdf.columns else [])
-        _h_ilce  = _hc2.multiselect("İlçe filtrele", _h_ilce_opts, key="h_ilce")
-        _h_durum = _hc3.multiselect("Durum filtrele", sorted(_hdf["durum"].dropna().unique().tolist()) if "durum" in _hdf.columns else [], key="h_durum")
-        _h_seg   = _hc4.multiselect("Segment", sorted(_hdf["segment"].dropna().unique().tolist()) if "segment" in _hdf.columns else [], key="h_seg")
-        _h_tem   = _hc5.multiselect("Temsilci", sorted(_hdf["temsilci"].dropna().unique().tolist()) if "temsilci" in _hdf.columns else [], key="h_tem")
-        _hdf_f = _hdf.copy()
-        if _h_il    and "il" in _hdf_f.columns: _hdf_f = _hdf_f[_hdf_f["il"].isin(_h_il)]
-        if _h_ilce  and "ilce" in _hdf_f.columns: _hdf_f = _hdf_f[_hdf_f["ilce"].isin(_h_ilce)]
-        if _h_durum and "durum" in _hdf_f.columns: _hdf_f = _hdf_f[_hdf_f["durum"].isin(_h_durum)]
-        if _h_seg   and "segment" in _hdf_f.columns: _hdf_f = _hdf_f[_hdf_f["segment"].isin(_h_seg)]
-        if _h_tem   and "temsilci" in _hdf_f.columns: _hdf_f = _hdf_f[_hdf_f["temsilci"].isin(_h_tem)]
-        # 📍 Bölge seçiliyse, yukarıdaki filtrelerin ÜZERİNE ek olarak uygulanır.
-        # (try/except: burada bir sorun olsa bile harita SEÇİLİ bölge olmadan devam eder.)
-        try:
-            if st.session_state.get("_harita_secili_bolge") and "il" in _hdf_f.columns:
-                _hbl_secili_ad = st.session_state["_harita_secili_bolge"]
-                _hdf_f = _hdf_f[_hdf_f.apply(
-                    lambda r: (il_ilce_bolge_bul(r.get("il", ""), r.get("ilce", "")) or "Havuz (Bölgesiz)") == _hbl_secili_ad, axis=1)]
-        except Exception:
-            pass
-        _il_col = "il" if "il" in _hdf_f.columns else ("sehir" if "sehir" in _hdf_f.columns else None)
-        _hm1,_hm2,_hm3,_hm4 = st.columns(4)
-        _hm1.metric("Toplam", len(_hdf_f))
-        if _il_col:
-            _hm2.metric("Aktif İl", int(_hdf_f[_il_col].dropna().nunique()))
-            _en_yogun = _hdf_f[_il_col].value_counts().index[0] if not _hdf_f[_il_col].dropna().empty else "—"
-            _hm3.metric("En Yoğun", _en_yogun)
-        _hm4.metric("Filtrelenen", len(_hdf_f))
-        import streamlit.components.v1 as _hcomp
-        import json as _hj, random, hashlib
-
-        _il_col = "il" if "il" in _hdf_f.columns else None
-
-        # Randevu verilerini çek
-        _rdf = db_read("randevular", extra_sql="ORDER BY randevu_tarihi DESC")
-        _rand_acik = set()   # Devam ediyor
-        _rand_var  = set()   # Randevu olan (bitti dahil)
-        if not _rdf.empty:
-            for _, _rr in _rdf.iterrows():
-                _mn = str(_rr.get("musteri_adi","") or "").strip()
-                if not _mn: continue
-                _rand_var.add(_mn)
-                if str(_rr.get("sonuc","") or "") in ["Devam Ediyor","","—"] and str(_rr.get("sonuc","") or "") != "Bitti":
-                    _rand_acik.add(_mn)
-
-        _IL_KOOR = {
-            "adana":[37.000,35.321],"adıyaman":[37.764,38.276],"afyonkarahisar":[38.757,30.540],
-            "ağrı":[39.720,43.051],"aksaray":[38.369,34.036],"amasya":[40.655,35.833],
-            "ankara":[39.920,32.854],"antalya":[36.897,30.713],"artvin":[41.182,41.818],
-            "aydın":[37.856,27.845],"balıkesir":[39.648,27.882],"bartın":[41.635,32.337],
-            "batman":[37.881,41.132],"bilecik":[40.142,29.979],"bolu":[40.576,31.579],
-            "burdur":[37.720,30.291],"bursa":[40.183,29.067],"çanakkale":[40.144,26.408],
-            "çankırı":[40.601,33.613],"çorum":[40.549,34.955],"denizli":[37.774,29.086],
-            "diyarbakır":[37.914,40.230],"düzce":[40.844,31.157],"edirne":[41.677,26.556],
-            "elazığ":[38.674,39.223],"erzincan":[39.750,39.492],"erzurum":[39.905,41.270],
-            "eskişehir":[39.776,30.521],"gaziantep":[37.066,37.383],"giresun":[40.912,38.390],
-            "hatay":[36.406,36.341],"ısparta":[37.764,30.556],"istanbul":[41.050,28.900],
-            "izmir":[38.423,27.143],"kahramanmaraş":[37.575,36.922],"karabük":[41.200,32.627],
-            "karaman":[37.181,33.215],"kars":[40.608,43.097],"kastamonu":[41.376,33.776],
-            "kayseri":[38.732,35.487],"kırıkkale":[39.847,33.516],"kırklareli":[41.735,27.225],
-            "kırşehir":[39.145,34.160],"kilis":[36.718,37.121],"kocaeli":[40.765,29.940],
-            "konya":[37.872,32.485],"kütahya":[39.424,29.983],"malatya":[38.355,38.309],
-            "manisa":[38.619,27.429],"mardin":[37.313,40.735],"mersin":[36.812,34.641],
-            "muğla":[37.215,28.364],"muş":[38.744,41.501],"nevşehir":[38.625,34.724],
-            "niğde":[37.969,34.679],"ordu":[40.984,37.877],"osmaniye":[37.074,36.247],
-            "rize":[41.024,40.523],"sakarya":[40.769,30.394],"samsun":[41.286,36.330],
-            "sinop":[42.023,35.154],"sivas":[39.748,37.015],"şanlıurfa":[37.158,38.791],
-            "şırnak":[37.418,42.491],"tekirdağ":[40.978,27.515],"tokat":[40.313,36.554],
-            "trabzon":[41.002,39.716],"tunceli":[39.108,39.547],"uşak":[38.682,29.408],
-            "van":[38.494,43.380],"yalova":[40.655,29.277],"yozgat":[39.818,34.815],
-            "zonguldak":[41.456,31.789],"gebze":[40.802,29.430],"izmit":[40.765,29.940],
-            "afyon":[38.757,30.540],"antep":[37.066,37.383],"maraş":[37.575,36.922],
-        }
-        _ILCE_KOOR = {
-            # İstanbul Avrupa
-            "bakırköy":[40.979,28.875],"bağcılar":[41.042,28.855],"bahçelievler":[41.000,28.858],
-            "bayrampaşa":[41.048,28.912],"beşiktaş":[41.042,29.009],"beylikdüzü":[40.981,28.642],
-            "beyoğlu":[41.031,28.975],"büyükçekmece":[41.019,28.583],"esenler":[41.044,28.875],
-            "esenyurt":[41.033,28.668],"eyüpsultan":[41.073,28.935],"fatih":[41.013,28.940],
-            "gaziosmanpaşa":[41.065,28.906],"güngören":[41.017,28.870],"küçükçekmece":[41.003,28.778],
-            "şişli":[41.058,28.985],"sultangazi":[41.105,28.872],"zeytinburnu":[40.999,28.900],
-            "arnavutköy":[41.182,28.735],"avcılar":[40.979,28.720],"başakşehir":[41.090,28.800],
-            "çatalca":[41.143,28.459],"silivri":[41.072,28.243],"sarıyer":[41.166,29.053],
-            # İstanbul Anadolu
-            "ataşehir":[40.982,29.120],"beykoz":[41.118,29.097],"çekmeköy":[41.034,29.172],
-            "kadıköy":[40.990,29.030],"kartal":[40.889,29.183],"maltepe":[40.933,29.150],
-            "pendik":[40.876,29.256],"sancaktepe":[40.998,29.231],"sultanbeyli":[40.963,29.262],
-            "tuzla":[40.820,29.298],"ümraniye":[41.015,29.124],"üsküdar":[41.022,29.025],
-            # Kocaeli
-            "gebze":[40.800,29.432],"izmit":[40.764,29.917],"darıca":[40.760,29.570],
-            "dilovası":[40.753,29.528],"körfez":[40.745,29.787],"gölcük":[40.651,29.823],
-            # Bursa
-            "nilüfer":[40.213,28.963],"osmangazi":[40.196,29.057],"yıldırım":[40.189,29.100],
-            # Tekirdağ
-            "çerkezköy":[41.289,27.988],"çorlu":[41.160,27.801],"lüleburgaz":[41.404,27.351],
-            # Diğer
-            "bornova":[38.466,27.215],"buca":[38.381,27.152],"karşıyaka":[38.459,27.108],
-        }
-        _DURUM_RENK = {
-            "Portföy":"#1d4ed8","Hedef":"#15803d","Tekrar Ara":"#d97706",
-            "İlk Temas":"#0891b2","Pasif":"#6b7280","Teklif":"#7c3aed",
-            "Aktif":"#15803d","Kaybedildi":"#dc2626","Kazanıldı":"#16a34a",
-        }
-        def _tr_lower(s):
-            """Türkçe karakterleri doğru küçült"""
-            return (s.replace("İ","i").replace("I","ı").replace("Ş","ş")
-                     .replace("Ğ","ğ").replace("Ü","ü").replace("Ö","ö")
-                     .replace("Ç","ç").lower().strip())
-
-        # ── ÜCRETSİZ ADRES BAZLI KONUM BULMA (GEOCODING) — Google Maps API
-        # gerektirmez, OpenStreetMap'in ücretsiz Nominatim servisini kullanır.
-        # Sonuçlar kalıcı olarak önbelleğe alınır (bir adres bir daha asla
-        # tekrar sorgulanmaz) — bu yüzden ilk seferden sonra çok hızlıdır.
-        @st.cache_data(ttl=3600, show_spinner=False)
-        def _harita_geo_cache_yukle():
-            try:
-                _sb_g = get_sb_client()
-                if _sb_g:
-                    _r_g = _sb_g.table("kullanici_tercih").select("deger").eq(
-                        "kullanici", "__liste_ui__").eq("anahtar", "_harita_geocode_cache").execute()
-                    if _r_g.data:
-                        return _hj.loads(_r_g.data[0]["deger"])
-            except Exception:
-                pass
-            return {}
-
-        def _harita_geo_cache_kaydet(_cache):
-            try:
-                _sb_g2 = get_sb_client()
-                if not _sb_g2:
-                    return
-                _deger = _hj.dumps(_cache, ensure_ascii=False)
-                _hg_guncelle = _sb_g2.table("kullanici_tercih").update({"deger": _deger}).eq(
-                    "kullanici", "__liste_ui__").eq("anahtar", "_harita_geocode_cache").execute()
-                if not _hg_guncelle.data:
-                    _sb_g2.table("kullanici_tercih").insert(
-                        {"kullanici": "__liste_ui__", "anahtar": "_harita_geocode_cache", "deger": _deger}
-                    ).execute()
-            except Exception:
-                pass
-
-        def _harita_geo_sorgu(_adres, _ilce, _il):
-            """OpenStreetMap Nominatim (ücretsiz, anahtar gerektirmez) ile
-            adresi lat/lng koordinatına çevirir. Bulamazsa None döner."""
-            import requests as _hreq
-            _q = ", ".join([p for p in [_adres, _ilce, _il, "Türkiye"] if p and p != "—"])
-            try:
-                _resp = _hreq.get("https://nominatim.openstreetmap.org/search",
-                                   params={"q": _q, "format": "json", "limit": 1, "countrycodes": "tr"},
-                                   headers={"User-Agent": "MWCRMPRO-Musteri-Haritasi/1.0"}, timeout=8)
-                _sonuc = _resp.json()
-                if _sonuc:
-                    return float(_sonuc[0]["lat"]), float(_sonuc[0]["lon"])
-            except Exception:
-                pass
-            return None
-
-        _geo_cache = _harita_geo_cache_yukle()
-        _harita_geo_sfx = st.session_state.get("_harita_geo_sfx", 0)
-
-        _gorulen_firmalar = set()
-        _pins = []
-        _hassas_sayi = 0
-        _konum_bilinmiyor_sayi = 0
-        _yaklasik_kayitlar = []  # (anahtar, adres, ilce, il) — henüz geocode edilmemişler
-        for _, _hr in _hdf_f.iterrows():
-            _il   = _tr_lower(str(_hr.get("il","")   or ""))
-            _ilce = _tr_lower(str(_hr.get("ilce","") or ""))
-            _firma_ham = str(_hr.get("firma","") or "?")
-            if _firma_ham in _gorulen_firmalar: continue
-            _gorulen_firmalar.add(_firma_ham)
-            _firma= _firma_ham.replace("'","&#39;").replace('"','&quot;')
-            _durum= str(_hr.get("durum","") or "—")
-            _seg  = str(_hr.get("segment","") or "—")
-            _tem  = str(_hr.get("temsilci","") or "—")
-            _tel  = str(_hr.get("gsm","")   or "—")
-            _adres_ham = str(_hr.get("adres","") or "").strip()
-            _adrs = str(_hr.get("adres","") or "—").replace("'","&#39;").replace('"','&quot;')
-            _lat, _lng = None, None
-            _hassas = False
-            _konum_bilinmiyor = False
-
-            # 1) ÖNCE önbellekte gerçek adres bazlı koordinat var mı bak (hassas)
-            _geo_anahtar = _tr_lower(f"{_adres_ham}|{_hr.get('ilce','')}|{_hr.get('il','')}")
-            if _adres_ham and _geo_anahtar in _geo_cache and _geo_cache[_geo_anahtar]:
-                _lat, _lng = _geo_cache[_geo_anahtar]
-                _hassas = True
-                _hassas_sayi += 1
-            elif _adres_ham:
-                _yaklasik_kayitlar.append(_geo_anahtar)
-
-            # 2) Yoksa eski yöntem — il/ilçe merkezine yaklaşık (jitter'lı)
-            if _lat is None:
-                if _ilce:
-                    if _ilce in _ILCE_KOOR:
-                        _lat, _lng = _ILCE_KOOR[_ilce]
-                    else:
-                        for _k in _ILCE_KOOR:
-                            if _tr_lower(_k) == _ilce:
-                                _lat, _lng = _ILCE_KOOR[_k]; break
-                if _lat is None and _il:
-                    if _il in _IL_KOOR:
-                        _lat, _lng = _IL_KOOR[_il]
-                    else:
-                        for _k in _IL_KOOR:
-                            if _tr_lower(_k) == _il or _il[:5] == _tr_lower(_k)[:5]:
-                                _lat, _lng = _IL_KOOR[_k]; break
-                # 🚨 KRİTİK DÜZELTME (2026-09): eskiden buraya kadar hiç eşleşme
-                # bulunamazsa (il/ilçe yazımı garip/boş/tanınmayan) müşteri
-                # SESSİZCE atlanıyordu ("continue") — 4800+ müşteride bu, GERÇEK
-                # verideki ufak yazım farklarından dolayı BÜYÜK bir kısmın
-                # haritadan tamamen kaybolmasına yol açıyordu. ARTIK hiçbir
-                # müşteri atlanmaz — eşleşme yoksa Türkiye'nin coğrafi merkezine
-                # (Ankara civarı) yakın, "Konum Bilinmiyor" olarak işaretlenerek
-                # eklenir; sayaçlar HER ZAMAN gerçek toplam müşteri sayısıyla eşleşir.
-                if _lat is None:
-                    _lat, _lng = 39.0, 35.0  # Türkiye'nin yaklaşık coğrafi merkezi
-                    _konum_bilinmiyor = True
-                    _konum_bilinmiyor_sayi += 1
-                _seed = int(hashlib.md5(_firma_ham.encode()).hexdigest()[:8], 16)
-                random.seed(_seed)
-                if _konum_bilinmiyor:
-                    _lat += random.uniform(-0.6, 0.6)
-                    _lng += random.uniform(-0.6, 0.6)
-                else:
-                    _lat += random.uniform(-0.008, 0.008)
-                    _lng += random.uniform(-0.008, 0.008)
-
-            _renk = _DURUM_RENK.get(_durum, "#64748b")
-            # Randevu varsa kırmızı override
-            if _firma_ham in _rand_acik:
-                _renk = "#dc2626"   # Açık randevu — parlak kırmızı
-                _rand_etiketi = "🔴 Açık Randevu"
-            elif _firma_ham in _rand_var:
-                _renk = "#f87171"   # Geçmiş randevu — açık kırmızı
-                _rand_etiketi = "🟠 Randevu Var"
-            else:
-                _rand_etiketi = ""
-            _pins.append({"lat":round(_lat,5),"lng":round(_lng,5),"firma":_firma,
-                "durum":_durum,"renk":_renk,"seg":_seg,"tem":_tem,"tel":_tel,
-                "il":str(_hr.get("il","")).title(),"ilce":str(_hr.get("ilce","")).title(),
-                "adres":_adrs,"rand":_rand_etiketi,"hassas":_hassas,
-                "konum_bilinmiyor": _konum_bilinmiyor})
-
-        # ── Adres bazlı konum bulma paneli ──────────────────────────────────
-        _yaklasik_kayitlar = list(dict.fromkeys(_yaklasik_kayitlar))  # tekilleştir
-        _hgc1, _hgc2, _hgc3 = st.columns([2, 1, 1])
-        _hgc1_mesaj = f"📍 {_hassas_sayi} müşteri TAM ADRESİNDEN, {len(_yaklasik_kayitlar)} müşteri il/ilçe merkezinden (yaklaşık) gösteriliyor."
-        if _konum_bilinmiyor_sayi > 0:
-            _hgc1_mesaj += f" ⚠️ {_konum_bilinmiyor_sayi} müşterinin il/ilçe bilgisi tanınamadı (yazım hatası olabilir) — haritanın ortasında yaklaşık gösteriliyor."
-        _hgc1.caption(_hgc1_mesaj)
-        if _yaklasik_kayitlar and _hgc2.button(f"🔍 Sıradaki 15 Adresi Bul", key="_harita_geo_bul_btn", use_container_width=True):
-            import time as _htime
-            _bulunan = 0
-            with st.spinner(f"Adresler OpenStreetMap üzerinden aranıyor (yaklaşık {min(15,len(_yaklasik_kayitlar))*1.1:.0f} saniye sürer)..."):
-                for _anahtar in _yaklasik_kayitlar[:15]:
-                    _parcalar = _anahtar.split("|")
-                    _sonuc = _harita_geo_sorgu(_parcalar[0], _parcalar[1] if len(_parcalar) > 1 else "", _parcalar[2] if len(_parcalar) > 2 else "")
-                    _geo_cache[_anahtar] = list(_sonuc) if _sonuc else None
-                    if _sonuc: _bulunan += 1
-                    _htime.sleep(1.1)  # Nominatim kullanım kuralı: saniyede en fazla 1 istek
-            _harita_geo_cache_kaydet(_geo_cache)
-            _harita_geo_cache_yukle.clear()
-            st.toast(f"📍 {_bulunan} adres bulundu, {15-_bulunan} adres eşleşmedi (yaklaşık konumda kalacak)", icon="✅")
-            st.rerun()
-        if _yaklasik_kayitlar:
-            _hgc3.caption(f"Tahmini süre: ~{len(_yaklasik_kayitlar)*1.1/60:.1f} dk (tamamı için)")
-
-        _pins_json = _hj.dumps(_pins, ensure_ascii=False)
-        _harita_html = """<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css"/>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-#map{width:100%;height:580px;}
-.pp{font-family:-apple-system,sans-serif;min-width:220px;}
-.pp h4{font-size:13px;font-weight:600;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #f1f5f9;padding-bottom:5px;}
-.pp table{font-size:11px;width:100%;border-collapse:collapse;}
-.pp td{padding:3px 4px;} .pp td:first-child{color:#94a3b8;width:70px;}
-.pp td:last-child{font-weight:500;color:#1e293b;}
-#leg{position:absolute;bottom:24px;right:8px;z-index:1000;background:white;border-radius:8px;padding:10px 14px;font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,.12);}
-.li{display:flex;align-items:center;gap:6px;margin-top:4px;}
-.ld{width:10px;height:10px;border-radius:50%;}
-</style></head><body>
-<div id="map"></div><div id="leg"><b>Durum</b></div>
-<script>
-var pins = """ + _pins_json + """;
-var map = L.map('map').setView([39.5,33.0],6);
-// OpenStreetMap standart tile — tamamen ücretsiz, anahtar gerektirmez.
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution:'© OpenStreetMap', maxZoom:19
-}).addTo(map);
-var cl = L.markerClusterGroup({maxClusterRadius:45,spiderfyOnMaxZoom:true,showCoverageOnHover:false});
-var rnk={};
-pins.forEach(function(p){
-  rnk[p.durum]=p.renk;
-  var boyut = p.hassas ? 30 : 24;  // hassas (gerçek adres) pin'ler biraz daha büyük/belirgin
-  var svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+boyut+'" height="'+(boyut*4/3)+'" viewBox="0 0 24 32">'
-    +'<path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20C24 5.4 18.6 0 12 0z" fill="'+p.renk+'" stroke="white" stroke-width="1.5"/>'
-    +'<circle cx="12" cy="12" r="5" fill="white" opacity="0.9"/></svg>';
-  var ic=L.divIcon({html:svg,className:'',iconSize:[boyut,boyut*4/3],iconAnchor:[boyut/2,boyut*4/3],popupAnchor:[0,-boyut]});
-  var pop='<div class="pp"><h4>'+p.firma+(p.rand?' <span style="font-size:11px;color:#dc2626">'+p.rand+'</span>':'')+'</h4><table>'
-    +'<tr><td>İl/İlçe</td><td>'+p.il+(p.ilce?' / '+p.ilce:'')+'</td></tr>'
-    +'<tr><td>Adres</td><td>'+p.adres+(p.hassas?' <span style="color:#16a34a;font-size:10px;">📍 hassas</span>':' <span style="color:#d97706;font-size:10px;">~yaklaşık</span>')+'</td></tr>'
-    +'<tr><td>Durum</td><td>'+p.durum+'</td></tr>'
-    +'<tr><td>Segment</td><td>'+p.seg+'</td></tr>'
-    +'<tr><td>Temsilci</td><td>'+p.tem+'</td></tr>'
-    +'<tr><td>Tel</td><td>'+p.tel+'</td></tr>'
-    +(p.rand?'<tr><td>Randevu</td><td><b style="color:#dc2626">'+p.rand+'</b></td></tr>':'')
-    +'</table></div>';
-  L.marker([p.lat,p.lng],{icon:ic}).bindPopup(pop,{maxWidth:280}).addTo(cl);
-});
-map.addLayer(cl);
-var leg=document.getElementById('leg');
-leg.innerHTML='<b>Durum</b><div class="li"><div class="ld" style="background:#dc2626"></div><span>🔴 Açık Randevu</span></div><div class="li"><div class="ld" style="background:#f87171"></div><span>Randevu Var</span></div>';
-Object.entries(rnk).forEach(function(e){
-  leg.innerHTML+='<div class="li"><div class="ld" style="background:'+e[1]+'"></div><span>'+e[0]+'</span></div>';
-});
-</script></body></html>"""
-        _hcomp.html(_harita_html, height=590, scrolling=False)
-        if _il_col and not _hdf_f.empty:
-            st.divider()
-            with st.expander("📊 İl / İlçe Bazlı Özet", expanded=False):
-                _grp_cols = [c for c in [_il_col, "ilce"] if c in _hdf_f.columns]
-                _il_g = (_hdf_f.groupby(_grp_cols).size()
-                         .reset_index(name="Müşteri Sayısı")
-                         .sort_values(["Müşteri Sayısı"] + _grp_cols[:1], ascending=[False, True])
-                         .head(50))
-                st.markdown("""<style>
-                .mh-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:6px;}
-                .mh-kart{background:#ffffff;border:0.5px solid #e2e8f0;border-radius:8px;padding:7px 9px;}
-                .mh-il{font-size:9px;color:#94a3b8;font-weight:600;letter-spacing:.2px;text-transform:uppercase;}
-                .mh-ilce{font-size:11.5px;color:#0f172a;font-weight:600;margin:1px 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-                .mh-sayi{font-size:14px;font-weight:700;color:#1d4ed8;}
-                .mh-etiket{font-size:9px;color:#64748b;margin-left:3px;}
-                </style>""", unsafe_allow_html=True)
-                _mh_kartlar = ""
-                for _, _mhr in _il_g.iterrows():
-                    _mh_il = str(_mhr.get(_il_col, ""))
-                    _mh_ilce = str(_mhr.get("ilce", "")) if "ilce" in _il_g.columns else ""
-                    _mh_sayi = int(_mhr["Müşteri Sayısı"])
-                    _mh_kartlar += (
-                        f'<div class="mh-kart"><div class="mh-il">{_mh_il}</div>'
-                        f'<div class="mh-ilce">{_mh_ilce}</div>'
-                        f'<span class="mh-sayi">{_mh_sayi}</span><span class="mh-etiket">müşteri</span></div>'
-                    )
-                st.markdown(f'<div class="mh-grid">{_mh_kartlar}</div>', unsafe_allow_html=True)
 
 elif aktif == "kargolar":
     sayfa_log("kargolar")
