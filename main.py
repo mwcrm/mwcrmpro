@@ -14293,63 +14293,57 @@ elif aktif == "harita":
     if _hdf.empty:
         st.warning("Cari listede müşteri bulunamadı.")
     else:
-        # ── 📍 BÖLGE — KULLANICI İSTEĞİ (2026-09): sol menüdeki "📍 Bölge" widget'ı
-        # (Saha grubunda, Müşteri Haritası'nın altında duruyordu) TAŞINDI — artık
-        # doğrudan bu sayfanın en üstünde. Aynı çekirdek bölgeler (İst. Anadolu,
-        # İst. Avrupa, İzmir, Bursa, Manisa, Tekirdağ, Kocaeli) + Havuz + "Diğer
-        # iller" açılır listesi. TEK FARK: eskiden tıklanınca Cari Liste'ye
-        # filtreli geçiyordu — şimdi BURADA kalıp haritayı/sayaçları filtreliyor.
-        _bl_df_nav = _hdf
-        _bl_ilce_kol_nav = "ilce" if "ilce" in _bl_df_nav.columns else None
-        if "il" in _bl_df_nav.columns:
-            _bl_bolge_ham_nav = _bl_df_nav.apply(
-                lambda r: il_ilce_bolge_bul(r.get("il", ""), r.get(_bl_ilce_kol_nav, "") if _bl_ilce_kol_nav else ""), axis=1)
-            _bl_bolge_nav = _bl_bolge_ham_nav.fillna("Havuz (Bölgesiz)")
-            _bl_sayim_nav = _bl_bolge_nav.value_counts()
-            _bl_kisa_ad_nav = {"İstanbul Anadolu": "İst. Anadolu", "İstanbul Avrupa": "İst. Avrupa"}
-            _bl_ana_bolgeler = ["İstanbul Anadolu", "İstanbul Avrupa", "İzmir", "Bursa",
-                                "Manisa", "Tekirdağ", "Kocaeli"]
-            _hbl_secili = st.session_state.get("_harita_secili_bolge")
+        # ── 📍 BÖLGE — KULLANICI İSTEĞİ (2026-09): İstanbul Anadolu/Avrupa AYRI
+        # birer "il" gibi, diğer TÜM iller de (kaç tane müşterisi varsa) İSİM
+        # İSİM ayrı buton olarak (açılır liste YOK artık). Bu bölüm try/except
+        # ile korunuyor — burada bir hata olsa bile aşağıdaki harita (adres/
+        # konum tabanlı, ayrı ve dokunulmamış bir sistem) ASLA etkilenmez.
+        try:
+            _bl_df_nav = _hdf
+            _bl_ilce_kol_nav = "ilce" if "ilce" in _bl_df_nav.columns else None
+            if "il" in _bl_df_nav.columns:
+                _bl_bolge_ham_nav = _bl_df_nav.apply(
+                    lambda r: il_ilce_bolge_bul(r.get("il", ""), r.get(_bl_ilce_kol_nav, "") if _bl_ilce_kol_nav else ""), axis=1)
+                _bl_bolge_nav = _bl_bolge_ham_nav.fillna("Havuz (Bölgesiz)")
+                _bl_sayim_nav = _bl_bolge_nav.value_counts()
+                _bl_kisa_ad_nav = {"İstanbul Anadolu": "İst. Anadolu", "İstanbul Avrupa": "İst. Avrupa"}
+                _hbl_secili = st.session_state.get("_harita_secili_bolge")
 
-            st.caption(f"📍 Bölge · {len(_bl_sayim_nav)} bölge")
-            _hbl_gosterilecekler = [b for b in _bl_ana_bolgeler if b in _bl_sayim_nav.index and _bl_sayim_nav[b] > 0]
-            _hbl_havuz_var = "Havuz (Bölgesiz)" in _bl_sayim_nav.index and _bl_sayim_nav["Havuz (Bölgesiz)"] > 0
-            _hbl_diger = sorted([b for b in _bl_sayim_nav.index if b not in _bl_ana_bolgeler and b != "Havuz (Bölgesiz)" and _bl_sayim_nav[b] > 0])
-            _hbl_toplam_kutu = 1 + len(_hbl_gosterilecekler) + (1 if _hbl_havuz_var else 0) + (1 if _hbl_diger else 0)
-            _hbl_kolonlar = st.columns(_hbl_toplam_kutu)
-            _hbl_kidx = 0
-            with _hbl_kolonlar[_hbl_kidx]:
-                if st.button(f"Tümü ({len(_hdf)})", key="hbl_tumu_btn",
-                             type="primary" if not _hbl_secili else "secondary", use_container_width=True):
-                    st.session_state["_harita_secili_bolge"] = None
-                    st.rerun()
-            _hbl_kidx += 1
-            for _bl_ana in _hbl_gosterilecekler:
-                _bl_kisa = _bl_kisa_ad_nav.get(_bl_ana, _bl_ana)
-                with _hbl_kolonlar[_hbl_kidx]:
-                    if st.button(f"{_bl_kisa} ({_bl_sayim_nav[_bl_ana]})", key=f"hbl_ana_{_bl_ana}",
-                                 type="primary" if _hbl_secili == _bl_ana else "secondary", use_container_width=True):
-                        st.session_state["_harita_secili_bolge"] = _bl_ana
-                        st.rerun()
-                _hbl_kidx += 1
-            if _hbl_havuz_var:
-                with _hbl_kolonlar[_hbl_kidx]:
-                    if st.button(f"📦 Havuz ({_bl_sayim_nav['Havuz (Bölgesiz)']})", key="hbl_havuz_btn",
-                                 type="primary" if _hbl_secili == "Havuz (Bölgesiz)" else "secondary", use_container_width=True):
-                        st.session_state["_harita_secili_bolge"] = "Havuz (Bölgesiz)"
-                        st.rerun()
-                _hbl_kidx += 1
-            if _hbl_diger:
-                with _hbl_kolonlar[_hbl_kidx]:
-                    _hbl_diger_opts = ["-- Diğer iller --"] + [f"{b}  ({_bl_sayim_nav[b]})" for b in _hbl_diger]
-                    _hbl_sfx = st.session_state.get("_hbl_diger_sfx", 0)
-                    _hbl_diger_sec = st.selectbox("Diğer iller", _hbl_diger_opts, key=f"hbl_diger_sec_{_hbl_sfx}", label_visibility="collapsed")
-                    if _hbl_diger_sec != "-- Diğer iller --":
-                        _hbl_sec_ad = _hbl_diger_sec.rsplit("  (", 1)[0]
-                        st.session_state["_hbl_diger_sfx"] = _hbl_sfx + 1
-                        st.session_state["_harita_secili_bolge"] = _hbl_sec_ad
-                        st.rerun()
-            st.divider()
+                # Sıralama: İstanbul Anadolu, İstanbul Avrupa ÖNCE (sabit), sonra
+                # TÜM diğer bölgeler müşteri sayısına göre (çoktan aza), en sonda Havuz.
+                _hbl_oncelik = [b for b in ["İstanbul Anadolu", "İstanbul Avrupa"] if b in _bl_sayim_nav.index and _bl_sayim_nav[b] > 0]
+                _hbl_digerleri = sorted(
+                    [b for b in _bl_sayim_nav.index if b not in _hbl_oncelik and b != "Havuz (Bölgesiz)" and _bl_sayim_nav[b] > 0],
+                    key=lambda b: -_bl_sayim_nav[b])
+                _hbl_havuz = ["Havuz (Bölgesiz)"] if ("Havuz (Bölgesiz)" in _bl_sayim_nav.index and _bl_sayim_nav["Havuz (Bölgesiz)"] > 0) else []
+                _hbl_tum_sirali = _hbl_oncelik + _hbl_digerleri + _hbl_havuz
+
+                st.caption(f"📍 Bölge · {len(_bl_sayim_nav)} il/bölge")
+                # Tüm bölgeler + "Tümü" — 8'erli satırlar halinde (tek satırda hepsi
+                # sığmaz, çok fazla il varsa taşar) EŞİT genişlikte butonlar.
+                _hbl_hepsi = ["__TUMU__"] + _hbl_tum_sirali
+                _hbl_satir_boyu = 8
+                for _hbl_bas in range(0, len(_hbl_hepsi), _hbl_satir_boyu):
+                    _hbl_satir_ogeleri = _hbl_hepsi[_hbl_bas:_hbl_bas + _hbl_satir_boyu]
+                    _hbl_kolonlar = st.columns(len(_hbl_satir_ogeleri))
+                    for _hbl_j, _hbl_ad in enumerate(_hbl_satir_ogeleri):
+                        with _hbl_kolonlar[_hbl_j]:
+                            if _hbl_ad == "__TUMU__":
+                                if st.button(f"Tümü ({len(_hdf)})", key="hbl_tumu_btn",
+                                             type="primary" if not _hbl_secili else "secondary", use_container_width=True):
+                                    st.session_state["_harita_secili_bolge"] = None
+                                    st.rerun()
+                            else:
+                                _hbl_etiket = _bl_kisa_ad_nav.get(_hbl_ad, _hbl_ad)
+                                if _hbl_ad == "Havuz (Bölgesiz)":
+                                    _hbl_etiket = "📦 Havuz"
+                                if st.button(f"{_hbl_etiket} ({_bl_sayim_nav[_hbl_ad]})", key=f"hbl_btn_{_hbl_ad}",
+                                             type="primary" if _hbl_secili == _hbl_ad else "secondary", use_container_width=True):
+                                    st.session_state["_harita_secili_bolge"] = _hbl_ad
+                                    st.rerun()
+                st.divider()
+        except Exception as _hbl_hata:
+            st.warning(f"⚠️ Bölge butonları yüklenirken bir sorun oluştu (harita etkilenmez): {_hbl_hata}")
 
         _hc1,_hc2,_hc3,_hc4,_hc5 = st.columns(5)
         _h_il    = _hc1.multiselect("İl filtrele", sorted(_hdf["il"].dropna().unique().tolist()) if "il" in _hdf.columns else [], key="h_il")
@@ -14365,10 +14359,14 @@ elif aktif == "harita":
         if _h_seg   and "segment" in _hdf_f.columns: _hdf_f = _hdf_f[_hdf_f["segment"].isin(_h_seg)]
         if _h_tem   and "temsilci" in _hdf_f.columns: _hdf_f = _hdf_f[_hdf_f["temsilci"].isin(_h_tem)]
         # 📍 Bölge seçiliyse, yukarıdaki filtrelerin ÜZERİNE ek olarak uygulanır.
-        if st.session_state.get("_harita_secili_bolge") and "il" in _hdf_f.columns:
-            _hbl_secili_ad = st.session_state["_harita_secili_bolge"]
-            _hdf_f = _hdf_f[_hdf_f.apply(
-                lambda r: (il_ilce_bolge_bul(r.get("il", ""), r.get("ilce", "")) or "Havuz (Bölgesiz)") == _hbl_secili_ad, axis=1)]
+        # (try/except: burada bir sorun olsa bile harita SEÇİLİ bölge olmadan devam eder.)
+        try:
+            if st.session_state.get("_harita_secili_bolge") and "il" in _hdf_f.columns:
+                _hbl_secili_ad = st.session_state["_harita_secili_bolge"]
+                _hdf_f = _hdf_f[_hdf_f.apply(
+                    lambda r: (il_ilce_bolge_bul(r.get("il", ""), r.get("ilce", "")) or "Havuz (Bölgesiz)") == _hbl_secili_ad, axis=1)]
+        except Exception:
+            pass
         _il_col = "il" if "il" in _hdf_f.columns else ("sehir" if "sehir" in _hdf_f.columns else None)
         _hm1,_hm2,_hm3,_hm4 = st.columns(4)
         _hm1.metric("Toplam", len(_hdf_f))
