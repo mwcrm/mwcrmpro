@@ -8482,15 +8482,18 @@ function kartSec(id){
 
     # Filtre uygula
     df_f = df.copy()
-    # ── 📦 ARŞİV — KULLANICI İSTEĞİ (2026-09): arşive alınan müşteriler
-    # (silinmemiş, veri kaybı yok) VARSAYILAN olarak Cari Liste'de
-    # GİZLENİR — "📦 Arşivi Göster" işaretlenirse tekrar görünürler. Üstteki
-    # GENEL/SONUÇ rapor sayaçları bu filtrelemeden ETKİLENMEZ (onlar
-    # get_cari_listesi()'nin TAMAMINDAN hesaplanıyor, burada SADECE ekrandaki
-    # df_f daraltılıyor) — yani "Kaybedildi" sayısı doğru saymaya devam eder.
+    # ── 📦 ARŞİV — KULLANICI İSTEĞİ (2026-09, DÜZELTİLDİ): "📦 Arşivi Göster"
+    # İŞARETLİ DEĞİLKEN → arşivdekiler GİZLİ (varsayılan, normal liste).
+    # İŞARETLİYKEN → SADECE arşivdekiler gösterilir (herkes DEĞİL — bu bir
+    # "arşiv görünümü"ne geçiş, "ek olarak göster" değil). Üstteki GENEL/SONUÇ
+    # rapor sayaçları bu filtrelemeden ETKİLENMEZ (onlar get_cari_listesi()'nin
+    # TAMAMINDAN hesaplanıyor, burada SADECE ekrandaki df_f daraltılıyor).
     _cl_arsiv_idler_gizli = _cari_arsiv_yukle()
-    if _cl_arsiv_idler_gizli and not st.session_state.get("_cl_arsiv_goster", False) and "id" in df_f.columns:
-        df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
+    if "id" in df_f.columns:
+        if st.session_state.get("_cl_arsiv_goster", False):
+            df_f = df_f[df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
+        elif _cl_arsiv_idler_gizli:
+            df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
     # Toplam aktifse tüm filtreleri zorla sıfırla
     if st.session_state.get("_toplam_aktif", False):
         ara_txt = ""; _asama_sec = []; _durum_sec = []; _il_sec = []; _ilce_sec = []; _tem_sec = []; filtre_seg = "Tümü"; _guncelleme_tarih_sec = []; _ozel_sec = []; _rut_sec = []
@@ -8710,7 +8713,9 @@ function kartSec(id){
         # yukarıdaki 📦 arşiv gizleme filtresini YOK SAYIYORDU — Çoklu Firma
         # Seçimi aktifken arşivlenmiş müşteriler yine görünüyordu. Aynı
         # filtre burada da uygulanır.
-        if _cl_arsiv_idler_gizli and not st.session_state.get("_cl_arsiv_goster", False):
+        if st.session_state.get("_cl_arsiv_goster", False):
+            df_f = df_f[df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
+        elif _cl_arsiv_idler_gizli:
             df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
         df_f = df_f[df_f["id"].isin(_cok_secili_idler)].reset_index(drop=True)
         st.info(f"🔍 {len(df_f)} firma karşılaştırma için seçili — temizlemek için yukarıdaki kutudan kaldırın.")
