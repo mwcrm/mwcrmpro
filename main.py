@@ -14510,6 +14510,7 @@ elif aktif == "harita":
         _gorulen_firmalar = set()
         _pins = []
         _hassas_sayi = 0
+        _konum_bilinmiyor_sayi = 0
         _yaklasik_kayitlar = []  # (anahtar, adres, ilce, il) — henüz geocode edilmemişler
         for _, _hr in _hdf_f.iterrows():
             _il   = _tr_lower(str(_hr.get("il","")   or ""))
@@ -14526,6 +14527,7 @@ elif aktif == "harita":
             _adrs = str(_hr.get("adres","") or "—").replace("'","&#39;").replace('"','&quot;')
             _lat, _lng = None, None
             _hassas = False
+            _konum_bilinmiyor = False
 
             # 1) ÖNCE önbellekte gerçek adres bazlı koordinat var mı bak (hassas)
             _geo_anahtar = _tr_lower(f"{_adres_ham}|{_hr.get('ilce','')}|{_hr.get('il','')}")
@@ -14552,11 +14554,26 @@ elif aktif == "harita":
                         for _k in _IL_KOOR:
                             if _tr_lower(_k) == _il or _il[:5] == _tr_lower(_k)[:5]:
                                 _lat, _lng = _IL_KOOR[_k]; break
-                if _lat is None: continue
+                # 🚨 KRİTİK DÜZELTME (2026-09): eskiden buraya kadar hiç eşleşme
+                # bulunamazsa (il/ilçe yazımı garip/boş/tanınmayan) müşteri
+                # SESSİZCE atlanıyordu ("continue") — 4800+ müşteride bu, GERÇEK
+                # verideki ufak yazım farklarından dolayı BÜYÜK bir kısmın
+                # haritadan tamamen kaybolmasına yol açıyordu. ARTIK hiçbir
+                # müşteri atlanmaz — eşleşme yoksa Türkiye'nin coğrafi merkezine
+                # (Ankara civarı) yakın, "Konum Bilinmiyor" olarak işaretlenerek
+                # eklenir; sayaçlar HER ZAMAN gerçek toplam müşteri sayısıyla eşleşir.
+                if _lat is None:
+                    _lat, _lng = 39.0, 35.0  # Türkiye'nin yaklaşık coğrafi merkezi
+                    _konum_bilinmiyor = True
+                    _konum_bilinmiyor_sayi += 1
                 _seed = int(hashlib.md5(_firma_ham.encode()).hexdigest()[:8], 16)
                 random.seed(_seed)
-                _lat += random.uniform(-0.008, 0.008)
-                _lng += random.uniform(-0.008, 0.008)
+                if _konum_bilinmiyor:
+                    _lat += random.uniform(-0.6, 0.6)
+                    _lng += random.uniform(-0.6, 0.6)
+                else:
+                    _lat += random.uniform(-0.008, 0.008)
+                    _lng += random.uniform(-0.008, 0.008)
 
             _renk = _DURUM_RENK.get(_durum, "#64748b")
             # Randevu varsa kırmızı override
@@ -14571,12 +14588,16 @@ elif aktif == "harita":
             _pins.append({"lat":round(_lat,5),"lng":round(_lng,5),"firma":_firma,
                 "durum":_durum,"renk":_renk,"seg":_seg,"tem":_tem,"tel":_tel,
                 "il":str(_hr.get("il","")).title(),"ilce":str(_hr.get("ilce","")).title(),
-                "adres":_adrs,"rand":_rand_etiketi,"hassas":_hassas})
+                "adres":_adrs,"rand":_rand_etiketi,"hassas":_hassas,
+                "konum_bilinmiyor": _konum_bilinmiyor})
 
         # ── Adres bazlı konum bulma paneli ──────────────────────────────────
         _yaklasik_kayitlar = list(dict.fromkeys(_yaklasik_kayitlar))  # tekilleştir
         _hgc1, _hgc2, _hgc3 = st.columns([2, 1, 1])
-        _hgc1.caption(f"📍 {_hassas_sayi} müşteri TAM ADRESİNDEN, {len(_yaklasik_kayitlar)} müşteri il/ilçe merkezinden (yaklaşık) gösteriliyor.")
+        _hgc1_mesaj = f"📍 {_hassas_sayi} müşteri TAM ADRESİNDEN, {len(_yaklasik_kayitlar)} müşteri il/ilçe merkezinden (yaklaşık) gösteriliyor."
+        if _konum_bilinmiyor_sayi > 0:
+            _hgc1_mesaj += f" ⚠️ {_konum_bilinmiyor_sayi} müşterinin il/ilçe bilgisi tanınamadı (yazım hatası olabilir) — haritanın ortasında yaklaşık gösteriliyor."
+        _hgc1.caption(_hgc1_mesaj)
         if _yaklasik_kayitlar and _hgc2.button(f"🔍 Sıradaki 15 Adresi Bul", key="_harita_geo_bul_btn", use_container_width=True):
             import time as _htime
             _bulunan = 0
