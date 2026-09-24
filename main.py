@@ -88,6 +88,7 @@ _CL_OZEL_FILTRE_SECENEKLERI = {
     "asama3": "3. Aşama",
     "sonuc": "Sonuç",
     "ara_islem": "Ara İşlem",
+    "il_ciro_ozet": "İl Ciroları",
     "sektor": "Sektör",
     "rut": "Rut",
 }
@@ -132,11 +133,12 @@ def _cl_ozel_filtre_alani_kaydet(_alan):
 
 
 _CARI_EK_ALAN_ANAHTAR = "_cari_ek_bilgiler"
-_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel"]
+_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "il_ciro_ozet"]
 _CARI_EK_ALAN_ETIKET = {
     "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi",
     "musteri_subesi": "Müşteri Şubesi", "vade": "Vade", "odeme": "Ödeme",
     "teklif_fiyat": "Teklif Fiyat", "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi",
+    "il_ciro_ozet": "İl Ciroları",
 }
 
 
@@ -336,6 +338,37 @@ def _cari_arsiv_goruntule_dialog():
     if st.button("❌ Kapat", key="ars_kapat_btn", use_container_width=True):
         st.session_state["_cl_arsiv_penceresi_acik"] = False
         st.rerun()
+
+
+def _fy_il_ciro_ozet_cikar(_metin):
+    """KULLANICI İSTEĞİ (2026-09): 'Fiyat İncele' metninden (Koli/Palet alanı,
+    _fy_format_tablo'nun ürettiği format), her ilin İL TOPLAM CİROSUNU (bir
+    satırda İKİNCİ 'TL' değeri — ilk 'TL' o satırın kendi TOPLAM'ı, ikincisi
+    varsa o ilin GENEL toplamıdır, sadece grubun ilk satırında bulunur) çıkarıp
+    'İL <TAB> TUTAR' satırlarından oluşan, cirosu EN YÜKSEK ilden başlayarak
+    sıralı bir özet metin üretir. Format eşleşmezse (elle çok değiştirilmiş
+    metin gibi) boş döner — hata fırlatmaz."""
+    import re as _fyre2
+    try:
+        _sonuc = {}
+        for _satir in str(_metin or "").split("\n"):
+            _tllar = _fyre2.findall(r'([\d.]+)\s*TL', _satir)
+            if len(_tllar) >= 2:
+                _parcalar = _satir.strip().split()
+                if not _parcalar:
+                    continue
+                _sehir = _parcalar[0]
+                try:
+                    _tutar = float(_tllar[-1])
+                except Exception:
+                    continue
+                _sonuc[_sehir] = _sonuc.get(_sehir, 0.0) + _tutar
+        if not _sonuc:
+            return ""
+        _sirali = sorted(_sonuc.items(), key=lambda x: -x[1])
+        return "\n".join(f"{_il}\t{_tutar:,.0f}".replace(",", ".") for _il, _tutar in _sirali)
+    except Exception:
+        return ""
 
 
 
@@ -4605,6 +4638,16 @@ textarea[aria-label="Koli/Palet önizleme"] {
                         _vd_sb.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel",
                                                                   "deger": _kpo_deger2}).execute()
                     st.session_state["_koli_palet_manuel"] = _kp_map2
+                    # KULLANICI İSTEĞİ (2026-09): "İl Ciroları" — bu metinden
+                    # otomatik çıkarılıp ayrıca kaydedilir (Cari Liste'de
+                    # "Ara İşlem"in sağındaki sütunda gösterilecek).
+                    try:
+                        _icy_ozet = _fy_il_ciro_ozet_cikar(_fy_son_metin.strip())
+                        _icy_harita = _cari_ek_bilgi_yukle()
+                        _icy_harita.setdefault(_kp_id_str2, {})["il_ciro_ozet"] = _icy_ozet
+                        _cari_ek_bilgi_kaydet(_icy_harita)
+                    except Exception:
+                        pass
                     st.session_state.pop(f"_fy_hazir_{cari_id}", None)
                     st.toast("✅ Koli/Palet güncellendi", icon="📦")
                     st.rerun()
@@ -7538,7 +7581,7 @@ function kartSec(id){
             "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi",
             "beklenen_ciro": "Hedeflenen Ciro", "gerceklesen_ciro": "Gerçekleşen Ciro",
             "islem_asamasi": "İlk Temas", "asama1": "1. Aşama", "asama2": "2. Aşama", "asama3": "3. Aşama",
-            "aciklama": "Açıklama", "ara_islem": "Ara İşlem", "sektor": "Sektör", "rut": "Rut", "sonuc": "Sonuç",
+            "aciklama": "Açıklama", "ara_islem": "Ara İşlem", "il_ciro_ozet": "İl Ciroları", "sektor": "Sektör", "rut": "Rut", "sonuc": "Sonuç",
             "tarih": "Kayıt Tarihi", "guncelleme_tarihi": "Güncelleme Tarihi",
         }
         for _cl_sirala_il_kv in _IL_SUTUN_LISTESI:
@@ -8201,7 +8244,7 @@ function kartSec(id){
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,"musteri_kodu":80,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
         "🧾 Teklif":70,"💬 Mesaj":70,
-        "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"sektor":100,"rut":90
+        "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"il_ciro_ozet":110,"sektor":100,"rut":90
     }
     for _il_vars in _IL_SUTUN_LISTESI:
         _KOL_VARSAYILAN[_il_vars] = 10
@@ -8300,6 +8343,8 @@ function kartSec(id){
         "asama2":        st.column_config.SelectboxColumn("2. Aşama", options=_asama_secenek_guvenli("asama2", ["", "Teklif"]), width=_w("asama2")),
         "asama3":        st.column_config.SelectboxColumn("3. Aşama", options=_asama_secenek_guvenli("asama3", ["Tümü", "Deneme", "TAKİP", "Fiyat Hazırla", "Sözleşme"]), width=_w("asama3")),
         "ara_islem":     st.column_config.TextColumn("Ara İşlem", width=_w("ara_islem")),
+        "il_ciro_ozet":  st.column_config.TextColumn("İl Ciroları", disabled=True, width=_w("il_ciro_ozet"),
+                                                       help="Koli/Palet fiyat tablosundan otomatik hesaplanır — en yüksek cirolu il en üstte."),
         "sektor":        st.column_config.TextColumn("Sektör", width=_w("sektor")),
         "rut":           st.column_config.TextColumn("🛣️ Rut", width=_w("rut"), disabled=True,
                              help="OTOMATİK hesaplanır — hangi İL sütun(lar)ına gönderim bilgisi girildiyse, o illerin kısaltması buraya otomatik yazılır. Elle düzenlenmez; değiştirmek için ilgili İL sütununu doldurun/boşaltın."),
@@ -8339,7 +8384,7 @@ function kartSec(id){
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
-                 "🧾 Teklif","💬 Mesaj","ara_islem","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
+                 "🧾 Teklif","💬 Mesaj","ara_islem","il_ciro_ozet","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
     _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
@@ -8348,7 +8393,7 @@ function kartSec(id){
                       "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
                       "🧾 Teklif":"🧾 Teklif","💬 Mesaj":"💬 Mesaj","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
-                      "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem","sektor":"sektor","rut":"rut"}
+                      "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem","il_ciro_ozet":"il_ciro_ozet","sektor":"sektor","rut":"rut"}
     col_order = [c for c in col_order if not any(c == _kol_gizli_map.get(g,g) for g in _GIZLI_KOLONLAR)]
 
     # ── 🔀 KALICI SIRALAMA UYGULAMASI — widget'lar artık YUKARIDA (filtre
@@ -9263,6 +9308,7 @@ function kartSec(id){
                 _analiz_ov_guncel = dict(st.session_state.get("_analiz_manuel_override", {}))
                 _cikis_ov_guncel  = dict(st.session_state.get("_cikis_ili_manuel", {}))
                 _koli_ov_guncel   = dict(st.session_state.get("_koli_palet_manuel", {}))
+                _icy_etkilenen_idler = set()  # KULLANICI İSTEĞİ (2026-09): "İl Ciroları" — Koli/Palet değişen satırlar
                 _ex_degisti = False
                 for _idx_str_ex, _deg_ex in _edited_rows.items():
                     _idxn_ex = int(_idx_str_ex)
@@ -9292,6 +9338,7 @@ function kartSec(id){
                         else:
                             _koli_ov_guncel.pop(str(_rid_ex), None)
                         _ex_degisti = True
+                        _icy_etkilenen_idler.add(_rid_ex)
                     # ── "Fiyatlandırma" hızlı-giriş — yazılan her şey Koli/Palet'e eklenir ──
                     if "Fiyatlandırma" in _deg_ex:
                         _v_fiyat = str(_deg_ex["Fiyatlandırma"] or "").strip()
@@ -9299,6 +9346,7 @@ function kartSec(id){
                             _mevcut_koli = _koli_ov_guncel.get(str(_rid_ex), "").strip()
                             _koli_ov_guncel[str(_rid_ex)] = (_mevcut_koli + "\n" + _v_fiyat).strip() if _mevcut_koli else _v_fiyat
                             _ex_degisti = True
+                            _icy_etkilenen_idler.add(_rid_ex)
                 if _ex_degisti:
                     st.session_state["_analiz_manuel_override"] = _analiz_ov_guncel
                     st.session_state["_cikis_ili_manuel"] = _cikis_ov_guncel
@@ -9317,6 +9365,17 @@ function kartSec(id){
                             ], on_conflict="kullanici,anahtar").execute()
                     except:
                         pass
+                    # KULLANICI İSTEĞİ (2026-09): "İl Ciroları" — Koli/Palet
+                    # değişen HER satır için otomatik yeniden hesaplanır.
+                    if _icy_etkilenen_idler:
+                        try:
+                            _icy_harita2 = _cari_ek_bilgi_yukle()
+                            for _icy_rid in _icy_etkilenen_idler:
+                                _icy_metin = _koli_ov_guncel.get(str(_icy_rid), "")
+                                _icy_harita2.setdefault(str(_icy_rid), {})["il_ciro_ozet"] = _fy_il_ciro_ozet_cikar(_icy_metin)
+                            _cari_ek_bilgi_kaydet(_icy_harita2)
+                        except Exception:
+                            pass
 
                 # ── Vergi No / Vergi Dairesi / Müşteri Şubesi / Vade / Ödeme —
                 # KULLANICI İSTEĞİ (2026-09): cari_kartlar'da GERÇEK sütun
@@ -9508,7 +9567,7 @@ function kartSec(id){
                     guncelle = {}
                     for k, v in degisiklikler.items():
                         if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma",
-                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel") or k in _IL_SUTUN_LISTESI: continue
+                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
                             except: guncelle[k] = 0
@@ -10692,7 +10751,7 @@ function updateBot(v){{
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
             "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,"musteri_kodu":80,
-            "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"sektor":100,"rut":100,
+            "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"il_ciro_ozet":120,"sektor":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
             "🧾 Teklif":70,"💬 Mesaj":70
         }
@@ -10705,7 +10764,7 @@ function updateBot(v){{
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
             "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi",
             "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
-            "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","sektor":"Sektör","rut":"🛣️ Rut",
+            "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","il_ciro_ozet":"İl Ciroları","sektor":"Sektör","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
             "🧾 Teklif":"Teklif","💬 Mesaj":"Mesaj"
         }
