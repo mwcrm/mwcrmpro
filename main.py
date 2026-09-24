@@ -257,6 +257,50 @@ def _musteri_kodu_sonraki_bul(_harita, _tum_gecerli_idler):
     return f"MW{_n}"
 
 
+# ── CARİ ARŞİV — KULLANICI İSTEĞİ (2026-09): bazı müşteriler SİLİNMEYECEK
+# (veri kaybı yok, "silindi=1" kullanılmaz) ama Cari Ana Liste'de
+# VARSAYILAN olarak GÖRÜNMEYECEK — üstteki GENEL/SONUÇ raporlarında ise
+# "Kaybedildi" olarak SAYILMAYA devam edecek. Bunun için: (1) müşterinin
+# "sonuc" alanı "Kaybedildi" yapılır (gerçek cari_kartlar sütunu, rapor
+# sayaçları zaten buna göre sayıyor), (2) AYRICA id'si bu arşiv haritasına
+# eklenir — Cari Liste, "Arşivi Göster" açık olmadıkça bu id'leri listeden
+# gizler (ama get_cari_listesi() ve dolayısıyla raporlar bunları GÖRMEYE
+# devam eder, sadece EKRANDAKİ liste onları göstermez).
+_CARI_ARSIV_ANAHTAR = "_cari_arsiv_idler"
+
+
+def _cari_arsiv_yukle():
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return set()
+        r = sb.table("kullanici_tercih").select("deger").eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _CARI_ARSIV_ANAHTAR).execute()
+        if r.data:
+            return set(json.loads(r.data[0]["deger"]))
+        return set()
+    except Exception:
+        return set()
+
+
+def _cari_arsiv_kaydet(_id_seti):
+    """GÜVENLİ — SİLME YOK, satır varsa UPDATE, yoksa INSERT."""
+    try:
+        sb = get_sb_client()
+        if not sb:
+            return False
+        _deger = json.dumps(sorted(_id_seti))
+        _guncelle = sb.table("kullanici_tercih").update({"deger": _deger}).eq(
+            "kullanici", "__liste_ui__").eq("anahtar", _CARI_ARSIV_ANAHTAR).execute()
+        if not _guncelle.data:
+            sb.table("kullanici_tercih").insert({
+                "kullanici": "__liste_ui__", "anahtar": _CARI_ARSIV_ANAHTAR, "deger": _deger
+            }).execute()
+        return True
+    except Exception:
+        return False
+
+
 
 def _alt_ilerleme_cubugu_html(_yuzde, _mesaj):
     """KULLANICI İSTEĞİ (2026-09): kaydetme gibi işlemler sürerken, ekranın
@@ -5136,6 +5180,25 @@ textarea[aria-label="Koli/Palet önizleme"] {
             except Exception as _cse:
                 st.error(f"Silme hatası: {_cse}")
 
+        st.divider()
+        # ── 📦 ARŞİVE AL — KULLANICI İSTEĞİ (2026-09): SİLMEZ, veri kalır.
+        # Sadece (1) Sonuç'u "Kaybedildi" yapar (üstteki raporlar bunu SAYMAYA
+        # devam eder), (2) Cari Ana Liste'de VARSAYILAN olarak GİZLER
+        # ("📦 Arşivi Göster" açılmadıkça görünmez).
+        st.caption(f"**{firma_adi}**'yi Cari Ana Liste'de gizle ama SİLME — veri kalır, üstteki raporlarda 'Kaybedildi' olarak sayılmaya devam eder.")
+        if st.button("📦 Arşive Al (Silme, Sadece Gizle)", key=f"dlg_cari_arsiv_{cari_id}", use_container_width=True):
+            try:
+                db_update("cari_kartlar", {"sonuc": "Kaybedildi"}, "id", int(cari_id))
+                _ars_guncel = _cari_arsiv_yukle()
+                _ars_guncel.add(str(int(cari_id)))
+                _cari_arsiv_kaydet(_ars_guncel)
+                get_cari_listesi.clear()
+                st.session_state.pop("cari_editor", None)
+                st.toast(f"📦 '{firma_adi}' arşive alındı — Cari Liste'de artık görünmeyecek ama veri kaybolmadı", icon="📦")
+                st.rerun()
+            except Exception as _arse:
+                st.error(f"Arşive alma hatası: {_arse}")
+
 @st.dialog("✏️ Kargo Kaydını Düzenle", width="large")
 def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
     """Kargolar — Tüm Müşteriler sayfasından TEK bir kayıt seçip bu formda
@@ -8061,6 +8124,10 @@ function kartSec(id){
         try: _cok_secili_idler.add(int(_cs.split("]")[0].replace("[","").strip()))
         except: pass
 
+    # ── 📦 ARŞİVİ GÖSTER — KULLANICI İSTEĞİ (2026-09): işaretlenmedikçe arşive
+    # alınan müşteriler listede görünmez (ama veri kaybı yok, raporlar hâlâ sayar).
+    st.checkbox("📦 Arşivi Göster (gizlenen/arşivlenen müşterileri de göster)", key="_cl_arsiv_goster")
+
     with st.expander("🔍 Filtreler & Arama", expanded=False):
         # ── TEK SATIR FİLTRE ───────────────────────────────────────────────────
         if st.session_state.get("kart_sec_reset"):
@@ -8416,6 +8483,15 @@ function kartSec(id){
 
     # Filtre uygula
     df_f = df.copy()
+    # ── 📦 ARŞİV — KULLANICI İSTEĞİ (2026-09): arşive alınan müşteriler
+    # (silinmemiş, veri kaybı yok) VARSAYILAN olarak Cari Liste'de
+    # GİZLENİR — "📦 Arşivi Göster" işaretlenirse tekrar görünürler. Üstteki
+    # GENEL/SONUÇ rapor sayaçları bu filtrelemeden ETKİLENMEZ (onlar
+    # get_cari_listesi()'nin TAMAMINDAN hesaplanıyor, burada SADECE ekrandaki
+    # df_f daraltılıyor) — yani "Kaybedildi" sayısı doğru saymaya devam eder.
+    _cl_arsiv_idler_gizli = _cari_arsiv_yukle()
+    if _cl_arsiv_idler_gizli and not st.session_state.get("_cl_arsiv_goster", False) and "id" in df_f.columns:
+        df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
     # Toplam aktifse tüm filtreleri zorla sıfırla
     if st.session_state.get("_toplam_aktif", False):
         ara_txt = ""; _asama_sec = []; _durum_sec = []; _il_sec = []; _ilce_sec = []; _tem_sec = []; filtre_seg = "Tümü"; _guncelleme_tarih_sec = []; _ozel_sec = []; _rut_sec = []
