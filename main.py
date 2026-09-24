@@ -80,6 +80,8 @@ _CL_OZEL_FILTRE_SECENEKLERI = {
     "vade": "Vade",
     "odeme": "Ödeme",
     "teklif_fiyat": "Teklif Fiyat",
+    "islem_tarihi_manuel": "İşlem Tarihi",
+    "takip_tarihi_manuel": "Takip Tarihi",
     "aciklama": "Açıklama",
     "asama1": "1. Aşama",
     "asama2": "2. Aşama",
@@ -130,11 +132,11 @@ def _cl_ozel_filtre_alani_kaydet(_alan):
 
 
 _CARI_EK_ALAN_ANAHTAR = "_cari_ek_bilgiler"
-_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "teklif_fiyat"]
+_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel"]
 _CARI_EK_ALAN_ETIKET = {
     "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi",
     "musteri_subesi": "Müşteri Şubesi", "vade": "Vade", "odeme": "Ödeme",
-    "teklif_fiyat": "Teklif Fiyat",
+    "teklif_fiyat": "Teklif Fiyat", "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi",
 }
 
 
@@ -299,6 +301,41 @@ def _cari_arsiv_kaydet(_id_seti):
         return True
     except Exception:
         return False
+
+
+@st.dialog("📦 Arşiv — Gizlenen Müşteriler", width="large")
+def _cari_arsiv_goruntule_dialog():
+    """Ana Cari Liste'de gizlenen (ama SİLİNMEYEN) müşterileri gösterir.
+    Buradan 'Geri Al' ile müşteri Cari Liste'ye anında geri döner.
+    KALICI BAYRAK deseni (bkz. not_dialog) — pencere içinde bir işlem
+    (Geri Al) yapılıp sayfa yenilense bile, "❌ Kapat"a basılana kadar
+    açık kalır."""
+    _ars_idler = _cari_arsiv_yukle()
+    if not _ars_idler:
+        st.info("📦 Arşivde hiç müşteri yok.")
+    else:
+        try:
+            _df_tum_ars = get_cari_listesi()
+            _df_ars = _df_tum_ars[_df_tum_ars["id"].astype(str).isin(_ars_idler)]
+            st.caption(f"Arşivde **{len(_df_ars)}** müşteri var. Cari Liste'ye geri döndürmek için ilgili satırın yanındaki butona bas.")
+            for _idx, _row in _df_ars.iterrows():
+                _c1, _c2 = st.columns([5, 1.6])
+                with _c1:
+                    st.write(f"**{_row.get('firma','')}** — {_row.get('il','')}/{_row.get('ilce','')} — 📞 {_row.get('gsm','') or _row.get('sabit','')}")
+                with _c2:
+                    if st.button("↩️ Geri Al", key=f"ars_geri_al_{_row['id']}", use_container_width=True):
+                        _ars_yeni = _cari_arsiv_yukle()
+                        _ars_yeni.discard(str(int(_row["id"])))
+                        _cari_arsiv_kaydet(_ars_yeni)
+                        get_cari_listesi.clear()
+                        st.toast(f"↩️ '{_row.get('firma','')}' arşivden çıkarıldı, Cari Liste'de tekrar görünecek", icon="↩️")
+                        st.rerun()
+        except Exception as _arsg:
+            st.error(f"Arşiv yüklenemedi: {_arsg}")
+    st.divider()
+    if st.button("❌ Kapat", key="ars_kapat_btn", use_container_width=True):
+        st.session_state["_cl_arsiv_penceresi_acik"] = False
+        st.rerun()
 
 
 
@@ -8239,6 +8276,7 @@ function kartSec(id){
             "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
             "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi", "musteri_subesi": "Müşteri Şubesi",
             "vade": "Vade", "odeme": "Ödeme", "teklif_fiyat": "Teklif Fiyat",
+            "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi",
             "beklenen_ciro": "Hedeflenen Ciro", "gerceklesen_ciro": "Gerçekleşen Ciro",
             "islem_asamasi": "İlk Temas", "asama1": "1. Aşama", "asama2": "2. Aşama", "asama3": "3. Aşama",
             "aciklama": "Açıklama", "ara_islem": "Ara İşlem", "sektor": "Sektör", "rut": "Rut", "sonuc": "Sonuç",
@@ -8482,18 +8520,14 @@ function kartSec(id){
 
     # Filtre uygula
     df_f = df.copy()
-    # ── 📦 ARŞİV — KULLANICI İSTEĞİ (2026-09, DÜZELTİLDİ): "📦 Arşivi Göster"
-    # İŞARETLİ DEĞİLKEN → arşivdekiler GİZLİ (varsayılan, normal liste).
-    # İŞARETLİYKEN → SADECE arşivdekiler gösterilir (herkes DEĞİL — bu bir
-    # "arşiv görünümü"ne geçiş, "ek olarak göster" değil). Üstteki GENEL/SONUÇ
-    # rapor sayaçları bu filtrelemeden ETKİLENMEZ (onlar get_cari_listesi()'nin
-    # TAMAMINDAN hesaplanıyor, burada SADECE ekrandaki df_f daraltılıyor).
+    # ── 📦 ARŞİV — KULLANICI İSTEĞİ (2026-09, DÜZELTİLDİ): Ana Cari Liste HER
+    # ZAMAN arşivsiz (normal) haliyle gösterilir — işaretli/işaretsiz gibi bir
+    # durum YOK. Arşivdekileri görmek için AYRI bir buton/pencere kullanılır
+    # (bkz. "📦 Arşiv" butonu, sticky bar'da — kendi dialog'unu açar). Üstteki
+    # GENEL/SONUÇ rapor sayaçları bu filtrelemeden ETKİLENMEZ.
     _cl_arsiv_idler_gizli = _cari_arsiv_yukle()
-    if "id" in df_f.columns:
-        if st.session_state.get("_cl_arsiv_goster", False):
-            df_f = df_f[df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
-        elif _cl_arsiv_idler_gizli:
-            df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
+    if _cl_arsiv_idler_gizli and "id" in df_f.columns:
+        df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
     # Toplam aktifse tüm filtreleri zorla sıfırla
     if st.session_state.get("_toplam_aktif", False):
         ara_txt = ""; _asama_sec = []; _durum_sec = []; _il_sec = []; _ilce_sec = []; _tem_sec = []; filtre_seg = "Tümü"; _guncelleme_tarih_sec = []; _ozel_sec = []; _rut_sec = []
@@ -8713,9 +8747,7 @@ function kartSec(id){
         # yukarıdaki 📦 arşiv gizleme filtresini YOK SAYIYORDU — Çoklu Firma
         # Seçimi aktifken arşivlenmiş müşteriler yine görünüyordu. Aynı
         # filtre burada da uygulanır.
-        if st.session_state.get("_cl_arsiv_goster", False):
-            df_f = df_f[df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
-        elif _cl_arsiv_idler_gizli:
+        if _cl_arsiv_idler_gizli:
             df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
         df_f = df_f[df_f["id"].isin(_cok_secili_idler)].reset_index(drop=True)
         st.info(f"🔍 {len(df_f)} firma karşılaştırma için seçili — temizlemek için yukarıdaki kutudan kaldırın.")
@@ -8906,7 +8938,7 @@ function kartSec(id){
         "tarih":90,"guncelleme_tarihi":100,
         "firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
         "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
-        "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,
+        "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,"musteri_kodu":80,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
         "🧾 Teklif":70,"💬 Mesaj":70,
@@ -8968,6 +9000,8 @@ function kartSec(id){
     # ── İL SÜTUNLARI — global sabit (dosyanın en başında tanımlı), burada tekrar tanımlanmaz ──
 
     col_config = {
+        "islem_tarihi_manuel": st.column_config.TextColumn("İşlem Tarihi", width=_w("islem_tarihi_manuel"), help="Elle yazılan işlem tarihi (bu, otomatik 'İşlem Tarih' kayıt tarihinden farklıdır)."),
+        "takip_tarihi_manuel": st.column_config.TextColumn("Takip Tarihi", width=_w("takip_tarihi_manuel"), help="Elle yazılan takip/hatırlatma tarihi."),
         "Seç":           st.column_config.CheckboxColumn("Seç", default=False, width=_w("Seç")),
         "tarih":         st.column_config.TextColumn("İşlem Tarih", disabled=True, width=_w("tarih")),
         "guncelleme_tarihi": st.column_config.TextColumn("Güncelleme Tarihi", disabled=True, width=_w("guncelleme_tarihi"), help="Bu müşteriye en son ne zaman not, teklif veya mesaj/işlem eklendiğini gösterir."),
@@ -9042,7 +9076,7 @@ function kartSec(id){
             df_f["_cl2_key"] = df_f["id"].map(_cl2_map).fillna(len(_cl2_sirali))
             df_f = df_f.sort_values("_cl2_key").drop(columns=["_cl2_key"]).reset_index(drop=True)
 
-    col_order = ["Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
+    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
@@ -9050,7 +9084,7 @@ function kartSec(id){
     # Gizli kolonları çıkar
     _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
-                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat",
+                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat","islem_tarihi_manuel":"islem_tarihi_manuel","takip_tarihi_manuel":"takip_tarihi_manuel",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
                       "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
@@ -9583,11 +9617,18 @@ function kartSec(id){
             if st.button("🗑️ Seçili Kaydı Sil", key="cl_sil_niyet_btn", use_container_width=True):
                 st.session_state["_cl_sil_niyeti"] = True
         with _sb8:
-            # KULLANICI İSTEĞİ (2026-09): "📦 Arşivi Göster" de aynı üst
-            # satıra taşındı (eskiden Çoklu Firma Seçimi'nin altında, ayrı
-            # bir satırdaydı).
-            st.checkbox("📦 Arşivi Göster", key="_cl_arsiv_goster")
+            # KULLANICI İSTEĞİ (2026-09, DÜZELTİLDİ): işaretli/işaretsiz bir
+            # kutu DEĞİL — tıklanınca AYRI bir pencerede arşivi açan buton.
+            # Ana liste bundan HİÇ etkilenmez, her zaman normal (arşivsiz)
+            # haliyle kalır. KALICI BAYRAK (bkz. not_dialog benzeri düzeltme):
+            # pencere içinde "Geri Al" gibi bir işlem yapılıp sayfa yenilense
+            # bile, "❌ Kapat"a basılana kadar açık kalır.
+            if st.button("📦 Arşiv", key="cl_arsiv_ac_btn", use_container_width=True):
+                st.session_state["_cl_arsiv_penceresi_acik"] = True
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
+        if st.session_state.get("_cl_arsiv_penceresi_acik", False):
+            _cari_arsiv_goruntule_dialog()
 
 
     _tbl_col = st.container()
@@ -10208,7 +10249,7 @@ function kartSec(id){
                     guncelle = {}
                     for k, v in degisiklikler.items():
                         if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma",
-                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat") or k in _IL_SUTUN_LISTESI: continue
+                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
                             except: guncelle[k] = 0
@@ -11390,7 +11431,7 @@ function updateBot(v){{
             "Seç":40,"tarih":90,"guncelleme_tarihi":100,
             "firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
-            "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,
+            "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,"musteri_kodu":80,
             "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"sektor":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
@@ -11403,7 +11444,7 @@ function updateBot(v){{
             "firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
-            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat",
+            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi",
             "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
             "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","sektor":"Sektör","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
@@ -13072,7 +13113,7 @@ elif aktif == "excel":
     st.markdown("## 📥 Excel ile Toplu Veri Aktarımı")
 
     sablon_kolonlar = ["firma","yetkili","gsm","sabit","email","adres","ilce","il","durum","temsilci","islem_asamasi","beklenen_ciro","gerceklesen_ciro",
-                       "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme","teklif_fiyat"]
+                       "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme","teklif_fiyat","islem_tarihi_manuel","takip_tarihi_manuel"]
 
     sablon_buf = io.BytesIO()
     pd.DataFrame(columns=sablon_kolonlar).to_excel(sablon_buf, index=False)
