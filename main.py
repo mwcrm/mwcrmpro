@@ -15891,45 +15891,6 @@ elif aktif == "tedarikci":
         st.session_state["_td_editor_versiyon"] += 1
         st.rerun()
 
-elif aktif == "bolgeler":
-    sayfa_log("bolgeler")
-    import io as _bl_io
-    st.markdown("## 📍 Bölgeler")
-
-    _bl_raw = db_read("cari_kartlar", extra_sql="ORDER BY firma")
-    if not _bl_raw.empty and "silindi" in _bl_raw.columns:
-        _bl_raw = _bl_raw[~_bl_raw["silindi"].isin([1, "1", True, "true"])]
-    _bl_raw = _atama_filtresi_uygula(_bl_raw)
-
-    if _bl_raw.empty:
-        st.info("Henüz müşteri kaydı yok.")
-    else:
-        _bl_df = _bl_raw.copy()
-        _il_kol = "il" if "il" in _bl_df.columns else None
-        _ilce_kol = "ilce" if "ilce" in _bl_df.columns else None
-        _bl_df["_bolge"] = _bl_df.apply(
-            lambda r: il_ilce_bolge_bul(
-                r.get(_il_kol, "") if _il_kol else "",
-                r.get(_ilce_kol, "") if _ilce_kol else ""
-            ), axis=1
-        )
-        _bl_df["_bolge"] = _bl_df["_bolge"].fillna("Havuz (Bölgesiz)")
-
-        # ── Üst toplam: kullanıcının TÜM bölgeleri birlikte toplamı, admin için genel toplam ──
-        _bl_rol = str(st.session_state.get("rol","")).strip().lower()
-        _bl_toplam_baslik = "🌍 Genel toplam (tüm bölgeler, tüm kullanıcılar)" if _bl_rol == "admin" else "📊 Toplamım (tüm bölgelerim birlikte)"
-        st.markdown(f"#### {_bl_toplam_baslik}")
-        _t1, _t2, _t3 = st.columns(3)
-        _t1.metric("Müşteri sayısı", len(_bl_df))
-        if "beklenen_ciro" in _bl_df.columns:
-            _t2.metric("Hedef ciro", f"{pd.to_numeric(_bl_df['beklenen_ciro'], errors='coerce').fillna(0).sum():,.0f} ₺")
-        if "gerceklesen_ciro" in _bl_df.columns:
-            _t3.metric("Gerçekleşen", f"{pd.to_numeric(_bl_df['gerceklesen_ciro'], errors='coerce').fillna(0).sum():,.0f} ₺")
-        st.caption("Bu toplam, kaç bölgeye dağılmış olursa olsun senin (veya admin için herkesin) tüm müşterilerini kapsar." if _bl_rol != "admin"
-                   else "Bu toplam, tüm kullanıcıların tüm bölgelerdeki tüm müşterilerini kapsar.")
-        st.divider()
-        st.caption("Yeni müşteri eklemek için mevcut 📥 Excel Aktar sayfasını kullanabilirsiniz — il/ilçe bilgisi girildiğinde bölgesi otomatik hesaplanır. Tek tek bölge listesi için Cari Liste ekranının en üstündeki 📍 Bölgeler kutucuklarını kullanın.")
-
 # ── FOOTER ────────────────────────────────────────────────────────────────────
 st.markdown(
     "<div style='position:fixed;bottom:0;left:0;right:0;background:#f0f2f6;padding:6px;text-align:center;font-size:11px;color:#888;z-index:999;'>"
