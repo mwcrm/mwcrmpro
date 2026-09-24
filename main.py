@@ -8124,9 +8124,8 @@ function kartSec(id){
         try: _cok_secili_idler.add(int(_cs.split("]")[0].replace("[","").strip()))
         except: pass
 
-    # ── 📦 ARŞİVİ GÖSTER — KULLANICI İSTEĞİ (2026-09): işaretlenmedikçe arşive
-    # alınan müşteriler listede görünmez (ama veri kaybı yok, raporlar hâlâ sayar).
-    st.checkbox("📦 Arşivi Göster (gizlenen/arşivlenen müşterileri de göster)", key="_cl_arsiv_goster")
+    # ── 📦 ARŞİVİ GÖSTER — artık üstteki sticky buton satırında (Kaydet/Satır
+    # Ekle/Sil ile aynı satır), burada tekrar tanımlanmaz.
 
     with st.expander("🔍 Filtreler & Arama", expanded=False):
         # ── TEK SATIR FİLTRE ───────────────────────────────────────────────────
@@ -8707,6 +8706,12 @@ function kartSec(id){
     # Çoklu firma seçimi yapıldıysa — diğer filtreler ne olursa olsun sadece seçilenler gösterilir
     if _cok_secili_idler and "id" in df_f.columns:
         df_f = df.copy()  # tüm listeden (mevcut il/durum filtrelerinden bağımsız) seçilenleri bul
+        # 🚨 DÜZELTME (2026-09): bu satır df_f'i df'ten TAZE kuruyordu, bu da
+        # yukarıdaki 📦 arşiv gizleme filtresini YOK SAYIYORDU — Çoklu Firma
+        # Seçimi aktifken arşivlenmiş müşteriler yine görünüyordu. Aynı
+        # filtre burada da uygulanır.
+        if _cl_arsiv_idler_gizli and not st.session_state.get("_cl_arsiv_goster", False):
+            df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
         df_f = df_f[df_f["id"].isin(_cok_secili_idler)].reset_index(drop=True)
         st.info(f"🔍 {len(df_f)} firma karşılaştırma için seçili — temizlemek için yukarıdaki kutudan kaldırın.")
         # ── ŞEFFAFLIK: Seçilen ID sayısı ile bulunan satır sayısı farklıysa
@@ -9527,7 +9532,7 @@ function kartSec(id){
 
     with st.container():
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
-        _sb1, _sb2, _sb3, _sb4, _sb5, _sb6, _sb7 = st.columns([1.3, 1.0, 1.0, 1.2, 1.1, 1.2, 1.1])
+        _sb1, _sb2, _sb3, _sb4, _sb5, _sb6, _sb7, _sb8 = st.columns([1.2, 0.9, 0.9, 1.1, 1.0, 1.1, 1.0, 1.3])
         with _sb1:
             if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust", use_container_width=True):
                 st.session_state["_kaydet_flag"] = True
@@ -9572,6 +9577,11 @@ function kartSec(id){
             # tablo çizilip seçili sayısı netleşince (aşağıda) yapılır.
             if st.button("🗑️ Seçili Kaydı Sil", key="cl_sil_niyet_btn", use_container_width=True):
                 st.session_state["_cl_sil_niyeti"] = True
+        with _sb8:
+            # KULLANICI İSTEĞİ (2026-09): "📦 Arşivi Göster" de aynı üst
+            # satıra taşındı (eskiden Çoklu Firma Seçimi'nin altında, ayrı
+            # bir satırdaydı).
+            st.checkbox("📦 Arşivi Göster", key="_cl_arsiv_goster")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
