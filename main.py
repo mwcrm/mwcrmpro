@@ -11035,60 +11035,48 @@ function updateBot(v){{
 
         _yeni_kg_ui = {}
         _yeni_gizli_ui = []
-        # 🚨 KRİTİK DÜZELTME (2026-09): _KOL_VARS_UI artık 50+ alan içeriyor
-        # (Vergi No, Randevu Tarihi vb. eklendikçe) — hepsini TEK satıra
-        # (st.columns(50+)) sığdırmaya çalışmak, sütunları görünmeyecek kadar
-        # daraltıyordu (bu yüzden "Randevu Tarihi" ekranda YOK gibi
-        # görünüyordu — aslında oradaydı ama görünmeyecek kadar sıkışmıştı).
-        # Artık 8'erli SATIRLAR halinde gösteriliyor — her alan okunabilir
-        # genişlikte kalıyor, gerekirse otomatik yeni satıra geçiyor.
-        _kg_ui_satir_boyu = 8
-        _kg_ui_tum_anahtarlar = list(_KOL_VARS_UI.keys())
-        for _satir_bas in range(0, len(_kg_ui_tum_anahtarlar), _kg_ui_satir_boyu):
-            _kg_ui_satir_anahtarlari = _kg_ui_tum_anahtarlar[_satir_bas:_satir_bas + _kg_ui_satir_boyu]
-            _ui_cols = st.columns(len(_kg_ui_satir_anahtarlari))
-            for _j, _k in enumerate(_kg_ui_satir_anahtarlari):
-                _i = _satir_bas + _j
-                _etiket = _KG_UI_ETIKET.get(_k, _k)
-                _gizli_mi = _k in _gizli_ui
-                with _ui_cols[_j]:
-                    # Göz ikonu — tıklayınca gizle/göster
-                    _goz = "🙈" if _gizli_mi else "👁"
-                    if st.button(_goz, key=f"ui_giz_{_i}_{_k[:4]}", use_container_width=True,
-                                 help="Gizle/Göster"):
-                        if _gizli_mi:
-                            _gizli_ui = [x for x in _gizli_ui if x != _k]
-                        else:
-                            _gizli_ui.append(_k)
-                        # Oturum içinde HEMEN uygula — DB yazımı başarısız olsa bile
-                        # buton görsel olarak tepkisiz kalmasın.
-                        st.session_state["_kol_gizli"] = _gizli_ui
-                        st.session_state.pop("_kol_genislik_init", None)
-                        # Kalıcı olması için DB'ye de yaz (upsert+on_conflict yerine
-                        # sil+ekle — kullanici_tercih tablosunda bu kısıt olmadığı
-                        # için upsert sessizce başarısız oluyordu, ayarlar hiç
-                        # kalıcı olmuyordu).
-                        try:
-                            _kguj_deger = _kguj.dumps(_gizli_ui, ensure_ascii=False)
-                            _kgui_guncelle = _sb_kg_ui.table("kullanici_tercih").update({"deger": _kguj_deger}).eq(
-                                "kullanici", "__liste_ui__").eq("anahtar", "_kol_gizli").execute()
-                            if not _kgui_guncelle.data:
-                                _sb_kg_ui.table("kullanici_tercih").insert({
-                                    "kullanici": "__liste_ui__", "anahtar": "_kol_gizli", "deger": _kguj_deger
-                                }).execute()
-                        except Exception as _kgize:
-                            st.toast(f"⚠️ Gizle/Göster kaydedilemedi: {_kgize}", icon="⚠️")
-                        st.rerun()
-                    # Slider — gizliyse devre dışı.
-                    _yeni_kg_ui[_k] = st.slider(
-                        f"{'~~' if _gizli_mi else ''}{_etiket}",
-                        min_value=5, max_value=50,
-                        value=max(min(int(_kg_ui_mevcut.get(_k, _KOL_VARS_UI.get(_k,100))), 50), 5),
-                        step=5, key=f"ui_kg_{_k}",
-                        disabled=_gizli_mi
-                    )
+        _ui_cols = st.columns(len(_KOL_VARS_UI))
+        for _i, _k in enumerate(_KOL_VARS_UI.keys()):
+            _etiket = _KG_UI_ETIKET.get(_k, _k)
+            _gizli_mi = _k in _gizli_ui
+            with _ui_cols[_i]:
+                # Göz ikonu — tıklayınca gizle/göster
+                _goz = "🙈" if _gizli_mi else "👁"
+                if st.button(_goz, key=f"ui_giz_{_i}_{_k[:4]}", use_container_width=True,
+                             help="Gizle/Göster"):
                     if _gizli_mi:
-                        _yeni_gizli_ui.append(_k)
+                        _gizli_ui = [x for x in _gizli_ui if x != _k]
+                    else:
+                        _gizli_ui.append(_k)
+                    # Oturum içinde HEMEN uygula — DB yazımı başarısız olsa bile
+                    # buton görsel olarak tepkisiz kalmasın.
+                    st.session_state["_kol_gizli"] = _gizli_ui
+                    st.session_state.pop("_kol_genislik_init", None)
+                    # Kalıcı olması için DB'ye de yaz (upsert+on_conflict yerine
+                    # sil+ekle — kullanici_tercih tablosunda bu kısıt olmadığı
+                    # için upsert sessizce başarısız oluyordu, ayarlar hiç
+                    # kalıcı olmuyordu).
+                    try:
+                        _kguj_deger = _kguj.dumps(_gizli_ui, ensure_ascii=False)
+                        _kgui_guncelle = _sb_kg_ui.table("kullanici_tercih").update({"deger": _kguj_deger}).eq(
+                            "kullanici", "__liste_ui__").eq("anahtar", "_kol_gizli").execute()
+                        if not _kgui_guncelle.data:
+                            _sb_kg_ui.table("kullanici_tercih").insert({
+                                "kullanici": "__liste_ui__", "anahtar": "_kol_gizli", "deger": _kguj_deger
+                            }).execute()
+                    except Exception as _kgize:
+                        st.toast(f"⚠️ Gizle/Göster kaydedilemedi: {_kgize}", icon="⚠️")
+                    st.rerun()
+                # Slider — gizliyse devre dışı.
+                _yeni_kg_ui[_k] = st.slider(
+                    f"{'~~' if _gizli_mi else ''}{_etiket}",
+                    min_value=5, max_value=50,
+                    value=max(min(int(_kg_ui_mevcut.get(_k, _KOL_VARS_UI.get(_k,100))), 50), 5),
+                    step=5, key=f"ui_kg_{_k}",
+                    disabled=_gizli_mi
+                )
+                if _gizli_mi:
+                    _yeni_gizli_ui.append(_k)
 
         # Canlı önizleme: Kaydet'e basmadan slider'ı hareket ettirir ettirmez
         # ana listedeki tablo hemen bu genişlikleri kullanır (henüz DB'ye yazılmaz,
