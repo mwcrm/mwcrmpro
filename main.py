@@ -411,43 +411,68 @@ def _fy_il_ciro_ozet_cikar(_metin):
     sola yaslanır (ljust) — tutar hep aynı sütunda başlar, alt alta gelir.
     Format eşleşmezse (elle çok değiştirilmiş metin gibi) boş döner — hata
     fırlatmaz."""
-    import re as _fyre2
     try:
         _sonuc = _fy_il_ciro_parse(_metin)
-        if not _sonuc:
-            return ""
+        return _fy_il_ciro_ozet_formatla(_sonuc)
+    except Exception:
+        return ""
 
-        _oncelik_sira = ["İSTANBUL", "İZMİR", "BURSA", "MANİSA", "TEKİRDAĞ", "KOCAELİ"]
-        _oncelikli = [(_ad, _sonuc[_ad]) for _ad in _oncelik_sira if _ad in _sonuc]
-        _oncelik_toplam = sum(t for _, t in _oncelikli)
-        _diger = sorted([(k, v) for k, v in _sonuc.items() if k not in _oncelik_sira], key=lambda x: -x[1])
-        _diger_toplam = sum(t for _, t in _diger)
-        _genel_toplam = _oncelik_toplam + _diger_toplam
 
-        # Hizalama genişliği: en uzun il/etiket adına göre (başlık dahil)
-        _tum_etiketler = [a for a, _ in _oncelikli] + (["Ara Toplam"] if _oncelikli else []) + \
-                          [a for a, _ in _diger] + (["Ara Toplam"] if _diger else []) + \
-                          ["GENEL TOPLAM", "VARIŞ İLİ"]
-        _genislik = max(len(a) for a in _tum_etiketler)
+def _fy_il_ciro_ozet_formatla(_sonuc):
+    """Ortak formatlama: {il: tutar} sözlüğünden hizalı 'İl Ciroları' metni
+    üretir (öncelikli iller + Ara Toplam, diğer iller + Ara Toplam, GENEL
+    TOPLAM). Hem _fy_il_ciro_ozet_cikar (metinden) hem
+    _fy_il_ciro_ozet_girislerden (yapılandırılmış veriden) bunu kullanır."""
+    if not _sonuc:
+        return ""
+    _oncelik_sira = ["İSTANBUL", "İZMİR", "BURSA", "MANİSA", "TEKİRDAĞ", "KOCAELİ"]
+    _oncelikli = [(_ad, _sonuc[_ad]) for _ad in _oncelik_sira if _ad in _sonuc]
+    _oncelik_toplam = sum(t for _, t in _oncelikli)
+    _diger = sorted([(k, v) for k, v in _sonuc.items() if k not in _oncelik_sira], key=lambda x: -x[1])
+    _diger_toplam = sum(t for _, t in _diger)
+    _genel_toplam = _oncelik_toplam + _diger_toplam
+    _tum_etiketler = [a for a, _ in _oncelikli] + (["Ara Toplam"] if _oncelikli else []) + \
+                      [a for a, _ in _diger] + (["Ara Toplam"] if _diger else []) + \
+                      ["GENEL TOPLAM", "VARIŞ İLİ"]
+    _genislik = max(len(a) for a in _tum_etiketler)
 
-        def _icy_fmt(_il, _tutar):
-            return f"{_il.ljust(_genislik)}  {_tutar:,.0f}".replace(",", ".")
+    def _icy_fmt(_il, _tutar):
+        return f"{_il.ljust(_genislik)}  {_tutar:,.0f}".replace(",", ".")
 
-        _satirlar = [f"{'VARIŞ İLİ'.ljust(_genislik)}  CİRO", "-" * (_genislik + 10)]
-        for _ad, _t in _oncelikli:
-            _satirlar.append(_icy_fmt(_ad, _t))
-        if _oncelikli:
-            _satirlar.append(_icy_fmt("Ara Toplam", _oncelik_toplam))
-            _satirlar.append("---")
+    _satirlar = [f"{'VARIŞ İLİ'.ljust(_genislik)}  CİRO", "-" * (_genislik + 10)]
+    for _ad, _t in _oncelikli:
+        _satirlar.append(_icy_fmt(_ad, _t))
+    if _oncelikli:
+        _satirlar.append(_icy_fmt("Ara Toplam", _oncelik_toplam))
+        _satirlar.append("---")
+    for _ad, _t in _diger:
+        _satirlar.append(_icy_fmt(_ad, _t))
+    if _diger:
+        _satirlar.append(_icy_fmt("Ara Toplam", _diger_toplam))
+        _satirlar.append("")
+    _satirlar.append(_icy_fmt("GENEL TOPLAM", _genel_toplam))
+    return "\n".join(_satirlar)
 
-        for _ad, _t in _diger:
-            _satirlar.append(_icy_fmt(_ad, _t))
-        if _diger:
-            _satirlar.append(_icy_fmt("Ara Toplam", _diger_toplam))
-            _satirlar.append("")
 
-        _satirlar.append(_icy_fmt("GENEL TOPLAM", _genel_toplam))
-        return "\n".join(_satirlar)
+def _fy_il_ciro_ozet_girislerden(_girisler):
+    """🚨 KRİTİK DÜZELTME (2026-09): "Hedeflenen Ciro" ile "İl Ciroları" bazı
+    satırlarda (3 sayı içeren, ör. 'İSTANBUL 15 300 4.200') FARKLI sayılardan
+    hesaplanıyordu — Hedef SON sayıyı (_g[5], hedef_katkisi) alırken, "Fiyat
+    İncele" tablosundaki TOPLAM sütunu (ve dolayısıyla ondan metin-ayrıştırma
+    ile hesaplanan İl Ciroları) İKİNCİ sayıyı (_g[4], toplam) gösteriyordu.
+    Bu fonksiyon, İl Ciroları'nı DOĞRUDAN yapılandırılmış _girisler'den,
+    Hedef'in kullandığı AYNI alanla (_g[5]) hesaplar — böylece ikisi HER
+    ZAMAN birebir aynı olur, metin ayrıştırma riski de tamamen ortadan
+    kalkar. _girisler: (sehir, tur, desi, ikinci_sayi, toplam, hedef_katkisi)
+    tuple'larının listesi (bkz. 'Ayrıştır ve Hazırla' akışı)."""
+    try:
+        _sonuc = {}
+        for _g in _girisler:
+            _sehir = str(_g[0] or "").strip()
+            if not _sehir:
+                continue
+            _sonuc[_sehir] = _sonuc.get(_sehir, 0.0) + float(_g[5])
+        return _fy_il_ciro_ozet_formatla(_sonuc)
     except Exception:
         return ""
 
@@ -4629,6 +4654,19 @@ def not_dialog(cari_id, firma_adi=""):
                         except: pass
                         try: get_cari_listesi.clear()
                         except: pass
+                        # 🚨 KRİTİK DÜZELTME (2026-09): "İl Ciroları" artık BURADA,
+                        # Hedeflenen Ciro ile AYNI ANDA ve AYNI kaynaktan
+                        # (_fy_yeni_girisler'in _g[5] alanı) hesaplanıp kaydedilir
+                        # — metin ayrıştırmaya (ve 3-sayılı satırlarda TOPLAM ile
+                        # hedef_katkisi'nin farklı çıkmasına) bağlı KALMAZ, ikisi
+                        # bir daha asla birbirinden farklı olamaz.
+                        try:
+                            _fy_icy_ozet = _fy_il_ciro_ozet_girislerden(_fy_yeni_girisler)
+                            _fy_icy_harita = _cari_ek_bilgi_yukle()
+                            _fy_icy_harita.setdefault(str(int(cari_id)), {})["il_ciro_ozet"] = _fy_icy_ozet
+                            _cari_ek_bilgi_kaydet(_fy_icy_harita)
+                        except Exception:
+                            pass
                         st.toast(f"🎯 Hedeflenen Ciro: {_kg_tr_format(_fy_hedef_toplam)} ₺ olarak Cari Liste'ye yazıldı", icon="🎯")
                     except Exception as _fy_hedef_hata:
                         st.error(f"Hedeflenen Ciro yazılırken hata: {_fy_hedef_hata}")
@@ -4719,30 +4757,33 @@ textarea[aria-label="Koli/Palet önizleme"] {
                         _vd_sb.table("kullanici_tercih").insert({"kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel",
                                                                   "deger": _kpo_deger2}).execute()
                     st.session_state["_koli_palet_manuel"] = _kp_map2
-                    # KULLANICI İSTEĞİ (2026-09): "İl Ciroları" — bu metinden
-                    # otomatik çıkarılıp ayrıca kaydedilir (Cari Liste'de
-                    # "Ara İşlem"in sağındaki sütunda gösterilecek).
-                    try:
-                        _icy_ozet = _fy_il_ciro_ozet_cikar(_fy_son_metin.strip())
-                        _icy_harita = _cari_ek_bilgi_yukle()
-                        _icy_harita.setdefault(_kp_id_str2, {})["il_ciro_ozet"] = _icy_ozet
-                        _cari_ek_bilgi_kaydet(_icy_harita)
-                    except Exception:
-                        pass
-                    # 🚨 KRİTİK DÜZELTME (2026-09): "Hedeflenen Ciro" ile "İl
-                    # Ciroları GENEL TOPLAM" farklı yöntemlerle hesaplandığı
-                    # için birbirinden farklı çıkabiliyordu (kullanıcı bunu
-                    # fark etti). Artık İKİSİ DE AYNI veriden (bu kaydedilen
-                    # metin) hesaplanır — Koli/Palet her kaydedildiğinde
-                    # Hedeflenen Ciro da BURADA otomatik güncellenir, bir
-                    # daha asla birbirinden farklı olamazlar.
-                    try:
-                        _icy_hedef = _fy_il_ciro_genel_toplam(_fy_son_metin.strip())
-                        if _icy_hedef is not None:
-                            db_update("cari_kartlar", {"beklenen_ciro": _icy_hedef}, "id", int(cari_id))
-                            get_cari_listesi.clear()
-                    except Exception:
-                        pass
+                    # 🚨 KRİTİK DÜZELTME (2026-09): "Ayrıştır ve Hazırla" zaten
+                    # "İl Ciroları" ve "Hedeflenen Ciro"yu DOĞRU (yapılandırılmış
+                    # veriden, hedef_katkisi ile) hesaplayıp kaydetmişti. Metin
+                    # burada HİÇ DEĞİŞTİRİLMEDİYSE (kullanıcı elle düzenlemediyse),
+                    # metin-ayrıştırma ile TEKRAR hesaplayıp o DOĞRU değerin
+                    # ÜZERİNE YANLIŞ bir şey YAZMAYIZ — sadece kullanıcı GERÇEKTEN
+                    # elle değiştirdiyse (metin farklıysa) metinden yeniden
+                    # hesaplarız (en iyi çaba, o durumda text-parsing tek seçenek).
+                    _icy_metin_degisti = _fy_son_metin.strip() != str(_fy_hazir or "").strip()
+                    if _icy_metin_degisti:
+                        # KULLANICI İSTEĞİ (2026-09): "İl Ciroları" — bu metinden
+                        # otomatik çıkarılıp ayrıca kaydedilir (Cari Liste'de
+                        # "Ara İşlem"in sağındaki sütunda gösterilecek).
+                        try:
+                            _icy_ozet = _fy_il_ciro_ozet_cikar(_fy_son_metin.strip())
+                            _icy_harita = _cari_ek_bilgi_yukle()
+                            _icy_harita.setdefault(_kp_id_str2, {})["il_ciro_ozet"] = _icy_ozet
+                            _cari_ek_bilgi_kaydet(_icy_harita)
+                        except Exception:
+                            pass
+                        try:
+                            _icy_hedef = _fy_il_ciro_genel_toplam(_fy_son_metin.strip())
+                            if _icy_hedef is not None:
+                                db_update("cari_kartlar", {"beklenen_ciro": _icy_hedef}, "id", int(cari_id))
+                                get_cari_listesi.clear()
+                        except Exception:
+                            pass
                     st.session_state.pop(f"_fy_hazir_{cari_id}", None)
                     st.toast("✅ Koli/Palet ve Hedeflenen Ciro güncellendi", icon="📦")
                     st.rerun()
