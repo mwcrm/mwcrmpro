@@ -524,6 +524,71 @@ def _fy_teklif_onerisi_hesapla(_girisler):
         return ""
 
 
+def _fy_desi_baremli_teklif_hesapla(_girisler):
+    """🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ) — _fy_teklif_onerisi_hesapla'ya
+    (basit TL/desi oranı) EK olarak, DAHA DETAYLI bir kırılım: her il için
+    KOLİ'de 100 desi'ye kadar sabit BAREMLER (30, 50, 75, 100), PALET'te
+    101-1000 desi arası sabit BAREMLER (330, 500, 750, 1000) belirlenir.
+    Her geçmiş kayıt, EN YAKIN barem'e atanır (İL BAZLI — iller birbirine
+    karışmaz). Bir barem'e SADECE 1 kayıt düşerse o kaydın fiyatı AYNEN
+    yazılır (ortalama alınmaz); BİRDEN FAZLA kayıt düşerse ORTALAMASI
+    yazılır. Desi=0 (sabit fiyatlı, ör. bazı KOLİ gönderimleri) kayıtlar
+    ayrıca kendi TÜRÜ altında (barem'siz) ortalama/tekil fiyatıyla
+    gösterilir. Çıktı İL BAŞLIKLARI altında, hizalı (en uzun etikete göre)
+    satırlar halinde döner — {il: metin} sözlüğü olarak."""
+    from collections import defaultdict
+    _KOLI_BAREMLER = [30, 50, 75, 100]
+    _PALET_BAREMLER = [330, 500, 750, 1000]
+
+    def _tr_para(_v):
+        # Türkçe para biçimi: binlik ayraç nokta, ondalık ayraç virgül (ör. 1.962,50)
+        return f"{_v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    try:
+        _il_barem_gruplari = defaultdict(lambda: defaultdict(list))
+        _il_sabit_gruplari = defaultdict(lambda: defaultdict(list))
+        for _g in _girisler:
+            _il = str(_g[0] or "").strip()
+            if not _il:
+                continue
+            _tur = str(_g[1] or "KOLİ").strip().upper() or "KOLİ"
+            try:
+                _desi = float(_g[2])
+                _toplam = float(_g[4])
+            except Exception:
+                continue
+            if _desi <= 0:
+                _il_sabit_gruplari[_il][_tur].append(_toplam)
+            elif _desi <= 100:
+                _en_yakin = min(_KOLI_BAREMLER, key=lambda b: abs(b - _desi))
+                _il_barem_gruplari[_il][("KOLİ", _en_yakin)].append(_toplam)
+            else:
+                _en_yakin = min(_PALET_BAREMLER, key=lambda b: abs(b - _desi))
+                _il_barem_gruplari[_il][("PALET", _en_yakin)].append(_toplam)
+
+        _sonuc = {}
+        for _il in sorted(set(list(_il_barem_gruplari.keys()) + list(_il_sabit_gruplari.keys()))):
+            _satir_ciftleri = []
+            if _il in _il_sabit_gruplari:
+                for _tur in sorted(_il_sabit_gruplari[_il].keys()):
+                    _fiyatlar = _il_sabit_gruplari[_il][_tur]
+                    _deger = _fiyatlar[0] if len(_fiyatlar) == 1 else sum(_fiyatlar) / len(_fiyatlar)
+                    _satir_ciftleri.append((_tur, f"{_tr_para(_deger)} TL"))
+            for _tur_ad, _barem_sirasi in [("KOLİ", _KOLI_BAREMLER), ("PALET", _PALET_BAREMLER)]:
+                for _barem in _barem_sirasi:
+                    _key = (_tur_ad, _barem)
+                    if _il in _il_barem_gruplari and _key in _il_barem_gruplari[_il]:
+                        _fiyatlar = _il_barem_gruplari[_il][_key]
+                        _deger = _fiyatlar[0] if len(_fiyatlar) == 1 else sum(_fiyatlar) / len(_fiyatlar)
+                        _satir_ciftleri.append((f"{_tur_ad} {_barem} DESİ", f"{_tr_para(_deger)} TL"))
+            if _satir_ciftleri:
+                _genislik = max(len(e) for e, _ in _satir_ciftleri)
+                _sonuc[_il] = "\n".join(f"{_e.ljust(_genislik)}   {_f}" for _e, _f in _satir_ciftleri)
+        return _sonuc
+    except Exception:
+        return {}
+
+
 
 def _alt_ilerleme_cubugu_html(_yuzde, _mesaj):
     """KULLANICI İSTEĞİ (2026-09): kaydetme gibi işlemler sürerken, ekranın
@@ -4758,11 +4823,26 @@ def not_dialog(cari_id, firma_adi=""):
                         # şeklinde AZ SATIRDA bir özet üretir ve bunu "Teklif
                         # Fiyat" alanına otomatik yazar — o ile ait geçmiş
                         # tekliflerden çıkarılan, güncel bir referans teklif.
+                        # 🆕 2. EK (2026-09, KULLANICI İSTEĞİ): bunun ALTINA,
+                        # KOLİ (30/50/75/100 desi) ve PALET (330/500/750/1000
+                        # desi) baremlerine göre İL BAZLI detaylı kırılım da
+                        # eklenir — barem'e tek kayıt düşerse aynen, birden
+                        # fazla düşerse ortalaması yazılır.
                         try:
                             _fy_teklif_onerisi = _fy_teklif_onerisi_hesapla(_fy_yeni_girisler)
+                            _fy_barem_detay = _fy_desi_baremli_teklif_hesapla(_fy_yeni_girisler)
+                            _fy_teklif_parcalari = []
                             if _fy_teklif_onerisi:
+                                _fy_teklif_parcalari.append(_fy_teklif_onerisi)
+                            if _fy_barem_detay:
+                                _fy_teklif_parcalari.append("--- Detaylı Barem Bazlı Teklif ---")
+                                for _fy_il_ad in sorted(_fy_barem_detay.keys()):
+                                    _fy_teklif_parcalari.append(f"\n{_fy_il_ad}:")
+                                    _fy_teklif_parcalari.append(_fy_barem_detay[_fy_il_ad])
+                            _fy_teklif_tam = "\n".join(_fy_teklif_parcalari)
+                            if _fy_teklif_tam.strip():
                                 _fy_tf_harita = _cari_ek_bilgi_yukle()
-                                _fy_tf_harita.setdefault(str(int(cari_id)), {})["teklif_fiyat"] = _fy_teklif_onerisi
+                                _fy_tf_harita.setdefault(str(int(cari_id)), {})["teklif_fiyat"] = _fy_teklif_tam
                                 _cari_ek_bilgi_kaydet(_fy_tf_harita)
                         except Exception:
                             pass
