@@ -344,21 +344,38 @@ def _fy_il_ciro_parse(_metin):
     """Ortak ayrıştırma: 'Fiyat İncele' metninden {il: toplam} sözlüğü çıkarır.
     Hem _fy_il_ciro_ozet_cikar hem _fy_il_ciro_genel_toplam bunu kullanır —
     böylece İl Ciroları metni ile Hedeflenen Ciro HER ZAMAN aynı veriden,
-    birbirinden asla farklı olmayacak şekilde hesaplanır."""
+    birbirinden asla farklı olmayacak şekilde hesaplanır.
+    🚨 DÜZELTME (2026-09): eskiden "İL TOPLAM CİRO" alt toplamına (bir
+    satırda İKİNCİ 'TL' değeri, sadece grubun İLK satırında bulunur) itimat
+    ediliyordu — ama aynı il metin içinde birden fazla AYRI blokta geçerse
+    (ör. sonradan tekrar ayrıştırma/ekleme yapıldıysa) bu, İKİLETME riski
+    taşıyordu (kullanıcı bunu fark etti). ARTIK bu alt toplama HİÇ
+    güvenilmiyor — HER SATIRIN KENDİ TOPLAM'ı (satırdaki İLK 'TL' değeri)
+    tek tek alınıp aynı ile ait TÜM satırlar toplanıyor. Bu yöntem, Excel'de
+    her satırı elle toplamakla BİREBİR aynı, hataya yer bırakmayan sonucu
+    verir — hangi düzende/kaç kez tekrar etmiş olursa olsun."""
     import re as _fyre3
     _sonuc = {}
+    _fy_haric_kelimeler = {"ARA", "GENEL", "VARIŞ", "---", "V.İLİ"}
     for _satir in str(_metin or "").split("\n"):
         _tllar = _fyre3.findall(r'([\d.]+)\s*TL', _satir)
-        if len(_tllar) >= 2:
-            _parcalar = _satir.strip().split()
-            if not _parcalar:
-                continue
-            _sehir = _parcalar[0]
-            try:
-                _tutar = float(_tllar[-1])
-            except Exception:
-                continue
-            _sonuc[_sehir] = _sonuc.get(_sehir, 0.0) + _tutar
+        if len(_tllar) < 1:
+            continue
+        _parcalar = _satir.strip().split()
+        if not _parcalar:
+            continue
+        _sehir = _parcalar[0]
+        # NOT: hariç tutma kontrolü SADECE karşılaştırma için basit .upper()
+        # kullanır (bu kelimelerde Türkçe İ/ı karışıklığı yok) — SAKLANAN
+        # şehir adı ORİJİNAL haliyle (İ/ı dahil) bırakılır, yoksa aşağıdaki
+        # _oncelik_sira ("İSTANBUL" vb.) ile eşleşme bozulurdu.
+        if _sehir.upper() in _fy_haric_kelimeler:
+            continue
+        try:
+            _tutar = float(_tllar[0])  # satırın KENDİ toplamı — HER ZAMAN ilk TL
+        except Exception:
+            continue
+        _sonuc[_sehir] = _sonuc.get(_sehir, 0.0) + _tutar
     return _sonuc
 
 
