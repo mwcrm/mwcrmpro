@@ -509,16 +509,26 @@ def _fy_teklif_onerisi_hesapla(_girisler):
             else:
                 _il_sabitler[_sehir].append(_toplam)
 
+        # KULLANICI İSTEĞİ (2026-09): şehir isimleri farklı uzunlukta olduğu
+        # için ":" ve rakamlar hizasız, "çorba gibi" görünüyordu. Artık EN
+        # UZUN şehir ismine göre sabit genişlikte hizalanıyor (İl Ciroları
+        # ve Detaylı Barem Bazlı Teklif ile AYNI okunabilirlik standardı).
+        _tum_iller_sirali = sorted(set(list(_il_oranlari.keys()) + list(_il_sabitler.keys())))
+        if not _tum_iller_sirali:
+            return ""
+        _il_genislik = max(len(_il) for _il in _tum_iller_sirali)
+
         _sonuc_satirlari = []
-        for _il in sorted(set(list(_il_oranlari.keys()) + list(_il_sabitler.keys()))):
+        for _il in _tum_iller_sirali:
+            _il_hizali = _il.ljust(_il_genislik)
             if _il_oranlari.get(_il):
                 _sayac = Counter(_il_oranlari[_il])
                 _en_sik_oran, _adet = _sayac.most_common(1)[0]
-                _sonuc_satirlari.append(f"{_il}: ~{_en_sik_oran:.2f} TL/desi ({_adet}/{len(_il_oranlari[_il])} kayıttan)")
+                _sonuc_satirlari.append(f"{_il_hizali} : ~{_en_sik_oran:.2f} TL/desi ({_adet}/{len(_il_oranlari[_il])} kayıttan)")
             elif _il_sabitler.get(_il):
                 _sayac2 = Counter(_il_sabitler[_il])
                 _en_sik_sabit, _adet2 = _sayac2.most_common(1)[0]
-                _sonuc_satirlari.append(f"{_il}: ~{_en_sik_sabit:,.0f} TL sabit ({_adet2}/{len(_il_sabitler[_il])} kayıttan)".replace(",", "."))
+                _sonuc_satirlari.append(f"{_il_hizali} : ~{_en_sik_sabit:,.0f} TL sabit ({_adet2}/{len(_il_sabitler[_il])} kayıttan)".replace(",", "."))
         return "\n".join(_sonuc_satirlari)
     except Exception:
         return ""
