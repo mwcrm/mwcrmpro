@@ -7640,7 +7640,7 @@ function kartSec(id){
         # ── TEK SATIR — hepsi aynı hizada, eşit genişlikte: Yeni firma kontrol,
         # Özel, Aşama, Durum, İl, İlçe, Güncelleme Tarihi (Çoklu firma artık
         # bu panelin ÜSTÜNDE, kendi ayrı satırında — her zaman açık) ────────
-        _fc = st.columns(12)
+        _fc = st.columns(14)
 
         # ── YENİ FİRMA KONTROLÜ — "Satır Ekle" ile elle firma adı yazmadan önce,
         # aynı/benzer isimde zaten kayıtlı müşteri var mı diye anlık arama.
@@ -7736,11 +7736,9 @@ function kartSec(id){
             "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
             "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi", "musteri_subesi": "Müşteri Şubesi",
             "vade": "Vade", "odeme": "Ödeme", "teklif_fiyat": "Teklif Fiyat",
-            "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi", "randevu_tarihi_manuel": "Randevu Tarihi",
             "beklenen_ciro": "Hedeflenen Ciro", "gerceklesen_ciro": "Gerçekleşen Ciro",
             "islem_asamasi": "İlk Temas", "asama1": "1. Aşama", "asama2": "2. Aşama", "asama3": "3. Aşama",
             "aciklama": "Açıklama", "ara_islem": "Ara İşlem", "il_ciro_ozet": "İl Ciroları", "sektor": "Sektör", "rut": "Rut", "sonuc": "Sonuç",
-            "tarih": "Kayıt Tarihi", "guncelleme_tarihi": "Güncelleme Tarihi",
         }
         for _cl_sirala_il_kv in _IL_SUTUN_LISTESI:
             if _cl_sirala_il_kv not in _CL_SIRALA_SECENEKLERI:
@@ -7751,6 +7749,26 @@ function kartSec(id){
         _cl_sirala_yon = _fc[11].selectbox("Yön", ["Artan (A→Z, küçük→büyük)", "Azalan (Z→A, büyük→küçük)"],
                                             key="_cl_sirala_yon_sec", label_visibility="collapsed",
                                             disabled=not _cl_sirala_alan)
+
+        # ── 📅 TARİH SIRALAMA — KULLANICI İSTEĞİ (2026-09): tarih başlıkları
+        # (Kayıt, Güncelleme, İşlem, Takip, Randevu Tarihi) için, genel
+        # "🔀 Sırala"dan TAMAMEN AYRI, bağımsız çalışan ikinci bir sıralama.
+        # İkisi AYNI ANDA aktif olabilir gibi görünse de, TEK bir tabloya
+        # aynı anda İKİ farklı sıralama uygulanamayacağı için: bu kutuda bir
+        # seçim varsa O ÖNCELİKLİDİR (tabloyu tarihe göre sıralar); boşsa
+        # genel "🔀 Sırala"nın seçimi geçerli olur.
+        _CL_TARIH_SIRALA_SECENEKLERI = {
+            "": "-- Tarih Sıralama Yok --",
+            "tarih": "Kayıt Tarihi", "guncelleme_tarihi": "Güncelleme Tarihi",
+            "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi",
+            "randevu_tarihi_manuel": "Randevu Tarihi",
+        }
+        _cl_tarih_sirala_alan = _fc[12].selectbox("📅 Tarih Sırala", list(_CL_TARIH_SIRALA_SECENEKLERI.keys()),
+                                                   format_func=lambda k: _CL_TARIH_SIRALA_SECENEKLERI[k],
+                                                   key="_cl_tarih_sirala_alan_sec", label_visibility="collapsed")
+        _cl_tarih_sirala_yon = _fc[13].selectbox("Tarih Yön", ["Eskiden Yeniye", "Yeniden Eskiye"],
+                                                  key="_cl_tarih_sirala_yon_sec", label_visibility="collapsed",
+                                                  disabled=not _cl_tarih_sirala_alan)
 
         # ── ÖZEL (AYARLANABİLİR) FİLTRE — KULLANICI İSTEĞİ (2026-09):
         # Kullanıcılar > Kolon Ayarları > "🔍 Filtre Düzenle"de seçilen alana
@@ -8557,7 +8575,20 @@ function kartSec(id){
 
     # ── 🔀 KALICI SIRALAMA UYGULAMASI — widget'lar artık YUKARIDA (filtre
     # satırında) oluşturuluyor, burada SADECE seçime göre df_f sıralanıyor.
-    if _cl_sirala_alan and _cl_sirala_alan in df_f.columns:
+    # ÖNCELİK: "📅 Tarih Sırala"da bir seçim varsa O uygulanır (tarih olarak
+    # anlaşılmaya çalışılır — DD.MM.YYYY gibi yazılmış olsa bile doğru
+    # sıralanır, tarih olarak okunamayan metinler en sona atılır); yoksa
+    # genel "🔀 Sırala" uygulanır. İkisi AYNI ANDA TEK tabloya uygulanamaz.
+    if _cl_tarih_sirala_alan and _cl_tarih_sirala_alan in df_f.columns:
+        _cl_tarih_azalan = _cl_tarih_sirala_yon == "Yeniden Eskiye"
+        try:
+            _cl_tarih_ayristirilmis = pd.to_datetime(df_f[_cl_tarih_sirala_alan], dayfirst=True, errors="coerce")
+            df_f = df_f.assign(_cl_tarih_sira_gecici=_cl_tarih_ayristirilmis).sort_values(
+                by="_cl_tarih_sira_gecici", ascending=not _cl_tarih_azalan, na_position="last"
+            ).drop(columns=["_cl_tarih_sira_gecici"])
+        except Exception:
+            pass
+    elif _cl_sirala_alan and _cl_sirala_alan in df_f.columns:
         _cl_sirala_azalan = _cl_sirala_yon.startswith("Azalan")
         try:
             if _cl_sirala_alan in ("beklenen_ciro", "gerceklesen_ciro", "id"):
