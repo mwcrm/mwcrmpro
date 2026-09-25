@@ -82,6 +82,7 @@ _CL_OZEL_FILTRE_SECENEKLERI = {
     "teklif_fiyat": "Teklif Fiyat",
     "islem_tarihi_manuel": "İşlem Tarihi",
     "takip_tarihi_manuel": "Takip Tarihi",
+    "randevu_tarihi_manuel": "Randevu Tarihi",
     "aciklama": "Açıklama",
     "asama1": "1. Aşama",
     "asama2": "2. Aşama",
@@ -133,11 +134,12 @@ def _cl_ozel_filtre_alani_kaydet(_alan):
 
 
 _CARI_EK_ALAN_ANAHTAR = "_cari_ek_bilgiler"
-_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "il_ciro_ozet"]
+_CARI_EK_ALAN_LISTESI = ["vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "randevu_tarihi_manuel", "il_ciro_ozet"]
 _CARI_EK_ALAN_ETIKET = {
     "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi",
     "musteri_subesi": "Müşteri Şubesi", "vade": "Vade", "odeme": "Ödeme",
     "teklif_fiyat": "Teklif Fiyat", "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi",
+    "randevu_tarihi_manuel": "Randevu Tarihi",
     "il_ciro_ozet": "İl Ciroları",
 }
 
@@ -3523,6 +3525,10 @@ def not_dialog(cari_id, firma_adi=""):
 }
 </style>""", unsafe_allow_html=True)
     if st.button("❌ Bu Pencereyi Kapat", key=f"dlg_kapat_{cari_id}"):
+        # KULLANICI İSTEĞİ (2026-09): "Kapat"a basınca bu müşteri için pencere
+        # bir daha KENDİLİĞİNDEN açılmasın (Seç kutusu hâlâ işaretli kalmış
+        # olsa bile) — sadece kullanıcı BİLEREK tekrar Seç'e basarsa açılsın.
+        st.session_state["_not_dialog_son_kapatilan_id"] = cari_id
         st.session_state.pop("_not_dialog_kalici_id", None)
         st.session_state.pop("_not_dialog_kalici_firma", None)
         st.rerun()
@@ -7714,7 +7720,7 @@ function kartSec(id){
             "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
             "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi", "musteri_subesi": "Müşteri Şubesi",
             "vade": "Vade", "odeme": "Ödeme", "teklif_fiyat": "Teklif Fiyat",
-            "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi",
+            "islem_tarihi_manuel": "İşlem Tarihi", "takip_tarihi_manuel": "Takip Tarihi", "randevu_tarihi_manuel": "Randevu Tarihi",
             "beklenen_ciro": "Hedeflenen Ciro", "gerceklesen_ciro": "Gerçekleşen Ciro",
             "islem_asamasi": "İlk Temas", "asama1": "1. Aşama", "asama2": "2. Aşama", "asama3": "3. Aşama",
             "aciklama": "Açıklama", "ara_islem": "Ara İşlem", "il_ciro_ozet": "İl Ciroları", "sektor": "Sektör", "rut": "Rut", "sonuc": "Sonuç",
@@ -8376,7 +8382,7 @@ function kartSec(id){
         "tarih":90,"guncelleme_tarihi":100,
         "firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
         "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
-        "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,
+        "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,"musteri_kodu":80,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
         "🧾 Teklif":70,"💬 Mesaj":70,
@@ -8440,6 +8446,7 @@ function kartSec(id){
     col_config = {
         "islem_tarihi_manuel": st.column_config.TextColumn("İşlem Tarihi", width=_w("islem_tarihi_manuel"), help="Elle yazılan işlem tarihi (bu, otomatik 'İşlem Tarih' kayıt tarihinden farklıdır)."),
         "takip_tarihi_manuel": st.column_config.TextColumn("Takip Tarihi", width=_w("takip_tarihi_manuel"), help="Elle yazılan takip/hatırlatma tarihi."),
+        "randevu_tarihi_manuel": st.column_config.TextColumn("Randevu Tarihi", width=_w("randevu_tarihi_manuel"), help="Elle yazılan randevu tarihi (bu, otomatik '📅 Son Randevu' alanından farklıdır)."),
         "Seç":           st.column_config.CheckboxColumn("Seç", default=False, width=_w("Seç")),
         "tarih":         st.column_config.TextColumn("İşlem Tarih", disabled=True, width=_w("tarih")),
         "guncelleme_tarihi": st.column_config.TextColumn("Güncelleme Tarihi", disabled=True, width=_w("guncelleme_tarihi"), help="Bu müşteriye en son ne zaman not, teklif veya mesaj/işlem eklendiğini gösterir."),
@@ -8516,7 +8523,7 @@ function kartSec(id){
             df_f["_cl2_key"] = df_f["id"].map(_cl2_map).fillna(len(_cl2_sirali))
             df_f = df_f.sort_values("_cl2_key").drop(columns=["_cl2_key"]).reset_index(drop=True)
 
-    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
+    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
@@ -8524,7 +8531,7 @@ function kartSec(id){
     # Gizli kolonları çıkar
     _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
-                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat","islem_tarihi_manuel":"islem_tarihi_manuel","takip_tarihi_manuel":"takip_tarihi_manuel",
+                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat","islem_tarihi_manuel":"islem_tarihi_manuel","takip_tarihi_manuel":"takip_tarihi_manuel","randevu_tarihi_manuel":"randevu_tarihi_manuel",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
                       "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
@@ -9235,23 +9242,28 @@ function kartSec(id){
     # ── "Seç" işaretli firmaları taslak olarak kaydetme paneli kullanıcı
     # isteğiyle kaldırıldı (arşivleme/silme butonlarıyla birlikte, aşağıda) ──
 
-    # ── NOT DİALOG — SADECE tam olarak TEK bir müşteri o an "Seç" ile
-    # işaretliyken açılır. (Form kaldırıldığı için "Seç" kutusu artık anında
-    # ve DOĞRU şekilde Python'a ulaşıyor — dialog içinde bir işlem yapılıp
-    # sayfa yenilense bile, checkbox'ın kendi widget hafızası sayesinde
-    # işaretli kalmaya devam eder, ekstra bir "kalıcı bayrak" gerekmez.)
-    # 🚨 DÜZELTME (2026-09): eski "kalıcı bayrak" fallback'i (form'un
-    # checkbox'ı sıfırlama sorununu aşmak için eklenmişti) KALDIRILDI —
-    # form artık yok, ama bayrak "❌ Kapat"a basılmadan sürüp gittiği için
-    # HİÇBİR müşteri seçili değilken bile pencere açık kalmaya devam ediyordu.
+    # ── NOT DİALOG — KULLANICI İSTEĞİ (2026-09, GÜNCELLENDİ): "Seç" kutusunu
+    # işaretleyince pencere açılır ve — işlemler bitmeden sayfa yenilense,
+    # "Seç" kutusu her ne sebeple sıfırlansa bile — SADECE kullanıcı "❌ Bu
+    # Pencereyi Kapat"a basınca kapanır. Kapatıldıktan sonra, "Seç" kutusu
+    # HÂLÂ işaretli kalmış olsa bile pencere KENDİLİĞİNDEN tekrar açılmaz —
+    # kullanıcı BİLEREK yeniden Seç'e basmadıkça (kutuyu kaldırıp tekrar
+    # işaretlemedikçe) bir daha görünmez. Bu, hem "yenilesem bile açık
+    # kalsın" hem "kapatınca kendi kendine açılmasın" isteklerini birlikte
+    # karşılar.
     if secili_sayi == 1:
         _sel_id = int(secili_idler[0])
-        _sel_rows = df_edit[df_edit["id"] == _sel_id]
-        _sel_firma = str(_sel_rows.iloc[0].get("firma","")) if not _sel_rows.empty else ""
-        not_dialog(_sel_id, _sel_firma)
+        if st.session_state.get("_not_dialog_son_kapatilan_id") != _sel_id:
+            _sel_rows = df_edit[df_edit["id"] == _sel_id]
+            _sel_firma = str(_sel_rows.iloc[0].get("firma","")) if not _sel_rows.empty else ""
+            not_dialog(_sel_id, _sel_firma)
+    elif st.session_state.get("_not_dialog_kalici_id"):
+        not_dialog(st.session_state["_not_dialog_kalici_id"], st.session_state.get("_not_dialog_kalici_firma", ""))
     else:
-        st.session_state.pop("_not_dialog_kalici_id", None)
-        st.session_state.pop("_not_dialog_kalici_firma", None)
+        # Hiçbir şey seçili değil VE pencere kalıcı olarak da açık değilse —
+        # "kapatılan" hafızasını da temizle, böylece BİR SONRAKİ kez aynı
+        # müşteriyi seçtiğinde pencere yine normal şekilde açılabilsin.
+        st.session_state.pop("_not_dialog_son_kapatilan_id", None)
 
 
     # ── BUTONLAR ──────────────────────────────────────────────────────────────
@@ -9713,7 +9725,7 @@ function kartSec(id){
                     guncelle = {}
                     for k, v in degisiklikler.items():
                         if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma",
-                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
+                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "randevu_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
                             except: guncelle[k] = 0
@@ -10953,7 +10965,7 @@ function updateBot(v){{
             "Seç":40,"tarih":90,"guncelleme_tarihi":100,
             "firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
-            "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,
+            "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,"musteri_kodu":80,
             "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"il_ciro_ozet":120,"sektor":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
@@ -10966,7 +10978,7 @@ function updateBot(v){{
             "firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
-            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi",
+            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi","randevu_tarihi_manuel":"Randevu Tarihi",
             "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
             "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","il_ciro_ozet":"İl Ciroları","sektor":"Sektör","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
