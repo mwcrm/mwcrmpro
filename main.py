@@ -10848,6 +10848,64 @@ function updateBot(v){{
                 st.rerun()
         st.divider()
 
+        # ── 🔁 İL CİROLARI / HEDEFLENEN CİRO YENİDEN HESAPLA — KULLANICI
+        # İSTEĞİ (2026-09): eski (hatalı) hesaplama yöntemiyle daha önce
+        # kaydedilmiş müşterilerin "İl Ciroları" ve "Hedeflenen Ciro" değerleri
+        # YANLIŞ kalmaya devam ediyordu (kod düzeltmesi SADECE bundan sonraki
+        # yeni kayıtları etkiler, geçmiş kayıtları OTOMATİK düzeltmez). Bu
+        # buton, Koli/Palet fiyat tablosu OLAN TÜM müşteriler için ikisini de
+        # GÜNCEL (doğru) yöntemle tek seferde yeniden hesaplar.
+        st.markdown("### 🔁 İl Ciroları / Hedeflenen Ciro Yeniden Hesapla")
+        st.caption("Koli/Palet fiyat tablosu olan TÜM müşteriler için 'İl Ciroları' ve 'Hedeflenen Ciro'yu, GÜNCEL (düzeltilmiş) yönteme göre tek seferde yeniden hesaplar. Sadece bu iki alan güncellenir, başka hiçbir veriye dokunulmaz.")
+        if st.button("🔁 Tüm Müşteriler İçin Yeniden Hesapla", key="icy_yeniden_hesapla_btn"):
+            st.session_state["_icy_yeniden_hesapla_onay"] = True
+        if st.session_state.get("_icy_yeniden_hesapla_onay"):
+            st.warning("⚠️ Bu, Koli/Palet fiyat tablosu olan TÜM müşterilerin 'İl Ciroları' ve 'Hedeflenen Ciro' değerlerini günceller. Emin misin?")
+            _icyc1, _icyc2 = st.columns(2)
+            if _icyc1.button("✅ Evet, Yeniden Hesapla", key="icy_yeniden_hesapla_evet", use_container_width=True):
+                _icy_koli_harita = st.session_state.get("_koli_palet_manuel", {})
+                if not _icy_koli_harita:
+                    try:
+                        _sb_icy = get_sb_client()
+                        if _sb_icy:
+                            _r_icy = _sb_icy.table("kullanici_tercih").select("deger").eq(
+                                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                            if _r_icy.data:
+                                _icy_koli_harita = json.loads(_r_icy.data[0]["deger"])
+                    except Exception:
+                        _icy_koli_harita = {}
+                if not _icy_koli_harita:
+                    st.warning("Koli/Palet fiyat tablosu olan hiçbir müşteri bulunamadı.")
+                    st.session_state.pop("_icy_yeniden_hesapla_onay", None)
+                else:
+                    _icy_ilerleme = st.progress(0, text="Hesaplanıyor...")
+                    _icy_ek_harita = _cari_ek_bilgi_yukle()
+                    _icy_toplam_sayi = len(_icy_koli_harita)
+                    _icy_guncellenen = 0
+                    for _icy_i, (_icy_cid, _icy_metin) in enumerate(_icy_koli_harita.items()):
+                        _icy_ilerleme.progress((_icy_i + 1) / _icy_toplam_sayi, text=f"Hesaplanıyor... {_icy_i + 1}/{_icy_toplam_sayi}")
+                        if not str(_icy_metin or "").strip():
+                            continue
+                        _icy_yeni_ozet = _fy_il_ciro_ozet_cikar(_icy_metin)
+                        _icy_yeni_hedef = _fy_il_ciro_genel_toplam(_icy_metin)
+                        _icy_ek_harita.setdefault(_icy_cid, {})["il_ciro_ozet"] = _icy_yeni_ozet
+                        if _icy_yeni_hedef is not None:
+                            try:
+                                db_update("cari_kartlar", {"beklenen_ciro": _icy_yeni_hedef}, "id", int(_icy_cid))
+                                _icy_guncellenen += 1
+                            except Exception:
+                                pass
+                    _cari_ek_bilgi_kaydet(_icy_ek_harita)
+                    get_cari_listesi.clear()
+                    _icy_ilerleme.empty()
+                    st.session_state.pop("_icy_yeniden_hesapla_onay", None)
+                    st.success(f"✅ {_icy_guncellenen} müşterinin İl Ciroları ve Hedeflenen Ciro'su yeniden hesaplandı.")
+                    st.rerun()
+            if _icyc2.button("❌ Vazgeç", key="icy_yeniden_hesapla_vazgec", use_container_width=True):
+                st.session_state.pop("_icy_yeniden_hesapla_onay", None)
+                st.rerun()
+        st.divider()
+
         st.markdown("### 📐 Cari Liste Kolon Ayarları")
         st.caption("Genişlik ayarlayın, gizlemek istediklerinizi kapatın → Kaydet")
         _KOL_VARS_UI = {
