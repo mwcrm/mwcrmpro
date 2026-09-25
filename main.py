@@ -3505,7 +3505,6 @@ def _dis_nakliye_tasiyici_secici(key_prefix):
         return _t.get("tasiyici",""), _t.get("yetkili",""), _t.get("yetkili_tel","")
     return None, None, None
 
-@st.dialog("📋 Notlar & Randevu", width="large")
 def not_dialog(cari_id, firma_adi=""):
     """Ekran ortasında açılan not + randevu + silme + düzenleme penceresi"""
     # ── AÇIK KALSIN — pencere içinde bir işlem yapılıp (Ayrıştır, Kaydet vb.)
@@ -4853,6 +4852,23 @@ textarea[aria-label="Koli/Palet önizleme"] {
                 st.rerun()
             except Exception as _arse:
                 st.error(f"Arşive alma hatası: {_arse}")
+
+# 🚨 KULLANICI İSTEĞİ (2026-09): "Seç" ile açılan bu pencere, sayfada BAŞKA
+# BİR YERE tıklanınca (Streamlit'in dialog'ların VARSAYILAN "dışına
+# tıklayınca kapan" davranışı yüzünden) kendiliğinden kapanıyordu — kullanıcı
+# bunun yerine SADECE "❌ Bu Pencereyi Kapat" ile kapanmasını istiyor. Bunun
+# için Streamlit'in "dismissible=False" özelliği kullanılıyor. GÜVENLİK:
+# bu özellik ESKİ Streamlit sürümlerinde YOK — önce desteklenip
+# desteklenmediği kontrol ediliyor, desteklenmiyorsa uygulama ÇÖKMEDEN eski
+# (varsayılan, dışına tıklayınca kapanan) davranışa sessizce geri dönülür.
+try:
+    import inspect as _nd_inspect
+    if "dismissible" in _nd_inspect.signature(st.dialog).parameters:
+        not_dialog = st.dialog("📋 Notlar & Randevu", width="large", dismissible=False)(not_dialog)
+    else:
+        not_dialog = st.dialog("📋 Notlar & Randevu", width="large")(not_dialog)
+except Exception:
+    not_dialog = st.dialog("📋 Notlar & Randevu", width="large")(not_dialog)
 
 @st.dialog("✏️ Kargo Kaydını Düzenle", width="large")
 def kargo_kaydi_duzenle_dialog(cari_id, satir_no):
