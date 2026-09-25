@@ -525,17 +525,21 @@ def _fy_teklif_onerisi_hesapla(_girisler):
 
 
 def _fy_desi_baremli_teklif_hesapla(_girisler):
-    """🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ) — _fy_teklif_onerisi_hesapla'ya
-    (basit TL/desi oranı) EK olarak, DAHA DETAYLI bir kırılım: her il için
+    """🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ, GÜNCELLENDİ) — her il için
     KOLİ'de 100 desi'ye kadar sabit BAREMLER (30, 50, 75, 100), PALET'te
     101-1000 desi arası sabit BAREMLER (330, 500, 750, 1000) belirlenir.
-    Her geçmiş kayıt, EN YAKIN barem'e atanır (İL BAZLI — iller birbirine
-    karışmaz). Bir barem'e SADECE 1 kayıt düşerse o kaydın fiyatı AYNEN
-    yazılır (ortalama alınmaz); BİRDEN FAZLA kayıt düşerse ORTALAMASI
-    yazılır. Desi=0 (sabit fiyatlı, ör. bazı KOLİ gönderimleri) kayıtlar
-    ayrıca kendi TÜRÜ altında (barem'siz) ortalama/tekil fiyatıyla
-    gösterilir. Çıktı İL BAŞLIKLARI altında, hizalı (en uzun etikete göre)
-    satırlar halinde döner — {il: metin} sözlüğü olarak."""
+    Her geçmiş kayıt EN YAKIN barem'e atanır (İL BAZLI). Bir barem'e SADECE
+    1 kayıt düşerse fiyatı/desisi AYNEN yazılır; BİRDEN FAZLA düşerse
+    İKİSİNİN DE (hem fiyat hem desi) ORTALAMASI yazılır — barem numarası
+    değil, kayıtların GERÇEK desi ortalaması gösterilir.
+    🚨 DÜZELTME: desi=0 kayıtlar artık İKİYE ayrılıyor —
+      - fiyatı 1000 TL'YE KADARSA: gerçekten sabit fiyatlı kabul edilir,
+        kendi TÜRÜ altında (desi belirtilmeden) ayrı gösterilir.
+      - fiyatı 1000 TL'DEN FAZLAYSA: desisi unutulmuş BÜYÜK bir gönderim
+        kabul edilip PALET'in EN DÜŞÜK baremine (330) dahil edilir — ama
+        kendi desisi bilinmediği için o baremin desi ORTALAMASINA katılmaz
+        (sadece fiyat ortalamasına katkı sağlar, gerçek desisi olan diğer
+        kayıtlarla karışmaz)."""
     from collections import defaultdict
     _KOLI_BAREMLER = [30, 50, 75, 100]
     _PALET_BAREMLER = [330, 500, 750, 1000]
@@ -545,6 +549,7 @@ def _fy_desi_baremli_teklif_hesapla(_girisler):
         return f"{_v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     try:
+        # (tür, barem) -> [(desi_ya_da_None, fiyat), ...]
         _il_barem_gruplari = defaultdict(lambda: defaultdict(list))
         _il_sabit_gruplari = defaultdict(lambda: defaultdict(list))
         for _g in _girisler:
@@ -557,14 +562,19 @@ def _fy_desi_baremli_teklif_hesapla(_girisler):
                 _toplam = float(_g[4])
             except Exception:
                 continue
-            if _desi <= 0:
+            if _desi <= 0 and _toplam > 1000:
+                # Desisi kaydedilmemiş ama fiyatı yüksek — büyük (palet)
+                # gönderim kabul edilip PALET'in en düşük baremine dahil
+                # edilir; desi ortalamasına KATILMAZ (None).
+                _il_barem_gruplari[_il][("PALET", 330)].append((None, _toplam))
+            elif _desi <= 0:
                 _il_sabit_gruplari[_il][_tur].append(_toplam)
             elif _desi <= 100:
                 _en_yakin = min(_KOLI_BAREMLER, key=lambda b: abs(b - _desi))
-                _il_barem_gruplari[_il][("KOLİ", _en_yakin)].append(_toplam)
+                _il_barem_gruplari[_il][("KOLİ", _en_yakin)].append((_desi, _toplam))
             else:
                 _en_yakin = min(_PALET_BAREMLER, key=lambda b: abs(b - _desi))
-                _il_barem_gruplari[_il][("PALET", _en_yakin)].append(_toplam)
+                _il_barem_gruplari[_il][("PALET", _en_yakin)].append((_desi, _toplam))
 
         _sonuc = {}
         for _il in sorted(set(list(_il_barem_gruplari.keys()) + list(_il_sabit_gruplari.keys()))):
@@ -573,14 +583,19 @@ def _fy_desi_baremli_teklif_hesapla(_girisler):
                 for _tur in sorted(_il_sabit_gruplari[_il].keys()):
                     _fiyatlar = _il_sabit_gruplari[_il][_tur]
                     _deger = _fiyatlar[0] if len(_fiyatlar) == 1 else sum(_fiyatlar) / len(_fiyatlar)
-                    _satir_ciftleri.append((_tur, f"{_tr_para(_deger)} TL"))
+                    _satir_ciftleri.append((f"{_tur} 0 DESİ", f"{_tr_para(_deger)} TL"))
             for _tur_ad, _barem_sirasi in [("KOLİ", _KOLI_BAREMLER), ("PALET", _PALET_BAREMLER)]:
                 for _barem in _barem_sirasi:
                     _key = (_tur_ad, _barem)
                     if _il in _il_barem_gruplari and _key in _il_barem_gruplari[_il]:
-                        _fiyatlar = _il_barem_gruplari[_il][_key]
-                        _deger = _fiyatlar[0] if len(_fiyatlar) == 1 else sum(_fiyatlar) / len(_fiyatlar)
-                        _satir_ciftleri.append((f"{_tur_ad} {_barem} DESİ", f"{_tr_para(_deger)} TL"))
+                        _cift = _il_barem_gruplari[_il][_key]
+                        _fiyatlar = [f for _, f in _cift]
+                        _desiler = [d for d, _ in _cift if d is not None]
+                        _fiyat_ort = _fiyatlar[0] if len(_fiyatlar) == 1 else sum(_fiyatlar) / len(_fiyatlar)
+                        # KULLANICI İSTEĞİ: barem NUMARASI değil, GERÇEK desi
+                        # ortalaması gösterilir (fiyat ortalaması gibi).
+                        _desi_ort = (_desiler[0] if len(_desiler) == 1 else sum(_desiler) / len(_desiler)) if _desiler else _barem
+                        _satir_ciftleri.append((f"{_tur_ad} {_desi_ort:.0f} DESİ", f"{_tr_para(_fiyat_ort)} TL"))
             if _satir_ciftleri:
                 _genislik = max(len(e) for e, _ in _satir_ciftleri)
                 _sonuc[_il] = "\n".join(f"{_e.ljust(_genislik)}   {_f}" for _e, _f in _satir_ciftleri)
