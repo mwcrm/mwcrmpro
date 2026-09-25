@@ -479,6 +479,51 @@ def _fy_il_ciro_ozet_girislerden(_girisler):
         return ""
 
 
+def _fy_teklif_onerisi_hesapla(_girisler):
+    """🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ) — eski hiçbir formata
+    (Fiyat İncele, İl Ciroları, Hedeflenen Ciro) DOKUNMAZ, tamamen EK bir
+    hesaplama. Aynı müşterinin KENDİ geçmiş fiyat girişlerinden (_girisler:
+    (sehir, tur, desi, ikinci_sayi, toplam, hedef_katkisi) tuple listesi),
+    her il için "TOPLAM ÷ DESİ" (desi başına TL) oranını hesaplar — basit
+    bir ORTALAMA değil, o ilde EN SIK TEKRAR EDEN (moda) oranı bulur, çünkü
+    kullanıcı "ortalama yakın değil, en çok tekrar eden" istedi. Desi=0 olan
+    (KOLİ gibi sabit fiyatlı) satırlar için oran hesaplanamayacağından, o
+    satırların KENDİSİNDE en sık tekrar eden SABİT tutar bulunur. Sonuç,
+    "İL: ~X,XX TL/desi (N/M kayıttan)" biçiminde, İL BAŞINA TEK SATIR halinde
+    (az satırda) döndürülür — "Teklif Fiyat" alanına yazılmak üzere."""
+    from collections import defaultdict, Counter
+    try:
+        _il_oranlari = defaultdict(list)
+        _il_sabitler = defaultdict(list)
+        for _g in _girisler:
+            _sehir = str(_g[0] or "").strip()
+            if not _sehir:
+                continue
+            try:
+                _desi = float(_g[2])
+                _toplam = float(_g[4])
+            except Exception:
+                continue
+            if _desi > 0:
+                _il_oranlari[_sehir].append(round(_toplam / _desi, 2))
+            else:
+                _il_sabitler[_sehir].append(_toplam)
+
+        _sonuc_satirlari = []
+        for _il in sorted(set(list(_il_oranlari.keys()) + list(_il_sabitler.keys()))):
+            if _il_oranlari.get(_il):
+                _sayac = Counter(_il_oranlari[_il])
+                _en_sik_oran, _adet = _sayac.most_common(1)[0]
+                _sonuc_satirlari.append(f"{_il}: ~{_en_sik_oran:.2f} TL/desi ({_adet}/{len(_il_oranlari[_il])} kayıttan)")
+            elif _il_sabitler.get(_il):
+                _sayac2 = Counter(_il_sabitler[_il])
+                _en_sik_sabit, _adet2 = _sayac2.most_common(1)[0]
+                _sonuc_satirlari.append(f"{_il}: ~{_en_sik_sabit:,.0f} TL sabit ({_adet2}/{len(_il_sabitler[_il])} kayıttan)".replace(",", "."))
+        return "\n".join(_sonuc_satirlari)
+    except Exception:
+        return ""
+
+
 
 def _alt_ilerleme_cubugu_html(_yuzde, _mesaj):
     """KULLANICI İSTEĞİ (2026-09): kaydetme gibi işlemler sürerken, ekranın
@@ -4704,6 +4749,23 @@ def not_dialog(cari_id, firma_adi=""):
                                 st.toast(f"✅ Fiyat tablosu hazırlandı + İşaretlendi: {', '.join(_fy_il_isaretlenen)}", icon="🚀")
                         except Exception as _fy_ikisi_hata:
                             st.error(f"İl işaretleme hatası: {_fy_ikisi_hata}")
+
+                        # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ) — eski
+                        # hiçbir şeye dokunmadan EK olarak: bu müşterinin KENDİ
+                        # geçmiş fiyat verisinden (yukarıdaki _fy_yeni_girisler),
+                        # her il için "TOPLAM ÷ DESİ" oranının EN SIK tekrar eden
+                        # (moda) değerini bulup, "İL: ~X TL/desi (N/M kayıttan)"
+                        # şeklinde AZ SATIRDA bir özet üretir ve bunu "Teklif
+                        # Fiyat" alanına otomatik yazar — o ile ait geçmiş
+                        # tekliflerden çıkarılan, güncel bir referans teklif.
+                        try:
+                            _fy_teklif_onerisi = _fy_teklif_onerisi_hesapla(_fy_yeni_girisler)
+                            if _fy_teklif_onerisi:
+                                _fy_tf_harita = _cari_ek_bilgi_yukle()
+                                _fy_tf_harita.setdefault(str(int(cari_id)), {})["teklif_fiyat"] = _fy_teklif_onerisi
+                                _cari_ek_bilgi_kaydet(_fy_tf_harita)
+                        except Exception:
+                            pass
                     st.rerun()
 
         _fy_hazir = st.session_state.get(f"_fy_hazir_{cari_id}")
