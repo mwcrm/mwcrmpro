@@ -5357,13 +5357,12 @@ def not_paneli(cari_id, firma_adi="", key_prefix="np"):
 
 
 
-_TAB_LISTESI_DEFAULT = ["yeni", "hizli_firma", "liste", "ozel_teklif", "sozlesme", "kayitli_teklifler", "excel", "kullanici", "mukerrer", "kargolar", "tedarikci"]
+_TAB_LISTESI_DEFAULT = ["yeni", "hizli_firma", "liste", "ozel_teklif", "sozlesme", "excel", "kullanici", "mukerrer", "kargolar", "tedarikci"]
 _TAB_ETIKETLER = {
     "yeni": "➕ Yeni Kart Ekle",
     "hizli_firma": "⚡ Hızlı Firma Ekle",
     "liste": "📋 Cari Liste / Düzenle",
     "ozel_teklif": "⭐ Özel Teklif",
-    "kayitli_teklifler": "📋 Kayıtlı Teklifler",
     "sozlesme": "📜 Sözleşmeler",
     "excel": "📥 Excel Aktar",
     "dis_nakliye": "🚚 Dış Nakliye",
@@ -5869,7 +5868,7 @@ button[data-testid="manage-app-button"] { display: none !important; }
     _MENU_GRUPLARI = [
         ("🧾 Cari işlemleri",    ["yeni", "hizli_firma", "liste", "kargolar", "excel", "mukerrer"]),
         ("🚛 Tedarikçi",         ["tedarikci"]),
-        ("📅 Randevu ve teklif", ["ozel_teklif", "sozlesme", "kayitli_teklifler"]),
+        ("📅 Randevu ve teklif", ["ozel_teklif", "sozlesme"]),
         ("⚙️ Yönetim",          ["kullanici"]),
     ]
 
@@ -12162,114 +12161,6 @@ elif aktif == "ozel_teklif":
                         st.success(f"✅ '{_yeni_urun}' eklendi!"); st.rerun()
                     else: st.error("Kaydedilemedi!")
 
-
-elif aktif == "kayitli_teklifler":
-    sayfa_log("kayitli_teklifler")
-    st.markdown("## 📋 Kayıtlı Teklifler")
-    st.caption("Kendisine teklif hazırlanmış tüm müşteriler — cari ana liste ile aynı kolon yapısında.")
-
-    with st.spinner("Yükleniyor..."):
-        _kt_tek_df = _teklifler_tarih_normalize(_teklifler_oku())
-        _kt_cari_df = get_cari_listesi()
-
-    # ── DOĞRULAMA: veritabanındaki HAM kayıt sayısı — hiçbir filtre/eşleştirme
-    # yok, doğrudan "teklifler" tablosunda kaç satır var, onu gösteriyor.
-    st.info(f"🔎 Doğrulama: `teklifler` tablosunda toplam **{len(_kt_tek_df)}** kayıt var (hiçbir filtre uygulanmadan, veritabanından direkt sayım).")
-
-    if _kt_tek_df.empty or "musteri_id" not in _kt_tek_df.columns:
-        st.info("Henüz hiçbir müşteriye teklif hazırlanmamış.")
-    else:
-        _kt_tek_df = _kt_tek_df.copy()
-        _kt_tek_df["musteri_id"] = pd.to_numeric(_kt_tek_df["musteri_id"], errors="coerce")
-        _kt_tek_df = _kt_tek_df[_kt_tek_df["musteri_id"] > 0]  # bağlantısız (0) teklifler hariç
-        if _kt_tek_df.empty or _kt_cari_df.empty:
-            st.info("Henüz hiçbir müşteriye bağlı teklif yok.")
-        else:
-            _kt_grup = _kt_tek_df.groupby("musteri_id").agg(
-                teklif_sayisi=("id", "count"),
-                son_teklif_tarihi=("tarih", "max"),
-            ).reset_index()
-            _kt_grup["musteri_id"] = _kt_grup["musteri_id"].astype(int)
-
-            _kt_birlesik = _kt_grup.merge(_kt_cari_df, left_on="musteri_id", right_on="id", how="left")
-            _kt_birlesik = _kt_birlesik.dropna(subset=["firma"])  # cari kartı silinmiş olabilir
-
-            for _tk in ["gsm", "sabit"]:
-                if _tk in _kt_birlesik.columns:
-                    _kt_birlesik[_tk] = _telefon_temizle(_kt_birlesik[_tk])
-
-            _kt_ara = st.text_input("🔍 Firma / yetkili ara", key="kt_ara")
-            if _kt_ara:
-                _m = pd.Series(False, index=_kt_birlesik.index)
-                if "firma" in _kt_birlesik.columns:
-                    _m = _m | _kt_birlesik["firma"].astype(str).str.contains(_kt_ara, case=False, na=False)
-                if "yetkili" in _kt_birlesik.columns:
-                    _m = _m | _kt_birlesik["yetkili"].astype(str).str.contains(_kt_ara, case=False, na=False)
-                _kt_birlesik = _kt_birlesik[_m]
-
-            _kt_birlesik = _kt_birlesik.sort_values("son_teklif_tarihi", ascending=False).reset_index(drop=True)
-            st.markdown(f"**{len(_kt_birlesik)} müşteri**")
-
-            _kt_kolonlar = [c for c in ["firma", "yetkili", "gsm", "il", "ilce", "durum", "teklif_sayisi", "son_teklif_tarihi"] if c in _kt_birlesik.columns]
-            _kt_goster = _kt_birlesik[_kt_kolonlar].copy()
-            if "son_teklif_tarihi" in _kt_goster.columns:
-                _kt_goster["son_teklif_tarihi"] = _kt_goster["son_teklif_tarihi"].apply(fmt_tarih)
-            _kt_baslik_map = {"firma": "Firma", "yetkili": "Yetkili", "gsm": "GSM", "il": "İl", "ilce": "İlçe",
-                               "durum": "Durum", "teklif_sayisi": "Teklif Sayısı", "son_teklif_tarihi": "Son Teklif"}
-            _kt_goster.columns = [_kt_baslik_map.get(c, c) for c in _kt_kolonlar]
-
-            st.dataframe(_kt_goster, use_container_width=True, hide_index=True, height=560)
-
-            st.divider()
-            st.markdown("#### 🔍 Detay — Bu müşterinin tüm teklif kayıtları")
-            _kt_opts = ["-- Müşteri Seçin --"] + [f"[{int(r['musteri_id'])}] {r.get('firma','')}" for _, r in _kt_birlesik.iterrows()]
-            _kt_sec = st.selectbox("", _kt_opts, key="kt_detay_sec", label_visibility="collapsed")
-            if _kt_sec != "-- Müşteri Seçin --" and "[" in _kt_sec:
-                _kt_id = int(_kt_sec.split("]")[0].replace("[", "").strip())
-                _kt_firma_ad = _kt_sec.split("]", 1)[1].strip()
-                if st.button("📋 Notlar & Randevu Aç", key="kt_detay_btn"):
-                    not_dialog(_kt_id, _kt_firma_ad)
-
-                # Bu müşteriye ait HAM teklif kayıtlarını tek tek göster — şüpheli
-                # yüksek sayıları (28 gibi) incelemek ve istenirse tek tek silmek için.
-                _kt_bu_musteri = _kt_tek_df[_kt_tek_df["musteri_id"] == _kt_id].copy()
-                st.markdown(f"**{len(_kt_bu_musteri)} ham teklif/sözleşme kaydı bulundu:**")
-                _kt_bu_musteri = _kt_bu_musteri.sort_values("id", ascending=False)
-                for _, _ktr in _kt_bu_musteri.iterrows():
-                    _ktr_id = int(_ktr.get("id", 0))
-                    _ktr_tip = "?"
-                    try:
-                        _ktr_tip = json.loads(_ktr.get("satirlar", "{}")).get("tip", "?")
-                    except: pass
-                    _ktr_tarih = fmt_tarih(_ktr.get("tarih", ""))
-                    _ktr_tutar = _ktr.get("toplam_tutar", 0)
-                    _ktr_yazan = _ktr.get("olusturan", "")
-                    _c1, _c2, _c3, _c4, _c5, _c6 = st.columns([0.7, 1.3, 1.3, 1.3, 1.5, 0.8])
-                    _c1.caption(f"#{_ktr_id}")
-                    _c2.caption(_ktr_tip)
-                    _c3.caption(_ktr_tarih)
-                    _c4.caption(fmt_para(float(_ktr_tutar or 0)))
-                    _c5.caption(_ktr_yazan)
-                    _kt_sil_bek = f"kt_sil_bekliyor_{_ktr_id}"
-                    if not st.session_state.get(_kt_sil_bek):
-                        if _c6.button("🗑️", key=f"kt_sil_btn_{_ktr_id}"):
-                            st.session_state[_kt_sil_bek] = True
-                            st.rerun()
-                    else:
-                        st.warning(f"⚠️ #{_ktr_id} kaydını kalıcı olarak silmek üzeresiniz — GERİ ALINAMAZ.")
-                        _oc1, _oc2 = st.columns(2)
-                        if _oc1.button("✅ Evet, sil", type="primary", key=f"kt_sil_onay_{_ktr_id}"):
-                            _kt_sb_sil = get_sb_client()
-                            if _kt_sb_sil:
-                                _kt_sb_sil.table("teklifler").delete().eq("id", _ktr_id).execute()
-                            try: db_read.clear()
-                            except: pass
-                            st.session_state.pop(_kt_sil_bek, None)
-                            st.success("Silindi.")
-                            st.rerun()
-                        if _oc2.button("Vazgeç", key=f"kt_sil_vazgec_{_ktr_id}"):
-                            st.session_state.pop(_kt_sil_bek, None)
-                            st.rerun()
 
 elif aktif == "sozlesme":
     sayfa_log("sozlesme")
