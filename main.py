@@ -4635,7 +4635,7 @@ def not_dialog(cari_id, firma_adi=""):
                 _onceki_sehir = _g[0]
             return "\n".join(_satirlar)
 
-        _fyb1, _fyb2, _fyb3 = st.columns([2.2, 1, 2.6])
+        _fyb1, _fyb2, _fyb3, _fyb4 = st.columns([1.7, 0.8, 2.3, 1.6])
         _fy_ayristir_tiklandi = _fyb1.button("🔍 Ayrıştır ve Hazırla", key=f"dlg_fiyat_ayristir_{cari_id}", use_container_width=True)
         if _fyb2.button("🔄 Yenile", key=f"dlg_fiyat_yenile_{cari_id}", use_container_width=True,
                         help="Kutuyu ve önizlemeyi temizler, sıfırdan başlarsın."):
@@ -4648,7 +4648,16 @@ def not_dialog(cari_id, firma_adi=""):
         # birden uygulanır, tek tek ayrı ayrı yapmana gerek kalmaz.
         _fy_ikisi_tiklandi = _fyb3.button("🚀 İkisini Birden Çalıştır (İllerle İşaretle + Ayrıştır)",
                                            key=f"dlg_fiyat_ikisi_{cari_id}", use_container_width=True)
-        if _fy_ayristir_tiklandi or _fy_ikisi_tiklandi:
+        # 🆕 YENİ BUTON (2026-09, KULLANICI İSTEĞİ): "İkisini Birden Çalıştır"
+        # ESKİ haline (kaydetmeden, elle inceleme fırsatı bırakarak) geri
+        # döndürüldü. Bunun yerine, TAMAMEN AYRI bu YENİ buton — İl İşaretleme
+        # + Ayrıştırma + TÜM hesaplamalar (Hedeflenen Ciro, İl Ciroları,
+        # Teklif Fiyat) + Koli/Palet tablosunun OTOMATİK KAYDEDİLMESİ dahil
+        # HER ŞEYİ tek tıkla yapıp doğrudan Cari Ana Liste'ye işler.
+        _fy_hepsi_tiklandi = _fyb4.button("🎯 Hepsini Yerleştir",
+                                           key=f"dlg_fiyat_hepsi_{cari_id}", use_container_width=True, type="primary",
+                                           help="İlleri işaretler + fiyat tablosunu ayrıştırır + Hedeflenen Ciro/İl Ciroları/Teklif Fiyat'ı hesaplar + HEPSİNİ OTOMATİK KAYDEDER — Cari Liste'ye anında, kayıtlı olarak geçer.")
+        if _fy_ayristir_tiklandi or _fy_ikisi_tiklandi or _fy_hepsi_tiklandi:
             if not _vd_fiyat.strip():
                 st.warning("Önce bir şey yazın.")
             else:
@@ -4815,7 +4824,7 @@ def not_dialog(cari_id, firma_adi=""):
                     # aynı fiyat metninde tespit edilen şehirler, "İlleri
                     # İşaretle" ile AYNI mantıkla Varış İlleri'ne de işlenir —
                     # ayrıca o kutuya tekrar yazmaya gerek kalmaz.
-                    if _fy_ikisi_tiklandi and _fy_iller_bulunan_set:
+                    if (_fy_ikisi_tiklandi or _fy_hepsi_tiklandi) and _fy_iller_bulunan_set:
                         try:
                             _fy_tum_matris2 = dict(_il_gonderim_matrisi_yukle())
                             _fy_id_str = str(int(cari_id))
@@ -4872,40 +4881,38 @@ def not_dialog(cari_id, firma_adi=""):
                         except Exception:
                             pass
 
-                        # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "İkisini
-                        # Birden Çalıştır" artık İSMİNE UYGUN OLARAK GERÇEKTEN HER
-                        # ŞEYİ TEK TIKLA yapar — İl İşaretleme + Ayrıştırma'nın
-                        # ÜSTÜNE, "Koli/Palet" tablosunu da OTOMATİK KAYDEDER
-                        # (ayrıca "💾 Kaydet"e basmaya gerek KALMAZ). Yukarıdaki
+                        # ── 🆕 YENİ BUTON (2026-09, KULLANICI İSTEĞİ): "İkisini
+                        # Birden Çalıştır" ESKİ haline (kaydetmeden, elle inceleme
+                        # fırsatı bırakarak) geri döndürüldü — bu otomatik kaydetme
+                        # SADECE "🎯 Hepsini Yerleştir" butonuna özeldir. Yukarıdaki
                         # hiçbir hesaplamaya (Hedeflenen Ciro, İl Ciroları, Teklif
                         # Fiyat, İl İşaretleme) DOKUNULMADI — onlar zaten doğru,
-                        # sadece son adım (kaydetme) da otomatikleştirildi. NOT:
-                        # "Ayrıştır ve Hazırla" (tek başına) HALA elle inceleyip
-                        # ayrı "Kaydet"e basma seçeneğini korur — bu otomatik
-                        # kaydetme SADECE "İkisini Birden Çalıştır"a özeldir.
-                        try:
-                            _fy_oto_metin = st.session_state.get(f"_fy_hazir_{cari_id}", "").strip()
-                            if _fy_oto_metin:
-                                _r_kpo_oto = _vd_sb.table("kullanici_tercih").select("deger").eq(
-                                    "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
-                                import json as _kpoj_oto
-                                _kp_map_oto = _kpoj_oto.loads(_r_kpo_oto.data[0]["deger"]) if _r_kpo_oto.data else {}
-                                _kp_id_str_oto = str(int(cari_id))
-                                _kp_map_oto[_kp_id_str_oto] = _fy_oto_metin
-                                _kpo_deger_oto = _kpoj_oto.dumps(_kp_map_oto, ensure_ascii=False)
-                                _kpo_guncelle_oto = _vd_sb.table("kullanici_tercih").update({"deger": _kpo_deger_oto}).eq(
-                                    "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
-                                if not _kpo_guncelle_oto.data:
-                                    _vd_sb.table("kullanici_tercih").insert({
-                                        "kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel",
-                                        "deger": _kpo_deger_oto
-                                    }).execute()
-                                st.session_state["_koli_palet_manuel"] = _kp_map_oto
-                                st.session_state.pop(f"_fy_hazir_{cari_id}", None)
-                                get_cari_listesi.clear()
-                                st.toast("🚀 Her şey tamamlandı: İller işaretlendi, fiyat tablosu kaydedildi, Cari Liste güncellendi!", icon="✅")
-                        except Exception as _fy_oto_hata:
-                            st.error(f"Otomatik kaydetme hatası: {_fy_oto_hata}")
+                        # SADECE "Hepsini Yerleştir" tıklanınca EK olarak
+                        # "Koli/Palet" tablosu da otomatik kaydedilir.
+                        if _fy_hepsi_tiklandi:
+                            try:
+                                _fy_oto_metin = st.session_state.get(f"_fy_hazir_{cari_id}", "").strip()
+                                if _fy_oto_metin:
+                                    _r_kpo_oto = _vd_sb.table("kullanici_tercih").select("deger").eq(
+                                        "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                                    import json as _kpoj_oto
+                                    _kp_map_oto = _kpoj_oto.loads(_r_kpo_oto.data[0]["deger"]) if _r_kpo_oto.data else {}
+                                    _kp_id_str_oto = str(int(cari_id))
+                                    _kp_map_oto[_kp_id_str_oto] = _fy_oto_metin
+                                    _kpo_deger_oto = _kpoj_oto.dumps(_kp_map_oto, ensure_ascii=False)
+                                    _kpo_guncelle_oto = _vd_sb.table("kullanici_tercih").update({"deger": _kpo_deger_oto}).eq(
+                                        "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                                    if not _kpo_guncelle_oto.data:
+                                        _vd_sb.table("kullanici_tercih").insert({
+                                            "kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel",
+                                            "deger": _kpo_deger_oto
+                                        }).execute()
+                                    st.session_state["_koli_palet_manuel"] = _kp_map_oto
+                                    st.session_state.pop(f"_fy_hazir_{cari_id}", None)
+                                    get_cari_listesi.clear()
+                                    st.toast("🎯 Her şey tamamlandı: İller işaretlendi, fiyat tablosu kaydedildi, Cari Liste güncellendi!", icon="✅")
+                            except Exception as _fy_oto_hata:
+                                st.error(f"Otomatik kaydetme hatası: {_fy_oto_hata}")
                     st.rerun()
 
         _fy_hazir = st.session_state.get(f"_fy_hazir_{cari_id}")
