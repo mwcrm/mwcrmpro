@@ -5989,6 +5989,24 @@ button[data-testid="manage-app-button"] { display: none !important; }
 
     st.divider()
 
+    # ── ⬅️ GERİ / ➡️ İLERİ — KULLANICI İSTEĞİ (2026-09): şifreden çıkmadan,
+    # tarayıcıdaki gibi önceki/sonraki sayfaya dönebilme.
+    _sg_liste_btn = st.session_state.get("_sayfa_gecmisi", [st.session_state.get("aktif_tab", "liste")])
+    _sg_idx_btn = st.session_state.get("_sayfa_gecmisi_idx", 0)
+    _sg_geri_var = _sg_idx_btn > 0
+    _sg_ileri_var = _sg_idx_btn < len(_sg_liste_btn) - 1
+    _gc1, _gc2 = st.columns(2)
+    if _gc1.button("⬅️ Geri", key="sayfa_geri_btn", use_container_width=True, disabled=not _sg_geri_var):
+        st.session_state["_sayfa_gecmisi_idx"] = _sg_idx_btn - 1
+        st.session_state["_sg_geri_ileri_tiklandi"] = True
+        st.session_state["aktif_tab"] = _sg_liste_btn[_sg_idx_btn - 1]
+        st.rerun()
+    if _gc2.button("➡️ İleri", key="sayfa_ileri_btn", use_container_width=True, disabled=not _sg_ileri_var):
+        st.session_state["_sayfa_gecmisi_idx"] = _sg_idx_btn + 1
+        st.session_state["_sg_geri_ileri_tiklandi"] = True
+        st.session_state["aktif_tab"] = _sg_liste_btn[_sg_idx_btn + 1]
+        st.rerun()
+
     # ── KULLANICI + ÇIKIŞ ─────────────────────────────────────────────────────
     _kc1, _kc2 = st.columns([3, 1])
     _kul_ad = st.session_state.get('kullanici','')
@@ -6014,6 +6032,24 @@ st.divider()
 if "aktif_tab" not in st.session_state:
     st.session_state["aktif_tab"] = "liste"
 aktif = st.session_state["aktif_tab"]
+
+# ── SAYFA GEZİNME GEÇMİŞİ (⬅️ Geri / ➡️ İleri) — KULLANICI İSTEĞİ (2026-09):
+# tarayıcıdaki gibi, sol menüden farklı sayfalara geçerken, şifreden HİÇ
+# çıkmadan önceki/sonraki sayfaya dönebilme. "aktif_tab" her DEĞİŞTİĞİNDE
+# (Geri/İleri butonlarından DEĞİL, menüden tıklanarak) bu geçmiş listesine
+# eklenir; "ileri" kısmı (geri gidilmişse) yeni bir sayfaya tıklanınca kesilir
+# — tarayıcı geçmişiyle birebir aynı mantık.
+if "_sayfa_gecmisi" not in st.session_state:
+    st.session_state["_sayfa_gecmisi"] = [aktif]
+    st.session_state["_sayfa_gecmisi_idx"] = 0
+else:
+    _sg_liste_kontrol = st.session_state["_sayfa_gecmisi"]
+    _sg_idx_kontrol = st.session_state["_sayfa_gecmisi_idx"]
+    if not st.session_state.pop("_sg_geri_ileri_tiklandi", False):
+        if not _sg_liste_kontrol or _sg_liste_kontrol[_sg_idx_kontrol] != aktif:
+            _sg_liste_kontrol = _sg_liste_kontrol[:_sg_idx_kontrol + 1] + [aktif]
+            st.session_state["_sayfa_gecmisi"] = _sg_liste_kontrol
+            st.session_state["_sayfa_gecmisi_idx"] = len(_sg_liste_kontrol) - 1
 
 
 # ── MOBİL MOD — body class + nav aktif ikon ──────────────────────────────────
