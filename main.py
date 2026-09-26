@@ -7120,6 +7120,14 @@ section[data-testid="stSidebar"] { display: none !important; }
             _cek_map = {k: v.get(_cek_alan, "") for k, v in _cari_ek_bilgi_erken.items()}
             df[_cek_alan] = _id_str_erken.map(_cek_map).fillna("")
 
+    # 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Hesaplama" — kalıcı bir
+    # değeri YOKTUR (Koli/Palet, Teklif Fiyat gibi kayıtlı bir alan değil),
+    # SADECE hızlı toplu giriş için HER ZAMAN BOŞ başlayan bir yazı kutusu.
+    # Kaydedilince içeriği "_fy_hepsini_yerlestir_ana_tablo"yu tetikler ve
+    # sonucu Koli/Palet'e yazılır — kendisi BOŞ kalmaya devam eder.
+    if not df.empty:
+        df["hesaplama"] = ""
+
     # ── MÜŞTERİ KODU (MW1, MW2, ...) — KULLANICI İSTEĞİ (2026-09): eski
     # karışık ID'ler yerine kayıt tarihine göre sıralı, boşluksuz "MW1,
     # MW2..." kodu görüntülenir. Gerçek "id" (kargo/not/randevu/il gönderim
