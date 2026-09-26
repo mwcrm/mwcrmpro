@@ -9506,6 +9506,13 @@ function kartSec(id){
         _aktif_col_order = [c for c in _aktif_col_order if c != "rut"]
         _ai_pos = _aktif_col_order.index("ara_islem")
         _aktif_col_order.insert(_ai_pos + 1, "rut")
+    # "Hesaplama" da AYNI SEBEPLE (eski kayıtlı sütun sırası bu YENİ sütunu
+    # tanımadığından, "eksik_yeni" mantığı onu EN SONA atıyordu — kullanıcı
+    # bunu bulamıyordu) HER ZAMAN "Firma"nın hemen SOLUNA zorla yerleştirilir.
+    if "hesaplama" in _aktif_col_order and "firma" in _aktif_col_order:
+        _aktif_col_order = [c for c in _aktif_col_order if c != "hesaplama"]
+        _fh_pos = _aktif_col_order.index("firma")
+        _aktif_col_order.insert(_fh_pos, "hesaplama")
 
     # ── SAĞ TARAFTAKİ BOŞLUĞU KAPAT ─────────────────────────────────────────
     # Tüm kolonlara sabit piksel genişliği verildiğinde, toplam genişlik ekran
