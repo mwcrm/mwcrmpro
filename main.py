@@ -4871,6 +4871,41 @@ def not_dialog(cari_id, firma_adi=""):
                                 _cari_ek_bilgi_kaydet(_fy_tf_harita)
                         except Exception:
                             pass
+
+                        # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "İkisini
+                        # Birden Çalıştır" artık İSMİNE UYGUN OLARAK GERÇEKTEN HER
+                        # ŞEYİ TEK TIKLA yapar — İl İşaretleme + Ayrıştırma'nın
+                        # ÜSTÜNE, "Koli/Palet" tablosunu da OTOMATİK KAYDEDER
+                        # (ayrıca "💾 Kaydet"e basmaya gerek KALMAZ). Yukarıdaki
+                        # hiçbir hesaplamaya (Hedeflenen Ciro, İl Ciroları, Teklif
+                        # Fiyat, İl İşaretleme) DOKUNULMADI — onlar zaten doğru,
+                        # sadece son adım (kaydetme) da otomatikleştirildi. NOT:
+                        # "Ayrıştır ve Hazırla" (tek başına) HALA elle inceleyip
+                        # ayrı "Kaydet"e basma seçeneğini korur — bu otomatik
+                        # kaydetme SADECE "İkisini Birden Çalıştır"a özeldir.
+                        try:
+                            _fy_oto_metin = st.session_state.get(f"_fy_hazir_{cari_id}", "").strip()
+                            if _fy_oto_metin:
+                                _r_kpo_oto = _vd_sb.table("kullanici_tercih").select("deger").eq(
+                                    "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                                import json as _kpoj_oto
+                                _kp_map_oto = _kpoj_oto.loads(_r_kpo_oto.data[0]["deger"]) if _r_kpo_oto.data else {}
+                                _kp_id_str_oto = str(int(cari_id))
+                                _kp_map_oto[_kp_id_str_oto] = _fy_oto_metin
+                                _kpo_deger_oto = _kpoj_oto.dumps(_kp_map_oto, ensure_ascii=False)
+                                _kpo_guncelle_oto = _vd_sb.table("kullanici_tercih").update({"deger": _kpo_deger_oto}).eq(
+                                    "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+                                if not _kpo_guncelle_oto.data:
+                                    _vd_sb.table("kullanici_tercih").insert({
+                                        "kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel",
+                                        "deger": _kpo_deger_oto
+                                    }).execute()
+                                st.session_state["_koli_palet_manuel"] = _kp_map_oto
+                                st.session_state.pop(f"_fy_hazir_{cari_id}", None)
+                                get_cari_listesi.clear()
+                                st.toast("🚀 Her şey tamamlandı: İller işaretlendi, fiyat tablosu kaydedildi, Cari Liste güncellendi!", icon="✅")
+                        except Exception as _fy_oto_hata:
+                            st.error(f"Otomatik kaydetme hatası: {_fy_oto_hata}")
                     st.rerun()
 
         _fy_hazir = st.session_state.get(f"_fy_hazir_{cari_id}")
