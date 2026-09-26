@@ -938,35 +938,6 @@ def _fy_tablo_olustur_global(_girisler):
 
 import re as _fy_re_erken
 
-_FY_ESKI_SATIR_RE = _fy_re_erken.compile(
-    r'^(\S+)\s*-\s*(\S+)\s+(\d+)\s*DESİ\s*-KG\s+(?:[\d.]+\s*TL\s+)?([\d.]+)\s*TL\s*$'
-)
-
-
-def _fy_eski_metni_yeni_formata_cevir(_eski_metin):
-    """KULLANICI İSTEĞİ (2026-09): 'Koli/Palet' hücresinde daha önce
-    kaydedilmiş fiyat tablosu metnini (varsa) YENİ formata (FİYAT İNCELE
-    başlıklı, BİRİM FİYAT sütunsuz) çevirir. Bu araçla ÜRETİLMEMİŞ (serbest
-    yazılmış) metinlere kesinlikle DOKUNMAZ — ayrıştırma başarısız olursa
-    metin OLDUĞU GİBİ geri döner (veri kaybı riski yok)."""
-    _metin = str(_eski_metin or "")
-    if "DESİ" not in _metin:
-        return _metin
-    if _metin.strip().startswith("FİYAT İNCELE") and "BİRİM FİYAT" not in _metin:
-        return _metin
-    _girisler = []
-    for _satir in _metin.split("\n"):
-        _m = _FY_ESKI_SATIR_RE.match(_satir.strip())
-        if _m:
-            try:
-                _girisler.append((_m.group(1), _m.group(2), int(_m.group(3)), float(_m.group(4))))
-            except Exception:
-                pass
-    if not _girisler:
-        return _metin
-    return _fy_tablo_olustur_global(_girisler)
-
-
 @st.cache_data(ttl=300, show_spinner=False)
 def _tum_musteri_kargo_yekun_toplami():
     """KULLANICI İSTEĞİ (2026-09): Cari Liste'deki 'Gerçekleşen Ciro' artık
@@ -1937,27 +1908,6 @@ def _hic_none_gosterme(_df):
 _CARI_RUT_ANAHTAR = "_cari_rut_atamalari"
 
 
-def _cari_rut_yukle_ham():
-    """Müşteri (cari) -> Rut ataması sözlüğünü döndürür: {"123": "Rut A", ...}.
-    ÖNEMLİ: cari_kartlar tablosuna yeni bir 'rut' SÜTUNU eklenmedi (proje
-    kuralı: yeni SQL migration yok) — bunun yerine mevcut kullanici_tercih
-    tablosunda TEK bir JSON blob olarak saklanıyor (kargo/tedarikçi
-    listeleriyle aynı, kanıtlanmış desen). Okuma başarısız olursa (bağlantı
-    sorunu) BOŞ SÖZLÜK yerine None döner — çağıran taraf bunu "veri yok"
-    ile "okunamadı" ayrımı için kullanabilir."""
-    try:
-        sb = get_sb_client()
-        if not sb:
-            return {}
-        r = sb.table("kullanici_tercih").select("deger").eq(
-            "kullanici", "__liste_ui__").eq("anahtar", _CARI_RUT_ANAHTAR).execute()
-        if r.data:
-            return json.loads(r.data[0]["deger"])
-        return {}
-    except Exception:
-        return {}
-
-
 def _cari_rut_kaydet(_sozluk):
     """GÜVENLİ (bkz. _tedarikci_kaydet ile aynı desen) — SİLME YOK, satır
     varsa UPDATE, yoksa INSERT."""
@@ -2020,9 +1970,6 @@ def get_sb_service():
     except:
         pass
     return None
-
-def get_sb():
-    return get_sb_client()
 
 def hesapla_segment(manuel_segment, gerceklesen_ciro):
     """Manuel segment varsa onu normalize et, yoksa ciroya göre otomatik hesapla"""
@@ -2095,37 +2042,6 @@ def _telefon_temizle(seri):
             pass
         return _tel_gruplu(s)
     return seri.apply(_tek)
-
-def _no_temizle(v):
-    """Tek değer için .0 ve float temizleyici — her yerde kullan"""
-    if v is None: return ""
-    s = str(v).strip()
-    if s.lower() in ["nan","none",""]: return ""
-    if s.endswith(".0"): s = s[:-2]
-    try:
-        if "e" in s.lower():
-            s = str(int(float(s)))
-    except: pass
-    return s
-
-def _get_atanmis_firmalar():
-    """Giriş yapan kullanıcının atanmış firma adlarını döndürür. Admin için None (hepsi)."""
-    try:
-        _rol = st.session_state.get("rol","")
-        _kul = st.session_state.get("kullanici","")
-        if _rol == "admin" or not _kul:
-            return None  # None = hepsini göster
-        sb = get_sb_client()
-        if sb:
-            _res = sb.table("cari_kartlar").select("firma,id").eq("atanan_kullanici", _kul).neq("silindi",1).execute()
-            if _res.data:
-                return {
-                    "firmalar": set(str(r.get("firma","")).strip().upper() for r in _res.data if r.get("firma")),
-                    "idler": set(int(r.get("id",0)) for r in _res.data if r.get("id"))
-                }
-        return {"firmalar": set(), "idler": set()}  # boş — hiçbir şey görmesin
-    except:
-        return None  # hata durumunda hepsini göster (güvenli taraf)
 
 def _atama_filtresi_uygula(df):
     """Admin hepsini görür, diğerleri sadece kendine atananları"""
@@ -2328,38 +2244,6 @@ def get_kullanici_listesi():
     """2 dk cache'li kullanıcı listesi"""
     return db_read("kullanicilar", extra_sql="")
 
-@st.cache_data(ttl=120)
-def _cached_placeholder(): pass  # cache decorator boş bırakılamaz
-
-
-def _teklifler_oku():
-    """teklifler tablosunu DOĞRUDAN Supabase client ile okur.
-    NOT: db_read() bu tabloda bazı ortamlarda sessizce başarısız olup neredeyse
-    boş yerel SQLite yedeğine düşüyordu (177 gerçek kayıt varken "6 kayıt"
-    gösteriyordu) — bu fonksiyon o sorunu bypass eder, Kurallar sayfasındaki
-    çalışan "Bağlantısız Teklif Onarımı" aracıyla AYNI, kanıtlanmış yöntemi kullanır."""
-    try:
-        sb = get_sb_client()
-        if sb:
-            _res = sb.table("teklifler").select("*").order("id", desc=True).execute()
-            _data = _res.data or []
-            return pd.DataFrame(_data) if _data else pd.DataFrame()
-    except Exception:
-        pass
-    return db_read("teklifler", order_col="id")  # son çare
-
-def _teklifler_tarih_normalize(df):
-    """teklifler tablosunda gerçek Supabase şemasında 'tarih' kolonu olmayabilir
-    (otomatik 'created_at' kullanılıyor olabilir, cari_aciklamalar'da olduğu gibi).
-    Kod genelinde 'tarih' bekleyen onlarca yer bozulmasın diye burada normalize
-    ediyoruz — böylece hem eski hem yeni şema ile çalışır."""
-    if df is None or df.empty:
-        return df
-    if "tarih" not in df.columns and "created_at" in df.columns:
-        df = df.copy()
-        df["tarih"] = df["created_at"]
-    return df
-
 def db_read(table, filters=None, order_col="id", desc=True, limit=None, extra_sql=None):
     """Supabase veya SQLite'dan DataFrame döner"""
     sb = get_sb_client()
@@ -2452,100 +2336,6 @@ def db_update(table, data, where_col, where_val):
         pass
     return False
 
-def db_query(sql, params=None):
-    """SELECT sorgusu — Supabase veya SQLite"""
-    if sb_or_sqlite():
-        # Supabase için pandas read
-        try:
-            import sqlalchemy
-            url = st.secrets.get("SUPABASE_URL","").replace("https://","postgresql://postgres.asinwzxwmkkrcbtjrkoq:")
-            # Doğrudan supabase-py kullanalım
-            sb = get_supabase()
-            if sb:
-                # Tabloyu sql'den çıkar
-                tbl = re.search(r'FROM\s+(\w+)', sql, re.IGNORECASE)
-                if tbl:
-                    table_name = tbl.group(1)
-                    res = sb.table(table_name).select("*").execute()
-                    if res.data:
-                        df = pd.DataFrame(res.data)
-                        return df
-                    return pd.DataFrame()
-        except Exception as e:
-            pass
-    # SQLite fallback
-    df = pd.read_sql(sql, conn)
-    return df
-
-def sb_insert(table, data):
-    """INSERT — Supabase veya SQLite"""
-    if sb_or_sqlite():
-        try:
-            sb = get_supabase()
-            if sb:
-                sb.table(table).insert(data).execute()
-                return True
-        except Exception as e:
-            st.error(f"Supabase insert hatası: {e}")
-    return False
-
-def sb_update(table, data, match_col, match_val):
-    """UPDATE — Supabase veya SQLite"""
-    if sb_or_sqlite():
-        try:
-            sb = get_supabase()
-            if sb:
-                sb.table(table).update(data).eq(match_col, match_val).execute()
-                return True
-        except Exception as e:
-            st.error(f"Supabase update hatası: {e}")
-    return False
-
-def sb_delete(table, match_col, match_val):
-    """DELETE — Supabase"""
-    if sb_or_sqlite():
-        try:
-            sb = get_supabase()
-            if sb:
-                sb.table(table).delete().eq(match_col, match_val).execute()
-                return True
-        except:
-            pass
-    return False
-
-def sb_select(table, filters=None, order=None, limit=None):
-    """Supabase tablo sorgusu — DataFrame döner"""
-    if sb_or_sqlite():
-        try:
-            sb = get_supabase()
-            if sb:
-                q = sb.table(table).select("*")
-                if filters:
-                    for col, val in filters.items():
-                        if val is not None:
-                            q = q.eq(col, val)
-                if order:
-                    q = q.order(order, desc=True)
-                if limit:
-                    q = q.limit(limit)
-                res = q.execute()
-                return pd.DataFrame(res.data) if res.data else pd.DataFrame()
-        except Exception as e:
-            pass
-    # SQLite fallback
-    try:
-        sql = f"SELECT * FROM {table}"
-        if filters:
-            where = " AND ".join([f"{k}=?" for k in filters.keys()])
-            sql += f" WHERE {where}"
-            df = pd.read_sql(sql, conn, params=list(filters.values()))
-        else:
-            df = pd.read_sql(sql, conn)
-        return df
-    except:
-        return pd.DataFrame()
-
-
 ILLER_ILCELER = {
     "Adana": ["Aladağ","Ceyhan","Çukurova","Feke","İmamoğlu","Karaisalı","Karataş","Kozan","Pozantı","Saimbeyli","Sarıçam","Seyhan","Tufanbeyli","Yumurtalık","Yüreğir"],
     "Adıyaman": ["Besni","Çelikhan","Gerger","Gölbaşı","Kahta","Merkez","Samsat","Sincik","Tut"],
@@ -2629,118 +2419,6 @@ ILLER_ILCELER = {
 def get_conn():
     return sqlite3.connect("mw_crm.db", check_same_thread=False)
 
-def init_db():
-    # SQLite her zaman yedek
-    try:
-        conn = get_conn()
-        tables = [
-        """CREATE TABLE IF NOT EXISTS kullanicilar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kullanici_adi TEXT UNIQUE NOT NULL,
-            sifre TEXT NOT NULL,
-            rol TEXT DEFAULT 'kullanici')""",
-        """CREATE TABLE IF NOT EXISTS cari_kartlar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            firma TEXT, yetkili TEXT, gsm TEXT, sabit TEXT, email TEXT,
-            adres TEXT, ilce TEXT, il TEXT, durum TEXT, temsilci TEXT,
-            islem_asamasi TEXT, silindi INTEGER DEFAULT 0,
-            olusturan TEXT, beklenen_ciro REAL DEFAULT 0,
-            gerceklesen_ciro REAL DEFAULT 0)""",
-        """CREATE TABLE IF NOT EXISTS teklifler (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            musteri_id INTEGER, musteri_adi TEXT,
-            satirlar TEXT, toplam_tutar REAL,
-            olusturan TEXT, notlar TEXT)""",
-        """CREATE TABLE IF NOT EXISTS islem_kaydi (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            musteri_id INTEGER, musteri_adi TEXT,
-            islem_turu TEXT, icerik TEXT,
-            gonderim_bilgisi TEXT, olusturan TEXT)""",
-        """CREATE TABLE IF NOT EXISTS kullanici_tercih (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kullanici TEXT, anahtar TEXT, deger TEXT,
-            UNIQUE(kullanici, anahtar))""",
-        """CREATE TABLE IF NOT EXISTS kod_deposu (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            surum TEXT, aciklama TEXT, kod TEXT, olusturan TEXT)""",
-        """CREATE TABLE IF NOT EXISTS mesajlar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            gonderen TEXT, alici TEXT, mesaj TEXT,
-            okundu INTEGER DEFAULT 0)""",
-        """CREATE TABLE IF NOT EXISTS duyurular (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            baslik TEXT, icerik TEXT, tip TEXT DEFAULT 'bilgi',
-            olusturan TEXT, aktif INTEGER DEFAULT 1)""",
-        """CREATE TABLE IF NOT EXISTS aktif_kullanicilar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kullanici TEXT UNIQUE, son_gorulme TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-        """CREATE TABLE IF NOT EXISTS temsilciler (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ad TEXT, soyad TEXT, telefon TEXT, email TEXT,
-            bolge TEXT, unvan TEXT, aktif INTEGER DEFAULT 1)""",
-        """CREATE TABLE IF NOT EXISTS kisiler (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ad TEXT, soyad TEXT, telefon TEXT, email TEXT,
-            firma TEXT, gorev TEXT, bolge TEXT,
-            temsilci TEXT, notlar TEXT, kaynak TEXT)""",
-        """CREATE TABLE IF NOT EXISTS sablon_mesajlar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ad TEXT, metin TEXT, olusturan TEXT, aktif INTEGER DEFAULT 1)""",
-        """CREATE TABLE IF NOT EXISTS kisiler_mesaj_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            kisi_id INTEGER, kisi_adi TEXT, telefon TEXT,
-            sablon_adi TEXT, mesaj TEXT, gonderen TEXT)""",
-        """CREATE TABLE IF NOT EXISTS cari_aciklamalar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            cari_id INTEGER, cari_adi TEXT,
-            aciklama TEXT, olusturan TEXT)""",
-        """CREATE TABLE IF NOT EXISTS randevular (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            randevu_tarihi TEXT, randevu_saati TEXT,
-            musteri_id INTEGER, musteri_adi TEXT,
-            bolge TEXT, gorev TEXT, takip TEXT, adet INTEGER DEFAULT 0,
-            aciklama TEXT, sonuc TEXT, temsilci TEXT,
-            wa_gonderildi INTEGER DEFAULT 0, olusturan TEXT)""",
-    ]
-        for t in tables:
-            try: conn.execute(t)
-            except: pass
-        for col in ["olusturan TEXT", "beklenen_ciro REAL DEFAULT 0", "gerceklesen_ciro REAL DEFAULT 0", "aciklama TEXT DEFAULT ''"]:
-            try: conn.execute(f"ALTER TABLE cari_kartlar ADD COLUMN {col}")
-            except: pass
-        conn.execute("UPDATE cari_kartlar SET silindi=0 WHERE silindi IS NULL")
-        conn.execute("UPDATE cari_kartlar SET id=rowid WHERE id IS NULL")
-        try:
-            conn.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol) VALUES (?,?,?)",
-                         ("admin", "admin123", "admin"))
-        except: pass
-        conn.commit()
-        conn.close()
-    except: pass
-
-    # Supabase admin kullanicisi
-    if sb_or_sqlite():
-        try:
-            sb = get_supabase()
-            if sb:
-                existing = sb.table("kullanicilar").select("id").eq("kullanici_adi","admin").execute()
-                if not existing.data:
-                    sb.table("kullanicilar").insert({"kullanici_adi":"admin","sifre":"admin123","rol":"admin"}).execute()
-        except:
-            pass
-
 def otomatik_yedek():
     """Her gun otomatik yedek alir (sadece SQLite modunda)"""
     if sb_or_sqlite():
@@ -2789,7 +2467,6 @@ def sayfa_log(sayfa):
     # Sekme başlığını güncelle
     _menu_adlari = {
         "yeni": "Yeni Kart", "liste": "Cari Liste",
-        "sozlesme": "Sözleşmeler",
         "excel": "Excel", "kullanici": "Kullanıcılar",
         "dis_nakliye": "Dış Nakliye", "dis_nakliye_toplu": "Dış Nakliyeler Listesi",
     }
@@ -2846,39 +2523,6 @@ def _tanimlar_yukle(tip):
     if tip == "asama":
         return ["Arama","Tekrar Ara","Randevu","Teklif","Fiyat Hazırla","Deneme","Sözleşme","Kazanıldı","Kaybedildi","Devam Ediyor"]
     return []
-
-def _tanim_ekle(tip, deger):
-    try:
-        _sb = get_sb_client()
-        if _sb:
-            # Mevcut max sıra
-            _r = _sb.table("sistem_tanimlar").select("sira").eq("tip",tip).order("sira",desc=True).limit(1).execute()
-            _sira = (_r.data[0]["sira"] + 1) if _r.data else 1
-            _sb.table("sistem_tanimlar").insert({"tip":tip,"deger":deger,"sira":_sira}).execute()
-            return True
-    except: pass
-    return False
-
-def _tanim_sil(tip, deger):
-    try:
-        _sb = get_sb_client()
-        if _sb:
-            _sb.table("sistem_tanimlar").delete().eq("tip",tip).eq("deger",deger).execute()
-            return True
-    except: pass
-    return False
-
-def _tanim_guncelle(tip, eski, yeni):
-    try:
-        _sb = get_sb_client()
-        if _sb:
-            _sb.table("sistem_tanimlar").update({"deger":yeni}).eq("tip",tip).eq("deger",eski).execute()
-            # cari_kartlar'da da güncelle
-            kolon = "islem_asamasi" if tip == "asama" else "durum"
-            _sb.table("cari_kartlar").update({kolon:yeni}).eq(kolon,eski).execute()
-            return True
-    except: pass
-    return False
 
 def giris_ekrani():
     # ── KÜÇÜK & YUKARIDA GÖRÜNÜM İÇİN CSS ──────────────────────────────────────
@@ -3040,7 +2684,6 @@ try{localStorage.removeItem('mwcrm_oturum');}catch(e){}
 # ── SESSION STATE ─────────────────────────────────────────────────────────────
 _sayfa_adlari_cfg = {
     "yeni":"Yeni Kart","liste":"Cari Liste",
-    "sozlesme":"Sözleşmeler",
     "excel":"Excel","kullanici":"Kullanıcılar",
     "dis_nakliye":"Dış Nakliye","dis_nakliye_toplu":"Dış Nakliyeler Listesi",
 }
@@ -3137,7 +2780,6 @@ p, .stMarkdown, label { font-size: 0.9rem !important; }
 # Sekme başlığını aktif menüye göre güncelle
 _sayfa_adlari = {
     "yeni":"Yeni Kart","liste":"Cari Liste",
-    "sozlesme":"Sözleşmeler",
     "excel":"Excel","kullanici":"Kullanıcılar",
     "dis_nakliye":"Dış Nakliye","dis_nakliye_toplu":"Dış Nakliyeler Listesi",
 }
@@ -3903,7 +3545,7 @@ def not_dialog(cari_id, firma_adi=""):
         st.session_state.pop("_not_dialog_kalici_id", None)
         st.session_state.pop("_not_dialog_kalici_firma", None)
         st.rerun()
-    _tab_not, _tab_hizli, _tab_rdv, _tab_yetkili, _tab_dn, _tab_kargo, _tab_sozlesme, _tab_varis, _tab_duz, _tab_sil = st.tabs(["📝 Notlar", "⚡ Hızlı Firma Ekle", "📅 Randevu Ekle", "👥 Yetkililer", "🚚 Dış Nakliye", "📦 Kargo Girişi", "📜 Sözleşme Hazırla", "📦 Varış/Fiyat", "✏️ Cari Kartı Düzenle", "🗑️ Cari Sil"])
+    _tab_not, _tab_hizli, _tab_rdv, _tab_yetkili, _tab_dn, _tab_kargo, _tab_varis, _tab_duz, _tab_sil = st.tabs(["📝 Notlar", "⚡ Hızlı Firma Ekle", "📅 Randevu Ekle", "👥 Yetkililer", "🚚 Dış Nakliye", "📦 Kargo Girişi", "📦 Varış/Fiyat", "✏️ Cari Kartı Düzenle", "🗑️ Cari Sil"])
     with _tab_not:
         not_paneli(cari_id, firma_adi, key_prefix="dlg")
     with _tab_hizli:
@@ -4707,12 +4349,6 @@ def not_dialog(cari_id, firma_adi=""):
                         st.rerun()
         else:
             st.caption("Bu müşteri için henüz kargo kaydı yok.")
-    with _tab_sozlesme:
-        st.caption(f"**{firma_adi}** için sözleşme hazırla — müşteri otomatik seçili şekilde Sözleşmeler sayfası açılır.")
-        if st.button("📜 Sözleşmeler Sayfasını Aç", key=f"dlg_sozlesme_{cari_id}", type="primary", use_container_width=True):
-            st.session_state["aktif_tab"] = "sozlesme"
-            st.session_state["sozlesme_musteri_onsel"] = firma_adi
-            st.rerun()
     with _tab_varis:
         st.caption("Karışık/serbest yazabilirsin — aynı Cari Liste'deki il sütunlarıyla birebir aynı şekilde çalışır.")
 
@@ -5630,12 +5266,11 @@ def not_paneli(cari_id, firma_adi="", key_prefix="np"):
 
 
 
-_TAB_LISTESI_DEFAULT = ["yeni", "hizli_firma", "liste", "sozlesme", "excel", "kullanici", "mukerrer", "kargolar", "tedarikci"]
+_TAB_LISTESI_DEFAULT = ["yeni", "hizli_firma", "liste", "excel", "kullanici", "mukerrer", "kargolar", "tedarikci"]
 _TAB_ETIKETLER = {
     "yeni": "➕ Yeni Kart Ekle",
     "hizli_firma": "⚡ Hızlı Firma Ekle",
     "liste": "📋 Cari Liste / Düzenle",
-    "sozlesme": "📜 Sözleşmeler",
     "excel": "📥 Excel Aktar",
     "dis_nakliye": "🚚 Dış Nakliye",
     "dis_nakliye_toplu": "🚚 Dış Nakliyeler Listesi",
@@ -5706,39 +5341,10 @@ def get_menu_tercihi(kullanici):
         tam_liste += ["kullanici"]
     return _temizle(tam_liste)
 
-def save_menu_tercihi(kullanici, sira):
-    try:
-        sb_m = get_sb_client()
-        if sb_m:
-            sb_m.table("kullanici_tercih").upsert({
-                "kullanici": kullanici,
-                "anahtar": "menu_sirasi",
-                "deger": json.dumps(sira)
-            }, on_conflict="kullanici,anahtar").execute()
-        else:
-            conn = get_conn()
-            conn.execute("CREATE TABLE IF NOT EXISTS kullanici_tercih (id INTEGER PRIMARY KEY AUTOINCREMENT, kullanici TEXT, anahtar TEXT, deger TEXT, UNIQUE(kullanici, anahtar))")
-            conn.execute("INSERT OR REPLACE INTO kullanici_tercih (kullanici, anahtar, deger) VALUES (?,?,?)",
-                (kullanici, "menu_sirasi", json.dumps(sira)))
-            conn.commit(); conn.close()
-    except: pass
-
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 
 # ── VERSİYON KONTROL SİSTEMİ ─────────────────────────────────────────────────
 GUNCEL_SURUM = "v6.7"  # Bu kodun versiyonu — her güncellemede artır
-
-def _surum_kontrol():
-    """Kullanıcı stable sürümde mi kontrol et"""
-    try:
-        _sb_s = get_sb_client()
-        if not _sb_s: return True  # Bağlantı yoksa geç
-        _res = _sb_s.table("sistem_ayarlari").select("deger").eq("anahtar","stable_surum").execute()
-        if _res.data:
-            return _res.data[0]["deger"] == GUNCEL_SURUM
-        return True
-    except:
-        return True  # Hata olursa engelleme
 
 # Giriş kontrolü
 if not st.session_state.get("giris", False):
@@ -6098,7 +5704,6 @@ button[data-testid="manage-app-button"] { display: none !important; }
     _TAB_RENKLER = {
         "yeni":        "#16a34a",
         "liste":       "#0369a1",
-        "sozlesme":    "#9333ea",
         "excel":       "#047857",
         "kullanici":   "#be123c",
         "mesajlar":    "#0891b2",
@@ -6156,7 +5761,6 @@ button[data-testid="manage-app-button"] { display: none !important; }
     _MENU_GRUPLARI = [
         ("🧾 Cari işlemleri",    ["yeni", "hizli_firma", "liste", "kargolar", "excel", "mukerrer"]),
         ("🚛 Tedarikçi",         ["tedarikci"]),
-        ("📅 Randevu ve teklif", ["sozlesme"]),
         ("⚙️ Yönetim",          ["kullanici"]),
     ]
 
@@ -11993,585 +11597,6 @@ function updateBot(v){{
             if st.button("🔒 Kilitle", key="kurallar_kilitle_btn"):
                 st.session_state["kurallar_pin_dogru"] = False
                 st.rerun()
-
-elif aktif == "sozlesme":
-    sayfa_log("sozlesme")
-    import json as _szj
-    from datetime import date as _szdate
-
-    st.markdown("## 📜 Sözleşmeler")
-
-    # ══════════════════════════════════════════════════════════════════════
-    # YARDIMCI FONKSİYONLAR — fiyat gruplama + docx/pdf üretimi
-    # ══════════════════════════════════════════════════════════════════════
-    def _sz_fiyat_grupla(teklif_veri):
-        """Özel Teklif JSON'unu MADDE 3 formatına (başlık + madde listesi) çevirir"""
-        try:
-            data = _szj.loads(teklif_veri) if isinstance(teklif_veri, str) else (teklif_veri or {})
-        except Exception:
-            return []
-        gruplar, sira = {}, []
-        for grp in data.get("grp", []):
-            for s in grp.get("satirlar", []):
-                _cikis = s.get("cikis", [])
-                _varis = s.get("varis", [])
-                _cikis_s = ", ".join(_cikis) if isinstance(_cikis, list) else str(_cikis or "")
-                _varis_s = ", ".join(_varis) if isinstance(_varis, list) else str(_varis or "")
-                if not _cikis_s and not _varis_s:
-                    continue
-                _baslik = f"{_cikis_s} → {_varis_s}"
-                _tur = ", ".join(s.get("tur", []) or []) or "—"
-                try: _bas = int(float(s.get("bas", 0) or 0))
-                except: _bas = 0
-                try: _bit = int(float(s.get("bit", 0) or 0))
-                except: _bit = 0
-                try: _fiyat = float(s.get("fiyat", 0) or 0)
-                except: _fiyat = 0.0
-                _satir_txt = f"{_tur} | {_bas}-{_bit} desi → {fmt_para(_fiyat)}"
-                if _baslik not in gruplar:
-                    gruplar[_baslik] = []
-                    sira.append(_baslik)
-                gruplar[_baslik].append(_satir_txt)
-        return [{"baslik": b, "satirlar": gruplar[b]} for b in sira]
-
-    _SZ_KOSULLAR = [
-        "STF KARGO her gün kargo İhbarlarını adresten alır ve ertesi gün teslim eder.",
-        "Kargo taşımaları STF KARGO'nun kurallarına göre yapılır.",
-        "Kargo taşıma sonunda alıcı veya vekiline yada temsilcisine hüviyet ve imzası karşılığında teslim edilir. "
-        "Teslimden sonra STF KARGO'nun her türlü sorumluluğu sona erer.",
-        "Harp ve harbe benzer hareket. Grev, kargaşalık, halk hareketleri ve hareketlerle ilgili olarak alınan "
-        "önlemlerden doğan gecikme ve hasardan STF KARGO sorumlu değildir.",
-        "Gelen kargo alıcısına en kısa zamanda bildirilecek iki gün bekletilir. Bu süre içerisinde kargonun teslim "
-        "alınmaması halinde göndericisinden talimat istenir. Üç gün içerisinde talimat gelmezse, kargo "
-        "göndericisine iade edilerek taşıma ücreti ve masrafları kendisinden tahsil edilir.",
-        "İrsaliye ve faturası STF KARGO'ya verilmiş ve değer beyanı yapılmış tüm kargo taşıma YURT İÇİ TAŞIYICI "
-        "MALİ MESULİYET SİGORTA SÖZLEŞMESİ hükümlerine göre sigortalıdır.",
-        "Bulundurulması yasalarla men edilmiş veya ruhsat ve izne tabi olanlarla, çabuk bozulabilecek, fena ve "
-        "ağır koku veren, yanıcı, patlayıcı, parlayıcı, zehirli, yakıcı aşındırıcı maddeler taşınmaz.",
-        "Çek, senet, hisse senedi vb kıymetli kağıtlar taşınmaz.",
-        "Gönderenin taşınan eşyanın mutad evsafına göre yeterli veya uygun olmayan ambalajlanmasının neden "
-        "olduğu hasar, ziyan ve masraflardan STF KARGO sorumlu değildir.",
-        "Üzerinde tahrifat yapılmış, oynanmış, silinti, kazıntı bulunan ambar tesellüm fişleri hükümsüzdür.",
-        "Üç ay içersinde aranmayan kargolardan sorumluluk kabul edilmez.",
-        "Bazı mal çeşitlerinin nitelikleri itibarıyla bozulma, aşınma, normal çürüme, kuruma vb. nedenlerden "
-        "meydan gelen hasarlardan STF KARGO sorumlu değildir.",
-        "İş bu sözleşme taraflarının ihtilafı vukuunda İSTANBUL mahkemeleri ve icra daireleri yetkilidir.",
-        "Sigorta ücreti fatura edilmeyen taşımalarda meydana gelebilecek hasar veya kayıp durumunda ödenecek "
-        "tazminat tutarı taşıma bedelinin 3 (üç) katıdır.",
-    ]
-    _SZ_YASAKLAR = [
-        "Her türlü patlayıcı, yanıcı, zehirleyici, fena kokulu kargolar. Ayrıca dolu ve boş gaz tüpleri "
-        "(yangın söndürme cihazı hariç)",
-        "Kısa sürede bozulabilecek; et, tavuk, balık, bağırsak, ham deri, mutfak yağları ve yumurta, sıvı "
-        "deterjan, makine yağları, plastik ve yağlı boyalar.",
-        "Yüklenip indirilmesi zor, diğer kargolara zarar verme ihtimali yüksek olan 100 kg'dan ağır tek parça "
-        "kargolarla, uzunluğu üç metreden fazla sandık veya demir malzemeler.",
-        "Kapalı zarf veya başka bir muhafaza içine konmuş para ve senet, yemek çeki, piyango bileti ile altın "
-        "ve ziynet eşyası taşınmaz.",
-        "Ambalajından dolayı delinme, parçalanma, dağılma, kırılma sonucunda kendine veya diğer kargolara "
-        "zarar verme ihtimali yüksek olan kargolar.",
-        "Zarf içinde ağır, sivri, zarfı yırtabilecek maddeler.",
-    ]
-
-    def _sz_docx_uret(v):
-        """Hiçbir pip paketi gerektirmeden (sadece Python stdlib zipfile) .docx üretir"""
-        import zipfile as _szzip
-        import io as _szio
-        from xml.sax.saxutils import escape as _szesc
-
-        _CONTENT_TYPES = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-            '<Default Extension="xml" ContentType="application/xml"/>'
-            '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
-            '</Types>')
-        _RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
-            '</Relationships>')
-        _DOC_RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>')
-
-        def _run(text, bold=False, size=22):
-            props = f'<w:sz w:val="{size}"/><w:szCs w:val="{size}"/>'
-            if bold: props = "<w:b/><w:bCs/>" + props
-            return f'<w:r><w:rPr>{props}</w:rPr><w:t xml:space="preserve">{_szesc(str(text))}</w:t></w:r>'
-
-        def _para(runs_xml="", after=120, before=0, align=None, indent=None):
-            pPr = f'<w:spacing w:after="{after}" w:before="{before}"/>'
-            if align: pPr += f'<w:jc w:val="{align}"/>'
-            if indent: pPr += f'<w:ind w:left="{indent}"/>'
-            return f'<w:p><w:pPr>{pPr}</w:pPr>{runs_xml}</w:p>'
-
-        def _page_break():
-            return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'
-
-        def _two_col(left, right, bold=True, size=22, after=60):
-            pPr = f'<w:tabs><w:tab w:val="left" w:pos="5040"/></w:tabs><w:spacing w:after="{after}"/>'
-            r1 = _run(left, bold=bold, size=size)
-            r2 = '<w:r><w:tab/></w:r>' + _run(right, bold=bold, size=size)
-            return f'<w:p><w:pPr>{pPr}</w:pPr>{r1}{r2}</w:p>'
-
-        def _imza_bloklari():
-            return (_two_col("STF KARGO NAKLİYAT VE TİCARET LTD. ŞTİ.", v["musteri_kisa"], bold=True, size=22)
-                  + _two_col("KAŞE-İMZA", "KAŞE-İMZA", bold=False, size=21)
-                  + _two_col("", v["musteri_uzun"], bold=False, size=16))
-
-        P = []
-        P.append(_para(_run("MADDE 1: TARAFLAR", bold=True, size=26), after=160))
-        P.append(_para(_run("Taşıyıcı", bold=True) + _run(" : ") + _run("STF KARGO NAKLİYAT TİCARET LTD.ŞTİ", bold=True)))
-        P.append(_para(_run("Adres", bold=True) + _run(" : Halkalı Merkez Mah.Dereboyu Caddesi No:56 KÜÇÜKÇEKMECE/İSTANBUL"), after=200))
-        P.append(_para(_run("Taşıtıcı", bold=True) + _run(" : ") + _run(v["musteri_uzun"], bold=True)))
-        P.append(_para(_run("Adres", bold=True) + _run(" : " + (v["adres"] or "—"))))
-        P.append(_para(_run("V.D: ", bold=True) + _run(v["vd"] or "—") + _run("   V.No: ", bold=True) + _run(v["vno"] or "—"), after=200))
-        P.append(_para(_run(f"Bir tarafta Stf Kargo Nakliyat ve Ticaret Ltd. Şti. (kısaca STF KARGO olarak "
-                             f"anılacaktır.) diğer tarafta {v['musteri_uzun']} (kısaca {v['musteri_kisa']} olarak "
-                             f"anılacaktır) arasında akdedilen bu sözleşme tarafların İstanbul geneli yapılacak "
-                             f"taşımacılık faaliyetine ilişkin karşılıklı hak ve yükümlülüklerini belirler.", size=21), after=220))
-
-        P.append(_para(_run("MADDE 2: GEÇERLİLİK SÜRESİ:", bold=True, size=24), after=100))
-        P.append(_para(_run(f"İşbu sözleşme {v['gecerlilik_tarihi']} tarihine kadar geçerlidir. Bitiminde "
-                             f"karşılıklı mutabakat ile yenilenir.", size=21)))
-        P.append(_para(_run("Taraflardan herhangi biri bir ay önceden yazılı bildirim yapmak koşulu ile veya bu "
-                             "sözleşme hükümlerine aykırı hareket edilmesi halinde sözleşme tek taraflı "
-                             "feshedilebilir.", size=21), after=220))
-
-        P.append(_para(_run("MADDE 3: UYGULANACAK FİYAT TARİFESİ:", bold=True, size=24), after=100))
-        P.append(_para(_run(f"Geçerlilik süresi içerisinde STF KARGO {v['musteri_kisa']}'nin aşağıdaki tabloda "
-                             f"belirtilen ebattaki kargolarını yazılı fiyatlarla taşımayı kabul eder.", size=21), after=140))
-        if v["fiyat_gruplari"]:
-            for grp in v["fiyat_gruplari"]:
-                P.append(_para(_run(grp["baslik"], bold=True, size=21), after=60))
-                for satir in grp["satirlar"]:
-                    P.append(_para(_run("•  " + satir, size=20), after=40, indent=280))
-                P.append(_para("", after=60))
-        else:
-            P.append(_para(_run("(Bu müşteri için tanımlı fiyat bulunamadı — Özel Teklif oluşturulunca burada "
-                                 "listelenir.)", size=19), after=100))
-        P.append(_para(_run("Taşıma fiyatlarında KDV ayrıca eklenecektir.", bold=True, size=21), after=220))
-
-        P.append(_para(_run("MADDE 4: ÖDEME ŞEKLİ VE ZAMANI", bold=True, size=24), after=100))
-        P.append(_para(_run(f"{v['musteri_kisa']} kendisine gelen ürünlere ait ücret alıcı faturalar ile "
-                             f"gönderdiği ürünlere ait ücret gönderen faturaları tarihlerinden itibaren "
-                             f"{v['vade']} eft-havale olarak öder.", size=21), after=220))
-
-        P.append(_para(_run("MADDE 5: YAKIT KLOZU", bold=True, size=24), after=100))
-        P.append(_para(_run("Ay sonunda oluşan yakıt artış farkı %50 oranında fiyatlara yansıtılır", size=21), after=220))
-
-        P.append(_para(_run("MADDE 6: HİZMET ŞUBESİ ve YETKİLİSİ: İstanbul-Merkez Şubesi: Koray Ertaş", bold=True, size=24), after=100))
-        P.append(_para(_run("0 212 671 50 35-36 / 0 212 671 96 51-444 77 83", size=21), after=40))
-        P.append(_para(_run("Halkalı Merkez Mah.Dereboyu Caddesi No:56 K.Çekmece-İSTANBUL", size=21), after=40))
-        P.append(_para(_run("koray.ertas@stflojistik.com", size=21), after=220))
-
-        P.append(_para(_run("MADDE 7: TAŞIMA KOŞULLARI:", bold=True, size=24), after=100))
-        P.append(_para(_run("Genel taşıma koşulları ikinci sayfada 14 madde halinde açıklanmış olup tarafları "
-                             "tamamen bağlayıcı nitelik taşır.", size=21), after=220))
-
-        P.append(_para(_run("MADDE 8:", bold=True, size=24), after=100))
-        P.append(_para(_run(f"İşbu taşıma sözleşmesi toplam sekiz maddeden ibaret olup taraflarca kabul edilerek "
-                             f"{v['imza_tarihi']} tarihinde imza altına alınmıştır.", size=21), after=220))
-
-        P.append(_para(_run("Ekleri:", bold=True, size=21), after=40))
-        P.append(_para(_run("1) Taşıma Koşulları", size=21), after=40))
-        P.append(_para(_run("2) Taşınması yasak olan kargolar ve taşınması şarta bağlı kargolar", size=21), after=280))
-
-        P.append(_imza_bloklari())
-        P.append(_page_break())
-
-        P.append(_para(_run("TAŞIMA KOŞULLARI", bold=True, size=26), after=200, align="center"))
-        for i, k in enumerate(_SZ_KOSULLAR, 1):
-            P.append(_para(_run(f"{i}.  {k}", size=20), after=80, indent=240))
-        P.append(_para("", after=100))
-        P.append(_para(_run("TAŞIMASI YASAK OLAN KARGOLAR", bold=True, size=24), after=140))
-        for i, y in enumerate(_SZ_YASAKLAR, 1):
-            P.append(_para(_run(f"{i}.  {y}", size=20), after=80, indent=240))
-        P.append(_para("", after=200))
-        P.append(_imza_bloklari())
-
-        document_xml = (
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-            '<w:body>' + "".join(P) +
-            '<w:sectPr><w:pgSz w:w="11907" w:h="16840"/>'
-            '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr>'
-            '</w:body></w:document>'
-        )
-        _buf = _szio.BytesIO()
-        with _szzip.ZipFile(_buf, "w", _szzip.ZIP_DEFLATED) as _z:
-            _z.writestr("[Content_Types].xml", _CONTENT_TYPES)
-            _z.writestr("_rels/.rels", _RELS)
-            _z.writestr("word/document.xml", document_xml)
-            _z.writestr("word/_rels/document.xml.rels", _DOC_RELS)
-        return _buf.getvalue()
-
-    def _sz_pdf_uret(v):
-        """Hiçbir pip paketi gerektirmeden (sadece Python stdlib) PDF üretir.
-        Standart PDF Helvetica fontu İ/ı/Ş/ş/Ğ/ğ desteklemediği için bu harfler
-        PDF'e özel en yakın Latin harfe çevrilir (Word tarafı tam Türkçe kalır)."""
-        import io as _szio2
-
-        _TR_MAP = str.maketrans({
-            "İ": "I", "ı": "i", "Ş": "S", "ş": "s", "Ğ": "G", "ğ": "g",
-            "\u2192": "->", "\u20ba": "TL", "\u2013": "-", "\u2014": "-",
-            "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
-        })
-
-        def _tr(text): return str(text).translate(_TR_MAP)
-
-        def _pdf_esc(text):
-            text = _tr(text).replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
-            return text.encode("cp1252", errors="replace").decode("latin1")
-
-        def _text_w(text, size, bold=False):
-            w = 0
-            for ch in text:
-                if ch == " ": w += 278
-                elif ch.isupper(): w += 722
-                elif ch in "iIl.,'": w += 260
-                else: w += 556
-            return w * size / 1000.0 * (1.05 if bold else 1.0)
-
-        def _wrap(text, size, max_w, bold=False):
-            words = text.split(" "); lines, cur = [], ""
-            for w in words:
-                trial = (cur + " " + w).strip()
-                if _text_w(trial, size, bold) <= max_w or not cur:
-                    cur = trial
-                else:
-                    lines.append(cur); cur = w
-            if cur: lines.append(cur)
-            return lines
-
-        class _SimplePDF:
-            def __init__(self, pw=595, ph=842, margin=56):
-                self.pw, self.ph, self.margin = pw, ph, margin
-                self.pages = []; self._new_page()
-            def _new_page(self):
-                self.pages.append([]); self.y = self.ph - self.margin
-            def _ensure(self, need):
-                if self.y - need < self.margin: self._new_page()
-            def line(self, text, size=10.5, bold=False, gap=13, indent=0, center=False):
-                max_w = self.pw - 2*self.margin - indent
-                for ln in _wrap(text, size, max_w, bold):
-                    self._ensure(gap)
-                    font = "/F2" if bold else "/F1"
-                    xpos = self.margin + indent
-                    if center: xpos = (self.pw - _text_w(ln, size, bold)) / 2
-                    esc = _pdf_esc(ln)
-                    self.pages[-1].append(f"BT {font} {size} Tf {xpos:.2f} {self.y:.2f} Td ({esc}) Tj ET")
-                    self.y -= gap
-            def gap(self, n=8): self.y -= n
-            def two_col(self, left, right, size=11, bold=True, gap=14):
-                self._ensure(gap)
-                font = "/F2" if bold else "/F1"
-                le, re_ = _pdf_esc(left), _pdf_esc(right)
-                self.pages[-1].append(f"BT {font} {size} Tf {self.margin:.2f} {self.y:.2f} Td ({le}) Tj ET")
-                rx = self.pw/2 + 20
-                self.pages[-1].append(f"BT {font} {size} Tf {rx:.2f} {self.y:.2f} Td ({re_}) Tj ET")
-                self.y -= gap
-            def page_break(self): self._new_page()
-            def output(self):
-                objs = []
-                objs.append("<< /Type /Catalog /Pages 2 0 R >>")
-                kids = " ".join(f"{4+2*i} 0 R" for i in range(len(self.pages)))
-                objs.append(f"<< /Type /Pages /Kids [{kids}] /Count {len(self.pages)} >>")
-                objs.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
-                obj_num = 4
-                for ops in self.pages:
-                    content = "\n".join(ops)
-                    content_bytes = content.encode("latin1", errors="replace")
-                    objs.append(
-                        f"<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 3 0 R "
-                        f"/F2 {3+2*len(self.pages)+1} 0 R >> >> /MediaBox [0 0 {self.pw} {self.ph}] "
-                        f"/Contents {obj_num+1} 0 R >>"
-                    )
-                    obj_num += 1
-                    objs.append(("STREAM", content_bytes))
-                    obj_num += 1
-                objs.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>")
-                buf = _szio2.BytesIO()
-                buf.write(b"%PDF-1.4\n")
-                offsets = [0]
-                for idx, o in enumerate(objs, start=1):
-                    offsets.append(buf.tell())
-                    if isinstance(o, tuple) and o[0] == "STREAM":
-                        data = o[1]
-                        buf.write(f"{idx} 0 obj\n<< /Length {len(data)} >>\nstream\n".encode("latin1"))
-                        buf.write(data)
-                        buf.write(b"\nendstream\nendobj\n")
-                    else:
-                        buf.write(f"{idx} 0 obj\n{o}\nendobj\n".encode("latin1"))
-                xref_pos = buf.tell()
-                n = len(objs) + 1
-                buf.write(f"xref\n0 {n}\n0000000000 65535 f \n".encode("latin1"))
-                for off in offsets[1:]:
-                    buf.write(f"{off:010d} 00000 n \n".encode("latin1"))
-                buf.write(f"trailer\n<< /Size {n} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF".encode("latin1"))
-                return buf.getvalue()
-
-        pdf = _SimplePDF()
-        pdf.line("MADDE 1: TARAFLAR", size=14, bold=True, gap=20)
-        pdf.line("Taşıyıcı : STF KARGO NAKLİYAT TİCARET LTD.ŞTİ", bold=True)
-        pdf.line("Adres : Halkalı Merkez Mah.Dereboyu Caddesi No:56 KÜÇÜKÇEKMECE/İSTANBUL")
-        pdf.gap(6)
-        pdf.line(f"Taşıtıcı : {v['musteri_uzun']}", bold=True)
-        pdf.line(f"Adres : {v['adres'] or '—'}")
-        pdf.line(f"V.D: {v['vd'] or '—'}   V.No: {v['vno'] or '—'}")
-        pdf.gap(10)
-        pdf.line(f"Bir tarafta Stf Kargo Nakliyat ve Ticaret Ltd. Şti. (kısaca STF KARGO olarak anılacaktır.) "
-                 f"diğer tarafta {v['musteri_uzun']} (kısaca {v['musteri_kisa']} olarak anılacaktır) arasında "
-                 f"akdedilen bu sözleşme tarafların İstanbul geneli yapılacak taşımacılık faaliyetine ilişkin "
-                 f"karşılıklı hak ve yükümlülüklerini belirler.")
-        pdf.gap(14)
-        pdf.line("MADDE 2: GEÇERLİLİK SÜRESİ:", size=12, bold=True, gap=16)
-        pdf.line(f"İşbu sözleşme {v['gecerlilik_tarihi']} tarihine kadar geçerlidir. Bitiminde karşılıklı "
-                 f"mutabakat ile yenilenir.")
-        pdf.line("Taraflardan herhangi biri bir ay önceden yazılı bildirim yapmak koşulu ile veya bu sözleşme "
-                 "hükümlerine aykırı hareket edilmesi halinde sözleşme tek taraflı feshedilebilir.")
-        pdf.gap(14)
-        pdf.line("MADDE 3: UYGULANACAK FİYAT TARİFESİ:", size=12, bold=True, gap=16)
-        pdf.line(f"Geçerlilik süresi içerisinde STF KARGO {v['musteri_kisa']}'nin aşağıdaki tabloda belirtilen "
-                 f"ebattaki kargolarını yazılı fiyatlarla taşımayı kabul eder.")
-        if v["fiyat_gruplari"]:
-            for grp in v["fiyat_gruplari"]:
-                pdf.line(grp["baslik"], bold=True, gap=16)
-                for s in grp["satirlar"]:
-                    pdf.line("• " + s, size=10, indent=20)
-                pdf.gap(6)
-        else:
-            pdf.line("(Bu müşteri için tanımlı fiyat bulunamadı.)", size=10)
-        pdf.gap(6)
-        pdf.line("Taşıma fiyatlarında KDV ayrıca eklenecektir.", bold=True)
-        pdf.gap(14)
-        pdf.line("MADDE 4: ÖDEME ŞEKLİ VE ZAMANI", size=12, bold=True, gap=16)
-        pdf.line(f"{v['musteri_kisa']} kendisine gelen ürünlere ait ücret alıcı faturalar ile gönderdiği "
-                 f"ürünlere ait ücret gönderen faturaları tarihlerinden itibaren {v['vade']} eft-havale olarak öder.")
-        pdf.gap(14)
-        pdf.line("MADDE 5: YAKIT KLOZU", size=12, bold=True, gap=16)
-        pdf.line("Ay sonunda oluşan yakıt artış farkı %50 oranında fiyatlara yansıtılır")
-        pdf.gap(14)
-        pdf.line("MADDE 6: HİZMET ŞUBESİ ve YETKİLİSİ: İstanbul-Merkez Şubesi: Koray Ertaş", size=12, bold=True, gap=16)
-        pdf.line("0 212 671 50 35-36 / 0 212 671 96 51-444 77 83 · koray.ertas@stflojistik.com")
-        pdf.gap(14)
-        pdf.line("MADDE 7: TAŞIMA KOŞULLARI:", size=12, bold=True, gap=16)
-        pdf.line("Genel taşıma koşulları ekte 14 madde halinde açıklanmış olup tarafları tamamen bağlayıcı "
-                 "nitelik taşır.")
-        pdf.gap(14)
-        pdf.line("MADDE 8:", size=12, bold=True, gap=16)
-        pdf.line(f"İşbu taşıma sözleşmesi toplam sekiz maddeden ibaret olup taraflarca kabul edilerek "
-                 f"{v['imza_tarihi']} tarihinde imza altına alınmıştır.")
-        pdf.gap(26)
-        pdf.two_col("STF KARGO NAKLİYAT VE TİCARET LTD. ŞTİ.", v["musteri_kisa"], bold=True)
-        pdf.two_col("KAŞE-İMZA", "KAŞE-İMZA", bold=False)
-        pdf.two_col("", v["musteri_uzun"], bold=False, size=9)
-
-        pdf.page_break()
-        pdf.line("TAŞIMA KOŞULLARI", size=14, bold=True, gap=20, center=True)
-        for i, k in enumerate(_SZ_KOSULLAR, 1):
-            pdf.line(f"{i}. {k}", size=10, gap=13, indent=14)
-        pdf.gap(10)
-        pdf.line("TAŞIMASI YASAK OLAN KARGOLAR", size=12, bold=True, gap=16)
-        for i, y in enumerate(_SZ_YASAKLAR, 1):
-            pdf.line(f"{i}. {y}", size=10, gap=13, indent=14)
-        pdf.gap(20)
-        pdf.two_col("STF KARGO NAKLİYAT VE TİCARET LTD. ŞTİ.", v["musteri_kisa"], bold=True)
-        pdf.two_col("KAŞE-İMZA", "KAŞE-İMZA", bold=False)
-        pdf.two_col("", v["musteri_uzun"], bold=False, size=9)
-
-        return pdf.output()
-
-
-    # ══════════════════════════════════════════════════════════════════════
-    # SEKMELER
-    # ══════════════════════════════════════════════════════════════════════
-    _sz_tab1, _sz_tab2 = st.tabs(["📝 Yeni Sözleşme", "📚 Geçmiş Sözleşmeler"])
-
-    with _sz_tab1:
-        _sz_dfm = db_read("cari_kartlar", extra_sql="WHERE (silindi=0 OR silindi='0' OR silindi IS NULL) ORDER BY firma")
-        _sz_opts = ["-- Müşteri Seçin --"] + [f"[{int(r['id'])}] {r['firma']}" for _, r in _sz_dfm.iterrows()] if not _sz_dfm.empty else ["-- Müşteri Seçin --"]
-
-        _sz_onsel = st.session_state.pop("sozlesme_musteri_onsel", None)
-        _sz_index = 0
-        if _sz_onsel:
-            for _i, _o in enumerate(_sz_opts):
-                if _o.endswith(f"] {_sz_onsel}"):
-                    _sz_index = _i; break
-
-        _sz_sec = st.selectbox("Müşteri Seç", _sz_opts, index=_sz_index, key="sz_musteri_sec")
-
-        _sz_mus = None; _sz_id = None
-        if _sz_sec != "-- Müşteri Seçin --" and "[" in _sz_sec:
-            try:
-                _sz_id = int(_sz_sec.split("]")[0].replace("[","").strip())
-                _mr = _sz_dfm[_sz_dfm["id"] == _sz_id]
-                if not _mr.empty:
-                    _sz_mus = _mr.iloc[0]
-            except Exception:
-                pass
-
-        if _sz_mus is None:
-            st.info("Sözleşme hazırlamak için önce bir müşteri seçin.")
-        else:
-            _sz_uzun = str(_sz_mus.get("firma",""))
-            _sz_adres_oto = str(_sz_mus.get("adres","") or "")
-            _sz_kisa_tahmin = " ".join(_sz_uzun.split()[:2]).upper()
-
-            st.markdown(f"### 📄 {_sz_uzun}")
-
-            _szc1, _szc2 = st.columns(2)
-            _sz_kisa = _szc1.text_input("Kısa Ad (sözleşme metninde kullanılacak)", value=_sz_kisa_tahmin, key="sz_kisa")
-            _sz_adres = _szc2.text_input("Adres", value=_sz_adres_oto, key="sz_adres")
-
-            st.caption("Vergi Dairesi / Vergi No — yoksa boş bırakıp geçebilirsiniz")
-            _szv1, _szv2, _szv3 = st.columns([1.5, 1.5, 1])
-            _sz_vd = _szv1.text_input("V.D", key="sz_vd", placeholder="Vergi Dairesi...")
-            _sz_vno = _szv2.text_input("V.No", key="sz_vno", placeholder="Vergi No...")
-            _sz_gec = _szv3.checkbox("Geç (V.D/V.No girme)", key="sz_gec")
-
-            st.markdown("---")
-            st.markdown("**MADDE 2 — Geçerlilik Tarihi** 🔴 *(zorunlu)*")
-            _sz_gecerlilik = st.date_input("Sözleşme Geçerlilik Tarihi", value=_szdate.today().replace(year=_szdate.today().year+1),
-                                            key="sz_gecerlilik", format="DD/MM/YYYY")
-
-            st.markdown("**MADDE 3 — Fiyat Tarifesi** (son Özel Teklif'ten otomatik çekilir)")
-            _sz_teklif_df = pd.DataFrame()
-            try:
-                _sz_tekliflerdf = _teklifler_tarih_normalize(_teklifler_oku())
-                if not _sz_tekliflerdf.empty and "satirlar" in _sz_tekliflerdf.columns:
-                    _sz_ozel = _sz_tekliflerdf[_sz_tekliflerdf["satirlar"].str.contains("ozel", case=False, na=False)]
-                    _sz_teklif_df = _sz_ozel[_sz_ozel["musteri_adi"].astype(str).str.strip().str.upper() == _sz_uzun.strip().upper()]
-            except Exception:
-                pass
-
-            _sz_fiyat_gruplari = []
-            if not _sz_teklif_df.empty:
-                _sz_teklif_df = _sz_teklif_df.sort_values("tarih", ascending=False)
-                _sz_son_teklif = _sz_teklif_df.iloc[0]
-                _sz_fiyat_gruplari = _sz_fiyat_grupla(_sz_son_teklif.get("satirlar", "{}"))
-                st.success(f"✅ {fmt_tarih(_sz_son_teklif.get('tarih',''))} tarihli Özel Teklif'ten {len(_sz_fiyat_gruplari)} fiyat grubu bulundu.")
-                with st.expander("Fiyat tablosunu önizle", expanded=False):
-                    for _g in _sz_fiyat_gruplari:
-                        st.markdown(f"**{_g['baslik']}**")
-                        for _s in _g["satirlar"]:
-                            st.caption("• " + _s)
-            else:
-                st.warning("⚠️ Bu müşteri için Özel Teklif bulunamadı. MADDE 3 fiyat tablosu boş oluşturulacak.")
-
-            st.markdown("---")
-            st.markdown("**MADDE 4 — Vade** 🔴 *(zorunlu)*")
-            _sz_vade = st.text_input("Ödeme Vadesi (örn: 45 GÜN)", key="sz_vade", placeholder="Örn: 45 GÜN")
-
-            st.markdown("**MADDE 8 — Sözleşme İmza Tarihi**")
-            _sz_imza_tarihi = st.date_input("İmza Tarihi (varsayılan bugün)", value=_szdate.today(),
-                                             key="sz_imza_tarihi", format="DD/MM/YYYY")
-
-            st.markdown("---")
-            if st.button("📜 Sözleşme Oluştur", type="primary", use_container_width=True, key="sz_olustur"):
-                _sz_hata = []
-                if not _sz_gecerlilik:
-                    _sz_hata.append("Geçerlilik tarihi seçilmedi (MADDE 2 zorunlu).")
-                if not _sz_vade or not _sz_vade.strip():
-                    _sz_hata.append("Vade girilmedi (MADDE 4 zorunlu).")
-                if not _sz_gec and (not _sz_vd.strip() and not _sz_vno.strip()):
-                    st.info("ℹ️ V.D/V.No girilmedi ve 'Geç' işaretlenmedi — sözleşmede boş (—) olarak görünecek.")
-
-                if _sz_hata:
-                    for _h in _sz_hata:
-                        st.error(f"❌ {_h}")
-                else:
-                    _sz_veri = {
-                        "musteri_uzun": _sz_uzun,
-                        "musteri_kisa": _sz_kisa.strip() or _sz_kisa_tahmin,
-                        "adres": _sz_adres,
-                        "vd": _sz_vd.strip(),
-                        "vno": _sz_vno.strip(),
-                        "gecerlilik_tarihi": _sz_gecerlilik.strftime("%d/%m/%Y"),
-                        "vade": _sz_vade.strip() if "gün" in _sz_vade.strip().lower() else f"{_sz_vade.strip()} GÜN",
-                        "imza_tarihi": _sz_imza_tarihi.strftime("%d/%m/%Y"),
-                        "fiyat_gruplari": _sz_fiyat_gruplari,
-                    }
-                    try:
-                        _sz_docx_bytes = _sz_docx_uret(_sz_veri)
-                        _sz_pdf_bytes = _sz_pdf_uret(_sz_veri)
-
-                        # Arşivle — YENİ TABLO GEREKMEZ, var olan "teklifler" tablosunu kullanıyoruz
-                        # (Özel Teklif'in "tip":"ozel" işaretlemesiyle aynı mantık, "tip":"sozlesme" ile ayırt edilir)
-                        _sz_sb = get_sb_client()
-                        if _sz_sb:
-                            _sz_sb.table("teklifler").insert({
-                                "musteri_id": _sz_id or 0,
-                                "musteri_adi": _sz_uzun,
-                                "satirlar": _szj.dumps({"tip": "sozlesme", "veri": _sz_veri}, ensure_ascii=False),
-                                "toplam_tutar": 0,
-                                "olusturan": st.session_state.get("kullanici",""),
-                                "notlar": f"Sözleşme · Vade:{_sz_veri['vade']} · Geçerlilik:{_sz_veri['gecerlilik_tarihi']} · İmza:{_sz_veri['imza_tarihi']}",
-                            }).execute()
-                            st.toast("✅ Sözleşme arşivlendi!", icon="✅")
-
-                        st.success(f"✅ {_sz_uzun} için sözleşme oluşturuldu ve arşivlendi!")
-                        _szd1, _szd2 = st.columns(2)
-                        _szd1.download_button("⬇️ Word (.docx) indir", data=_sz_docx_bytes,
-                            file_name=f"Sozlesme_{_sz_kisa.strip() or _sz_kisa_tahmin}_{_sz_imza_tarihi.strftime('%Y%m%d')}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True, key="sz_dl_docx")
-                        if _sz_pdf_bytes:
-                            _szd2.download_button("⬇️ PDF indir", data=_sz_pdf_bytes,
-                                file_name=f"Sozlesme_{_sz_kisa.strip() or _sz_kisa_tahmin}_{_sz_imza_tarihi.strftime('%Y%m%d')}.pdf",
-                                mime="application/pdf", use_container_width=True, key="sz_dl_pdf")
-                        else:
-                            _szd2.warning("PDF için fonts/DejaVuSans.ttf bulunamadı — repo'ya eklenmesi gerekiyor.")
-                    except Exception as _sz_e:
-                        st.error(f"⚠️ Sözleşme oluşturulamadı: {_sz_e}")
-
-    with _sz_tab2:
-        st.markdown("### 📚 Geçmiş Sözleşmeler")
-        try:
-            _sz_sb2 = get_sb_client()
-            _sz_ham = pd.DataFrame(_sz_sb2.table("teklifler").select("*").order("id", desc=True).execute().data) if _sz_sb2 else pd.DataFrame()
-            if not _sz_ham.empty and "satirlar" in _sz_ham.columns:
-                _sz_arsiv_ham = _sz_ham[_sz_ham["satirlar"].astype(str).str.contains("sozlesme", case=False, na=False)].copy()
-            else:
-                _sz_arsiv_ham = pd.DataFrame()
-        except Exception:
-            _sz_arsiv_ham = pd.DataFrame()
-
-        # Ham satırları sözleşme veri sözlüğüne çeviriyoruz
-        _sz_arsiv_liste = []
-        for _, _ar in _sz_arsiv_ham.iterrows():
-            try:
-                _parsed = _szj.loads(_ar.get("satirlar", "{}"))
-                if _parsed.get("tip") != "sozlesme":
-                    continue
-                _vv = _parsed.get("veri", {})
-                _vv["id"] = _ar.get("id")
-                _vv["olusturan"] = _ar.get("olusturan", "")
-                _sz_arsiv_liste.append(_vv)
-            except Exception:
-                continue
-
-        if not _sz_arsiv_liste:
-            st.info("Henüz sözleşme arşivlenmemiş.")
-        else:
-            _sz_ara = st.text_input("🔍 Müşteri ara", key="sz_arsiv_ara")
-            if _sz_ara:
-                _sz_arsiv_liste = [x for x in _sz_arsiv_liste if _sz_ara.lower() in str(x.get("musteri_uzun","")).lower()]
-            for _sa in _sz_arsiv_liste:
-                with st.container(border=True):
-                    _sac1, _sac2, _sac3 = st.columns([2.5, 1.3, 1.3])
-                    _sac1.markdown(f"**{_sa.get('musteri_uzun','')}**")
-                    _sac1.caption(f"Vade: {_sa.get('vade','—')} · Geçerlilik: {_sa.get('gecerlilik_tarihi','—')}")
-                    _sac2.caption(f"📅 İmza: {_sa.get('imza_tarihi','—')}")
-                    _sac3.caption(f"👤 {_sa.get('olusturan','')}")
-                    if st.button("📥 Yeniden indir", key=f"sz_yeniden_{int(_sa['id'])}"):
-                        try:
-                            _dbytes = _sz_docx_uret(_sa)
-                            st.download_button("⬇️ Word indir", data=_dbytes,
-                                file_name=f"Sozlesme_{_sa.get('musteri_kisa','')}_{_sa.get('imza_tarihi','').replace('/','')}.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                key=f"sz_yeniden_dl_{int(_sa['id'])}")
-                        except Exception as _sz_e2:
-                            st.error(f"Hata: {_sz_e2}")
-
 
 elif aktif == "excel":
     sayfa_log("excel")
