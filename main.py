@@ -6012,11 +6012,23 @@ button[data-testid="manage-app-button"] { display: none !important; }
         unsafe_allow_html=True
     )
 
-    # ── 🔄 YENİLE — KULLANICI İSTEĞİ (2026-09): şifreden/oturumdan ÇIKMADAN,
-    # hangi sayfada olursan ol her zaman ulaşabileceğin bir buton. Sadece
-    # veri önbelleklerini temizleyip sayfayı yeniden çizer — session_state'teki
+    # ── ⬅️ GERİ / 🔄 YENİLE / ➡️ İLERİ — KULLANICI İSTEĞİ (2026-09): üçü yan
+    # yana, tek satırda. "Yenile" şifreden/oturumdan ÇIKMADAN, hangi sayfada
+    # olursan ol her zaman ulaşabileceğin bir buton — sadece veri
+    # önbelleklerini temizleyip sayfayı yeniden çizer, session_state'teki
     # "kullanici"/"rol" (giriş bilgisi) HİÇ DOKUNULMAZ, oturum açık kalır.
-    if st.button("🔄 Yenile", key="_sb_yenile_btn", use_container_width=True,
+    # "Geri"/"İleri" ise tarayıcıdaki gibi, önceki/sonraki sayfaya döner.
+    _sg_liste_btn = st.session_state.get("_sayfa_gecmisi", [st.session_state.get("aktif_tab", "liste")])
+    _sg_idx_btn = st.session_state.get("_sayfa_gecmisi_idx", 0)
+    _sg_geri_var = _sg_idx_btn > 0
+    _sg_ileri_var = _sg_idx_btn < len(_sg_liste_btn) - 1
+    _gnav1, _gnav2, _gnav3 = st.columns(3)
+    if _gnav1.button("⬅️", key="sayfa_geri_btn", use_container_width=True, disabled=not _sg_geri_var, help="Geri"):
+        st.session_state["_sayfa_gecmisi_idx"] = _sg_idx_btn - 1
+        st.session_state["_sg_geri_ileri_tiklandi"] = True
+        st.session_state["aktif_tab"] = _sg_liste_btn[_sg_idx_btn - 1]
+        st.rerun()
+    if _gnav2.button("🔄", key="_sb_yenile_btn", use_container_width=True,
                  help="Şifreden çıkmadan, sadece veriyi tazeler."):
         # KULLANICI İSTEĞİ (2026-09): daha önce sadece 4 önbellek temizleniyordu,
         # dosyaya eklenen YENİ önbellekli fonksiyonlar (Kargolar, Bildirimler,
@@ -6035,6 +6047,11 @@ button[data-testid="manage-app-button"] { display: none !important; }
         # kaydedilen bir tercih) DOĞRUDAN veritabanından yeniden okur.
         st.session_state.pop("_cl_ozel_filtre_alani_cache", None)
         st.toast("🔄 Veriler tazelendi", icon="🔄")
+        st.rerun()
+    if _gnav3.button("➡️", key="sayfa_ileri_btn", use_container_width=True, disabled=not _sg_ileri_var, help="İleri"):
+        st.session_state["_sayfa_gecmisi_idx"] = _sg_idx_btn + 1
+        st.session_state["_sg_geri_ileri_tiklandi"] = True
+        st.session_state["aktif_tab"] = _sg_liste_btn[_sg_idx_btn + 1]
         st.rerun()
 
     # ── MENÜ LİSTESİ ──────────────────────────────────────────────────────────
@@ -6216,24 +6233,6 @@ button[data-testid="manage-app-button"] { display: none !important; }
     st.divider()
 
     st.divider()
-
-    # ── ⬅️ GERİ / ➡️ İLERİ — KULLANICI İSTEĞİ (2026-09): şifreden çıkmadan,
-    # tarayıcıdaki gibi önceki/sonraki sayfaya dönebilme.
-    _sg_liste_btn = st.session_state.get("_sayfa_gecmisi", [st.session_state.get("aktif_tab", "liste")])
-    _sg_idx_btn = st.session_state.get("_sayfa_gecmisi_idx", 0)
-    _sg_geri_var = _sg_idx_btn > 0
-    _sg_ileri_var = _sg_idx_btn < len(_sg_liste_btn) - 1
-    _gc1, _gc2 = st.columns(2)
-    if _gc1.button("⬅️ Geri", key="sayfa_geri_btn", use_container_width=True, disabled=not _sg_geri_var):
-        st.session_state["_sayfa_gecmisi_idx"] = _sg_idx_btn - 1
-        st.session_state["_sg_geri_ileri_tiklandi"] = True
-        st.session_state["aktif_tab"] = _sg_liste_btn[_sg_idx_btn - 1]
-        st.rerun()
-    if _gc2.button("➡️ İleri", key="sayfa_ileri_btn", use_container_width=True, disabled=not _sg_ileri_var):
-        st.session_state["_sayfa_gecmisi_idx"] = _sg_idx_btn + 1
-        st.session_state["_sg_geri_ileri_tiklandi"] = True
-        st.session_state["aktif_tab"] = _sg_liste_btn[_sg_idx_btn + 1]
-        st.rerun()
 
     # ── KULLANICI + ÇIKIŞ ─────────────────────────────────────────────────────
     _kc1, _kc2 = st.columns([3, 1])
