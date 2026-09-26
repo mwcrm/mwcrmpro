@@ -2423,6 +2423,15 @@ def db_insert(table, data):
 
 def db_update(table, data, where_col, where_val):
     """Update — Supabase veya SQLite"""
+    # 🚨 GÜVENLİK KİLİDİ (2026-09): "hesaplama" (Cari Liste'deki sadece
+    # tetikleyici amaçlı, kalıcı bir veritabanı sütunu OLMAYAN alan) HANGİ
+    # YOLDAN gelirse gelsin "cari_kartlar" tablosuna ASLA ulaşmasın diye son
+    # bir güvenlik filtresi — hangi çağıran kod bunu unutursa unutsun, burada
+    # kesin olarak süzülür.
+    if table == "cari_kartlar" and isinstance(data, dict) and "hesaplama" in data:
+        data = {k: v for k, v in data.items() if k != "hesaplama"}
+        if not data:
+            return True
     sb = get_sb_client()
     if sb:
         try:
@@ -10031,8 +10040,8 @@ function kartSec(id){
                     # çalışmıyordu. Artık gerçekten var olan "Hesaplama"
                     # sütununa (Firma'nın solunda, Kolon Ayarları'nda da
                     # görünür) bağlı.
-                    if "Hesaplama" in _deg_ex:
-                        _v_fiyat = str(_deg_ex["Hesaplama"] or "").strip()
+                    if "hesaplama" in _deg_ex:
+                        _v_fiyat = str(_deg_ex["hesaplama"] or "").strip()
                         if _v_fiyat:
                             _fyat_firma_adi = str(_rows[_idxn_ex].get("firma", "")) if _idxn_ex < len(_rows) else ""
                             _fyat_basarili, _fyat_mesaj = _fy_hepsini_yerlestir_ana_tablo(_rid_ex, _v_fiyat, _fyat_firma_adi)
@@ -10277,7 +10286,7 @@ function kartSec(id){
                         return None
                     guncelle = {}
                     for k, v in degisiklikler.items():
-                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma", "Hesaplama",
+                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma", "Hesaplama", "hesaplama",
                                  "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "randevu_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
@@ -10297,6 +10306,14 @@ function kartSec(id){
                             guncelle[k] = str(v).strip() if v is not None else ""
                         else:
                             guncelle[k] = str(v) if v is not None else ""
+                    if not guncelle:
+                        return None
+                    # 🚨 GÜVENLİK KİLİDİ (2026-09): yukarıdaki hariç tutma listesi
+                    # "hesaplama"yı zaten dışarıda bırakıyor, ama burada BİR DAHA,
+                    # son bir güvenlik olarak kesin süzülür — "cari_kartlar"da
+                    # olmayan bu sütun asla veritabanına gönderilmesin.
+                    guncelle.pop("hesaplama", None)
+                    guncelle.pop("Hesaplama", None)
                     if not guncelle:
                         return None
                     if sb_liste:
