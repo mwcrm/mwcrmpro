@@ -8880,7 +8880,7 @@ function kartSec(id){
     # ── KOLON GENİŞLİKLERİ — DB'den oku ─────────────────────────────────────
     _KOL_VARSAYILAN = {
         "tarih":90,"guncelleme_tarihi":100,
-        "firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
+        "hesaplama":120,"firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
         "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
         "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,"musteri_kodu":80,
@@ -8957,6 +8957,8 @@ function kartSec(id){
         "gerceklesen_ciro": st.column_config.NumberColumn("Gerçek ₺", format="%,.0f ₺", width=_w("gerceklesen_ciro"), disabled=True,
                                 help="OTOMATİK hesaplanır — bu müşterinin TÜM kargo kayıtlarındaki Yekün toplamı. Elle düzenlenmez; değiştirmek için Kargolar sayfasından ilgili kargo kaydını düzenleyin."),
         "rakip_firma":   st.column_config.TextColumn("Özel", width=_w("rakip_firma")),
+        "hesaplama":     st.column_config.TextColumn("Hesaplama", width=_w("hesaplama"),
+                                                       help="Şehir, Desi, Birim Fiyat satır satır yapıştır (örn. 'AMASYA 227 3.574') — Kaydet'e basınca İl İşaretleme + Ayrıştırma + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet OTOMATİK hesaplanıp kaydedilir (eskinin üzerine yazar)."),
         "firma":         st.column_config.TextColumn("Firma",     width=_w("firma")),
         "yetkili":       st.column_config.TextColumn("Yetkili",   width=_w("yetkili")),
         "gsm":           st.column_config.TextColumn("GSM",       width=_w("gsm")),
@@ -9023,13 +9025,13 @@ function kartSec(id){
             df_f["_cl2_key"] = df_f["id"].map(_cl2_map).fillna(len(_cl2_sirali))
             df_f = df_f.sort_values("_cl2_key").drop(columns=["_cl2_key"]).reset_index(drop=True)
 
-    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","firma","yetkili","gsm","sabit","email","adres","ilce","il",
+    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","hesaplama","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
                  "🧾 Teklif","💬 Mesaj","ara_islem","il_ciro_ozet","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
-    _kol_gizli_map = {"firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
+    _kol_gizli_map = {"hesaplama":"hesaplama","firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
                       "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat","islem_tarihi_manuel":"islem_tarihi_manuel","takip_tarihi_manuel":"takip_tarihi_manuel","randevu_tarihi_manuel":"randevu_tarihi_manuel",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
@@ -10000,17 +10002,22 @@ function kartSec(id){
                             _koli_ov_guncel.pop(str(_rid_ex), None)
                         _ex_degisti = True
                         _icy_etkilenen_idler.add(_rid_ex)
-                    # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Fiyatlandırma"
-                    # hücresine yazılıp kaydedilince artık SADECE Koli/Palet'e
-                    # eklenmekle kalmaz — "Seç" penceresindeki "🎯 Hepsini
-                    # Yerleştir" ile AYNI 6 işlemi (Ayrıştır + İl İşaretleme +
-                    # Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet
-                    # kaydet) SEÇSİZ, doğrudan bu satır üzerinde çalıştırır.
-                    # Yeni veri ESKİNİN ÜZERİNE YAZAR (birleştirmez). "Seç"
-                    # penceresindeki koda HİÇ dokunulmadı, o aynen çalışmaya
-                    # devam ediyor.
-                    if "Fiyatlandırma" in _deg_ex:
-                        _v_fiyat = str(_deg_ex["Fiyatlandırma"] or "").strip()
+                    # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Hesaplama"
+                    # hücresine (Firma'nın solunda) Şehir/Desi/Fiyat yapıştırılıp
+                    # kaydedilince, "Seç" penceresindeki "🎯 Hepsini Yerleştir"
+                    # ile AYNI 6 işlemi (Ayrıştır + İl İşaretleme + Hedeflenen
+                    # Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet kaydet)
+                    # SEÇSİZ, doğrudan bu satır üzerinde çalıştırır. Yeni veri
+                    # ESKİNİN ÜZERİNE YAZAR (birleştirmez). "Seç" penceresindeki
+                    # koda HİÇ dokunulmadı, o aynen çalışmaya devam ediyor.
+                    # 🚨 DÜZELTME: eskiden "Fiyatlandırma" diye VAR OLMAYAN
+                    # (col_config'de hiç tanımlanmamış, kullanıcının hiç
+                    # göremediği) bir sütuna bağlıydı — o yüzden hiç
+                    # çalışmıyordu. Artık gerçekten var olan "Hesaplama"
+                    # sütununa (Firma'nın solunda, Kolon Ayarları'nda da
+                    # görünür) bağlı.
+                    if "Hesaplama" in _deg_ex:
+                        _v_fiyat = str(_deg_ex["Hesaplama"] or "").strip()
                         if _v_fiyat:
                             _fyat_firma_adi = str(_rows[_idxn_ex].get("firma", "")) if _idxn_ex < len(_rows) else ""
                             _fyat_basarili, _fyat_mesaj = _fy_hepsini_yerlestir_ana_tablo(_rid_ex, _v_fiyat, _fyat_firma_adi)
@@ -10255,7 +10262,7 @@ function kartSec(id){
                         return None
                     guncelle = {}
                     for k, v in degisiklikler.items():
-                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma",
+                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma", "Hesaplama",
                                  "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "randevu_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
@@ -11494,7 +11501,7 @@ function updateBot(v){{
         st.caption("Genişlik ayarlayın, gizlemek istediklerinizi kapatın → Kaydet")
         _KOL_VARS_UI = {
             "Seç":40,"tarih":90,"guncelleme_tarihi":100,
-            "firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
+            "hesaplama":130,"firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
             "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,"musteri_kodu":80,
@@ -11506,7 +11513,7 @@ function updateBot(v){{
             _KOL_VARS_UI[_il_kv] = 60
         _KG_UI_ETIKET = {
             "Seç":"Seç (işaret kutusu)","tarih":"İşlem Tarih","guncelleme_tarihi":"Güncelleme Tarihi",
-            "firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
+            "hesaplama":"Hesaplama","firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
             "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi","randevu_tarihi_manuel":"Randevu Tarihi",
