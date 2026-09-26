@@ -614,6 +614,234 @@ def _fy_desi_baremli_teklif_hesapla(_girisler):
         return {}
 
 
+def _fy_hepsini_yerlestir_ana_tablo(cari_id, ham_metin, firma_adi=""):
+    """🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): Cari Liste'nin ANA
+    tablosundaki "Fiyatlandırma" hücresine yazılan veriden, "Seç" penceresindeki
+    "🎯 Hepsini Yerleştir" ile AYNI 6 işlemi (Ayrıştır + İl İşaretleme +
+    Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet kaydet) yapar —
+    SEÇSİZ, tek tabloda hızlı toplu giriş için. 🚨 KRİTİK: bu fonksiyon "Seç"
+    penceresindeki (not_dialog içindeki) mevcut koda HİÇ DOKUNMAZ, dokunmadan
+    AYNI mantığı BAĞIMSIZ olarak burada tekrarlar — "Seç" akışı bu fonksiyon
+    var olmasaydı da, silinse de birebir aynı çalışmaya devam eder.
+    KULLANICI İSTEĞİ: yeni veri ESKİNİN ÜZERİNE YAZAR (birleştirmez) —
+    "Hepsini Yerleştir" ile birebir aynı davranış.
+    Dönüş: (basarili: bool, mesaj: str)"""
+    import re as _fyat_re
+
+    def _fyat_norm(_s):
+        return (str(_s or "").strip().upper().replace("İ", "I").replace("Ş", "S")
+                .replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C"))
+
+    def _fyat_sayi_parse(_metin):
+        _sfy = str(_metin).strip()
+        if "," in _sfy and "." in _sfy:
+            _sfy = _sfy.replace(".", "").replace(",", ".")
+        elif "," in _sfy:
+            _sfy = _sfy.replace(",", ".")
+        elif "." in _sfy:
+            _nokta_sonrasi = _sfy.split(".")[-1]
+            if len(_nokta_sonrasi) == 3 and _nokta_sonrasi.isdigit():
+                _sfy = _sfy.replace(".", "")
+        try:
+            return float(_sfy)
+        except Exception:
+            return 0.0
+
+    try:
+        if not str(ham_metin or "").strip():
+            return False, "Fiyatlandırma hücresi boş."
+
+        _fyat_tum_iller = _IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI
+        _fyat_il_norm_map = {_fyat_norm(a): a.upper() for a in _fyat_tum_iller}
+        _fyat_il_kanonik_map = {_fyat_norm(a): a for a in _fyat_tum_iller}
+        _fyat_iller_bulunan_set = set()
+        _fyat_girisler = []
+        _fyat_son_sehir = None
+        for _satir_ham in str(ham_metin).strip().split("\n"):
+            _s = _satir_ham.strip()
+            if not _s:
+                continue
+            _s_norm = _fyat_norm(_s)
+            if "SEHIRICI" in _s_norm:
+                _s_norm = _s_norm.replace("SEHIRICI", "ISTANBUL")
+            _sehir_bulundu = None
+            for _il_norm_fy, _il_ad_fy in _fyat_il_norm_map.items():
+                if _il_norm_fy in _s_norm:
+                    _sehir_bulundu = _il_ad_fy
+                    break
+            if _sehir_bulundu:
+                _fy_kanonik_bulunan = _fyat_il_kanonik_map.get(_fyat_norm(_sehir_bulundu))
+                if _fy_kanonik_bulunan:
+                    _fyat_iller_bulunan_set.add(_fy_kanonik_bulunan)
+            if _sehir_bulundu:
+                if "\t" in _s:
+                    _sehir_ham_fy = _s.split("\t")[0].strip()
+                else:
+                    _m_sehir_ham_fy = _fyat_re.match(r"^(\D+)", _s)
+                    _sehir_ham_fy = _m_sehir_ham_fy.group(1).strip() if _m_sehir_ham_fy else ""
+                _sehir_ham_fy_norm = _fyat_norm(_sehir_ham_fy)
+                if _sehir_bulundu == "İSTANBUL" and (
+                        "ANADOLU" in _sehir_ham_fy_norm or "AVRUPA" in _sehir_ham_fy_norm or "VARUPA" in _sehir_ham_fy_norm):
+                    _fyat_son_sehir = "İSTANBUL"
+                else:
+                    _fyat_son_sehir = _tr_buyuk(_sehir_ham_fy) if _sehir_ham_fy else _sehir_bulundu
+            _sehir = _fyat_son_sehir
+            if not _sehir:
+                continue
+            _tum_sayi_m = _fyat_re.findall(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?", _s)
+            if len(_tum_sayi_m) < 2:
+                continue
+            try:
+                _desi = int(round(_fyat_sayi_parse(_tum_sayi_m[0])))
+                _ikinci_sayi = _fyat_sayi_parse(_tum_sayi_m[1])
+            except Exception:
+                continue
+            _toplam = round(_ikinci_sayi, 2)
+            _hedef_katkisi = _fyat_sayi_parse(_tum_sayi_m[-1])
+            _tip = "KOLİ" if _desi <= 100 else "PALET"
+            _fyat_girisler.append((_sehir, _tip, _desi, _ikinci_sayi, _toplam, _hedef_katkisi))
+
+        if not _fyat_girisler:
+            return False, "Yazılan metinde tanınan bir il ismi + desi + birim fiyat bulunamadı."
+
+        _fyat_sira_liste = [_fyat_norm(a) for a in _IL_SUTUN_LISTESI[:-1]] + [_fyat_norm(a) for a in _IL_DIGER_LISTESI]
+        def _fyat_sira_no(_giris):
+            _sehir_metni_norm = _fyat_norm(_giris[0])
+            for _i_fy, _il_fy_norm in enumerate(_fyat_sira_liste):
+                if _il_fy_norm in _sehir_metni_norm:
+                    return _i_fy
+            return 999
+        _fyat_girisler.sort(key=lambda g: (_fyat_sira_no(g), g[2]))
+
+        # ── Fiyat İncele tablosu (_fy_format_tablo ile BİREBİR aynı format) ──
+        def _fyat_format_tablo(_girisler):
+            if not _girisler:
+                return ""
+            _sehir_w = max(len("V.İLİ"), max(len(g[0]) for g in _girisler))
+            _tur_metinleri = [f"- {g[1]}" for g in _girisler]
+            _tur_w = max(len("TÜR"), max(len(t) for t in _tur_metinleri))
+            _desi_sayi_w = max(len(str(g[2])) for g in _girisler)
+            _desi_metinleri = [f"{str(g[2]).rjust(_desi_sayi_w)} DESİ -KG" for g in _girisler]
+            _desi_w = max(len("DESİ-KG"), max(len(t) for t in _desi_metinleri))
+            _toplam_metinleri = [f"{g[4]:.2f}" for g in _girisler]
+            _toplam_sayi_w = max(len(t) for t in _toplam_metinleri)
+            _toplam_metinleri = [f"{t.rjust(_toplam_sayi_w)} TL" for t in _toplam_metinleri]
+            _toplam_w = max(len("TOPLAM"), max(len(t) for t in _toplam_metinleri))
+            _il_toplam_ciro_map = {}
+            for _g in _girisler:
+                _il_anahtar_norm = _fyat_norm(_g[0])
+                _il_toplam_ciro_map[_il_anahtar_norm] = _il_toplam_ciro_map.get(_il_anahtar_norm, 0.0) + _g[4]
+            _il_ciro_metinleri = []
+            _gosterilen_iller = set()
+            for _g in _girisler:
+                _il_anahtar_norm = _fyat_norm(_g[0])
+                if _il_anahtar_norm not in _gosterilen_iller:
+                    _il_ciro_metinleri.append(f"{_il_toplam_ciro_map[_il_anahtar_norm]:.2f} TL")
+                    _gosterilen_iller.add(_il_anahtar_norm)
+                else:
+                    _il_ciro_metinleri.append("")
+            _il_ciro_w = max([len("İL TOPLAM CİRO")] + [len(t) for t in _il_ciro_metinleri])
+            _baslik = (f"{'V.İLİ'.ljust(_sehir_w)}   {'TÜR'.ljust(_tur_w)}   {'DESİ-KG'.ljust(_desi_w)}   "
+                       f"{'TOPLAM'.ljust(_toplam_w)}   {'İL TOPLAM CİRO'.ljust(_il_ciro_w)}")
+            _ayrac = "-" * len(_baslik)
+            _satirlar = ["FİYAT İNCELE", _ayrac, "", _baslik, _ayrac]
+            _onceki_sehir = None
+            for _i, _g in enumerate(_girisler):
+                if _onceki_sehir is not None and _fyat_norm(_g[0]) != _fyat_norm(_onceki_sehir):
+                    _satirlar.append(_ayrac)
+                _satirlar.append(f"{_g[0].ljust(_sehir_w)}   {_tur_metinleri[_i].ljust(_tur_w)}   {_desi_metinleri[_i].ljust(_desi_w)}   "
+                                  f"{_toplam_metinleri[_i].ljust(_toplam_w)}   {_il_ciro_metinleri[_i].ljust(_il_ciro_w)}")
+                _onceki_sehir = _g[0]
+            return "\n".join(_satirlar)
+
+        _fyat_tablo_metni = _fyat_format_tablo(_fyat_girisler)
+
+        # ── Hedeflenen Ciro ──
+        _fyat_hedef_toplam = round(sum(_g[5] for _g in _fyat_girisler), 2)
+        db_update("cari_kartlar", {"beklenen_ciro": _fyat_hedef_toplam}, "id", int(cari_id))
+        try: db_read.clear()
+        except Exception: pass
+        try: get_cari_listesi.clear()
+        except Exception: pass
+
+        # ── İl Ciroları (Hedef ile AYNI kaynaktan, _g[5]) ──
+        try:
+            _fyat_icy_ozet = _fy_il_ciro_ozet_girislerden(_fyat_girisler)
+            _fyat_icy_harita = _cari_ek_bilgi_yukle()
+            _fyat_icy_harita.setdefault(str(int(cari_id)), {})["il_ciro_ozet"] = _fyat_icy_ozet
+            _cari_ek_bilgi_kaydet(_fyat_icy_harita)
+        except Exception:
+            pass
+
+        # ── İlleri İşaretle (Varış İlleri matrisine) ──
+        _fyat_il_isaretlenen = []
+        try:
+            _fyat_tum_matris = dict(_il_gonderim_matrisi_yukle())
+            _fyat_id_str = str(int(cari_id))
+            _fyat_tum_matris.setdefault(_fyat_id_str, {})
+            for _fyat_il_bulunan in _fyat_iller_bulunan_set:
+                if _fyat_il_bulunan in _IL_SUTUN_LISTESI and _fyat_il_bulunan != "Diğer":
+                    if not str(_fyat_tum_matris[_fyat_id_str].get(_fyat_il_bulunan, "")).strip():
+                        _fyat_tum_matris[_fyat_id_str][_fyat_il_bulunan] = _fyat_il_bulunan.upper()
+                    _fyat_il_isaretlenen.append(_fyat_il_bulunan)
+                elif _fyat_il_bulunan in _IL_DIGER_LISTESI:
+                    _mevcut_diger_fy = str(_fyat_tum_matris[_fyat_id_str].get("Diğer", "") or "").strip()
+                    _diger_satirlari_fy = [s.strip() for s in _mevcut_diger_fy.split("\n") if s.strip()]
+                    if _fyat_il_bulunan.upper() not in _diger_satirlari_fy:
+                        _diger_satirlari_fy.append(_fyat_il_bulunan.upper())
+                    _fyat_tum_matris[_fyat_id_str]["Diğer"] = "\n".join(_diger_satirlari_fy)
+                    _fyat_il_isaretlenen.append(_fyat_il_bulunan)
+            _il_gonderim_matrisi_kaydet(_fyat_tum_matris)
+            _il_gonderim_matrisi_yukle.clear()
+        except Exception:
+            pass
+
+        # ── Teklif Fiyat (basit TL/desi özeti + detaylı barem kırılımı) ──
+        try:
+            _fyat_teklif_onerisi = _fy_teklif_onerisi_hesapla(_fyat_girisler)
+            _fyat_barem_detay = _fy_desi_baremli_teklif_hesapla(_fyat_girisler)
+            _fyat_teklif_parcalari = []
+            if _fyat_teklif_onerisi:
+                _fyat_teklif_parcalari.append(_fyat_teklif_onerisi)
+            if _fyat_barem_detay:
+                _fyat_teklif_parcalari.append("--- Detaylı Barem Bazlı Teklif ---")
+                for _fyat_il_ad in sorted(_fyat_barem_detay.keys()):
+                    _fyat_teklif_parcalari.append(f"\n{_fyat_il_ad}:")
+                    _fyat_teklif_parcalari.append(_fyat_barem_detay[_fyat_il_ad])
+            _fyat_teklif_tam = "\n".join(_fyat_teklif_parcalari)
+            if _fyat_teklif_tam.strip():
+                _fyat_tf_harita = _cari_ek_bilgi_yukle()
+                _fyat_tf_harita.setdefault(str(int(cari_id)), {})["teklif_fiyat"] = _fyat_teklif_tam
+                _cari_ek_bilgi_kaydet(_fyat_tf_harita)
+        except Exception:
+            pass
+
+        # ── Koli/Palet KAYDET — KULLANICI İSTEĞİ: eskinin ÜZERİNE YAZAR
+        # (birleştirmez), "Hepsini Yerleştir" ile birebir aynı davranış.
+        _sb_fyat = get_sb_client()
+        if _sb_fyat:
+            import json as _fyatj
+            _r_fyat = _sb_fyat.table("kullanici_tercih").select("deger").eq(
+                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+            _kp_map_fyat = _fyatj.loads(_r_fyat.data[0]["deger"]) if _r_fyat.data else {}
+            _kp_map_fyat[str(int(cari_id))] = _fyat_tablo_metni
+            _kpo_deger_fyat = _fyatj.dumps(_kp_map_fyat, ensure_ascii=False)
+            _kpo_guncelle_fyat = _sb_fyat.table("kullanici_tercih").update({"deger": _kpo_deger_fyat}).eq(
+                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+            if not _kpo_guncelle_fyat.data:
+                _sb_fyat.table("kullanici_tercih").insert({
+                    "kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel", "deger": _kpo_deger_fyat
+                }).execute()
+            st.session_state["_koli_palet_manuel"] = _kp_map_fyat
+        get_cari_listesi.clear()
+
+        _mesaj = f"✅ {firma_adi or cari_id}: Hedef Ciro {_kg_tr_format(_fyat_hedef_toplam)} ₺"
+        if _fyat_il_isaretlenen:
+            _mesaj += f", işaretlenen iller: {', '.join(_fyat_il_isaretlenen)}"
+        return True, _mesaj
+    except Exception as _fyat_hata:
+        return False, f"Hata: {_fyat_hata}"
+
 
 def _alt_ilerleme_cubugu_html(_yuzde, _mesaj):
     """KULLANICI İSTEĞİ (2026-09): kaydetme gibi işlemler sürerken, ekranın
@@ -9773,14 +10001,32 @@ function kartSec(id){
                             _koli_ov_guncel.pop(str(_rid_ex), None)
                         _ex_degisti = True
                         _icy_etkilenen_idler.add(_rid_ex)
-                    # ── "Fiyatlandırma" hızlı-giriş — yazılan her şey Koli/Palet'e eklenir ──
+                    # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Fiyatlandırma"
+                    # hücresine yazılıp kaydedilince artık SADECE Koli/Palet'e
+                    # eklenmekle kalmaz — "Seç" penceresindeki "🎯 Hepsini
+                    # Yerleştir" ile AYNI 6 işlemi (Ayrıştır + İl İşaretleme +
+                    # Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet
+                    # kaydet) SEÇSİZ, doğrudan bu satır üzerinde çalıştırır.
+                    # Yeni veri ESKİNİN ÜZERİNE YAZAR (birleştirmez). "Seç"
+                    # penceresindeki koda HİÇ dokunulmadı, o aynen çalışmaya
+                    # devam ediyor.
                     if "Fiyatlandırma" in _deg_ex:
                         _v_fiyat = str(_deg_ex["Fiyatlandırma"] or "").strip()
                         if _v_fiyat:
-                            _mevcut_koli = _koli_ov_guncel.get(str(_rid_ex), "").strip()
-                            _koli_ov_guncel[str(_rid_ex)] = (_mevcut_koli + "\n" + _v_fiyat).strip() if _mevcut_koli else _v_fiyat
+                            _fyat_firma_adi = str(_rows[_idxn_ex].get("firma", "")) if _idxn_ex < len(_rows) else ""
+                            _fyat_basarili, _fyat_mesaj = _fy_hepsini_yerlestir_ana_tablo(_rid_ex, _v_fiyat, _fyat_firma_adi)
+                            if _fyat_basarili:
+                                st.toast(f"🎯 {_fyat_mesaj}", icon="✅")
+                            else:
+                                st.toast(f"⚠️ {_fyat_firma_adi or _rid_ex}: {_fyat_mesaj}", icon="⚠️")
+                            # KRİTİK: yukarıdaki fonksiyon "_koli_palet_manuel"yi
+                            # DOĞRUDAN kaydetti — buradaki ESKİ (fonksiyon
+                            # çalışmadan ÖNCE alınmış) kopyayı GÜNCEL haliyle
+                            # senkronize ediyoruz, yoksa aşağıdaki toplu kayıt
+                            # bu satırın YENİ verisinin ÜZERİNE ESKİ veriyi
+                            # yazıp SİLERDİ.
+                            _koli_ov_guncel = dict(st.session_state.get("_koli_palet_manuel", _koli_ov_guncel))
                             _ex_degisti = True
-                            _icy_etkilenen_idler.add(_rid_ex)
                 if _ex_degisti:
                     st.session_state["_analiz_manuel_override"] = _analiz_ov_guncel
                     st.session_state["_cikis_ili_manuel"] = _cikis_ov_guncel
