@@ -845,162 +845,6 @@ def _fy_hepsini_yerlestir_ana_tablo(cari_id, ham_metin, firma_adi=""):
         return False, f"Hata: {_fyat_hata}"
 
 
-def _hazir_hesaplama_ana_tablo(cari_id, hazir_metin, firma_adi=""):
-    """🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ) — "Hesaplama" sütunundan
-    TAMAMEN BAĞIMSIZ, ona hiç dokunmayan AYRI bir özellik. Kullanıcının
-    DAHA ÖNCEDEN (yeni sistem kurulmadan önce) hazırlamış olduğu, ZATEN
-    "FİYAT İNCELE" TABLO FORMATINDA olan metni (V.İLİ - TÜR   DESİ DESİ-KG
-    TOPLAM TL biçiminde, örn. 'İSTANBUL - PALET  375 DESİ -KG  743.00 TL')
-    doğrudan ayrıştırır — "Hesaplama"nın kullandığı 'Şehir Desi BirimFiyat'
-    HAM formatını DEĞİL, bu HAZIR TABLO formatını okur. Ayrıştırma
-    başarılıysa "Hesaplama" ile AYNI 5 sonucu üretir: İl İşaretleme +
-    Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet kaydetme
-    (metin ZATEN doğru formatta olduğu için AYNEN, yeniden biçimlendirmeden
-    kaydedilir). Dönüş: (basarili: bool, mesaj: str)"""
-    import re as _hzr_re
-
-    def _hzr_norm(_s):
-        return (str(_s or "").strip().upper().replace("İ", "I").replace("Ş", "S")
-                .replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C"))
-
-    def _hzr_boslu_normalize(_s):
-        # 🚨 GÜVENLİK (2026-09): kopyala-yapıştır sırasında GÖRÜNMEYEN özel
-        # boşluk karakterleri (non-breaking space \xa0, sıfır-genişlikli
-        # boşluk, TAB) VE — daha da önemlisi — SATIR SONLARININ TAMAMEN
-        # KAYBOLUP tüm tablonun TEK bir uzun satıra dönüşmesi (bazı grid
-        # hücrelerine yapıştırırken olabiliyor) ihtimaline karşı, satır
-        # sonları da (varsa) boşluğa çevrilir — aşağıdaki ayrıştırma zaten
-        # satır sonuna HİÇ bağlı değildir.
-        _s = str(_s or "").replace("\xa0", " ").replace("\t", " ").replace("\u200b", "").replace("\u2007", " ").replace("\u2009", " ")
-        _s = _s.replace("\r", " ").replace("\n", " ")
-        return _hzr_re.sub(r"\s+", " ", _s).strip()
-
-    _hzr_satir_deseni = _hzr_re.compile(
-        r'(\S+)\s*-\s*(KOLİ|PALET)\s+(\d+)\s*DESİ\s*-KG\s+([\d.]+)\s*TL', _hzr_re.IGNORECASE
-    )
-
-    try:
-        if not str(hazir_metin or "").strip():
-            return False, "Hazır Hesaplama hücresi boş."
-
-        # 🚨 KRİTİK DÜZELTME (2026-09): eskiden metin ÖNCE "\n" ile satırlara
-        # bölünüp HER SATIR ayrı ayrı işleniyordu — ama kopyala-yapıştırda
-        # satır sonları KAYBOLUP tüm tablo TEK bir uzun satıra dönüşünce,
-        # SADECE İLK satır (veya hiçbiri) doğru okunup GERİ KALAN TÜM
-        # veriler SESSİZCE kayboluyordu (Hedef Ciro'nun eksik çıkmasının
-        # sebebi buydu). Artık satır sonuna HİÇ bağlı değil — TÜM metin TEK
-        # bir bloğa (satır sonları da boşluğa çevrilerek) normalize edilip,
-        # desen metnin İÇİNDE KAÇ KERE geçiyorsa (finditer) HEPSİ, satır
-        # sonu olsun ya da olmasın, doğru bulunur.
-        _hzr_tum_metin = _hzr_boslu_normalize(hazir_metin)
-        _hzr_girisler = []
-        _hzr_iller_bulunan_set = set()
-        _hzr_tum_iller = _IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI
-        _hzr_il_kanonik_map = {_hzr_norm(a): a for a in _hzr_tum_iller}
-        for _hzr_m in _hzr_satir_deseni.finditer(_hzr_tum_metin):
-            _hzr_sehir_ham, _hzr_tur, _hzr_desi, _hzr_toplam = _hzr_m.groups()
-            try:
-                _hzr_desi_int = int(_hzr_desi)
-                _hzr_toplam_f = float(_hzr_toplam)
-            except Exception:
-                continue
-            _hzr_girisler.append((_hzr_sehir_ham, _hzr_tur.upper(), _hzr_desi_int, _hzr_toplam_f, _hzr_toplam_f, _hzr_toplam_f))
-            _hzr_kanonik = _hzr_il_kanonik_map.get(_hzr_norm(_hzr_sehir_ham))
-            if _hzr_kanonik:
-                _hzr_iller_bulunan_set.add(_hzr_kanonik)
-
-        if not _hzr_girisler:
-            return False, "Metin tanınan 'FİYAT İNCELE' tablo formatında değil (örn. 'İSTANBUL - PALET  375 DESİ -KG  743.00 TL' gibi satırlar bekleniyor)."
-
-        # ── Hedeflenen Ciro ──
-        _hzr_hedef_toplam = round(sum(_g[5] for _g in _hzr_girisler), 2)
-        db_update("cari_kartlar", {"beklenen_ciro": _hzr_hedef_toplam}, "id", int(cari_id))
-        try: db_read.clear()
-        except Exception: pass
-        try: get_cari_listesi.clear()
-        except Exception: pass
-
-        # ── İl Ciroları (Hedef ile AYNI kaynaktan) ──
-        try:
-            _hzr_icy_ozet = _fy_il_ciro_ozet_girislerden(_hzr_girisler)
-            _hzr_icy_harita = _cari_ek_bilgi_yukle()
-            _hzr_icy_harita.setdefault(str(int(cari_id)), {})["il_ciro_ozet"] = _hzr_icy_ozet
-            _cari_ek_bilgi_kaydet(_hzr_icy_harita)
-        except Exception:
-            pass
-
-        # ── İlleri İşaretle ──
-        _hzr_il_isaretlenen = []
-        try:
-            _hzr_tum_matris = dict(_il_gonderim_matrisi_yukle())
-            _hzr_id_str = str(int(cari_id))
-            _hzr_tum_matris.setdefault(_hzr_id_str, {})
-            for _hzr_il_bulunan in _hzr_iller_bulunan_set:
-                if _hzr_il_bulunan in _IL_SUTUN_LISTESI and _hzr_il_bulunan != "Diğer":
-                    if not str(_hzr_tum_matris[_hzr_id_str].get(_hzr_il_bulunan, "")).strip():
-                        _hzr_tum_matris[_hzr_id_str][_hzr_il_bulunan] = _hzr_il_bulunan.upper()
-                    _hzr_il_isaretlenen.append(_hzr_il_bulunan)
-                elif _hzr_il_bulunan in _IL_DIGER_LISTESI:
-                    _hzr_mevcut_diger = str(_hzr_tum_matris[_hzr_id_str].get("Diğer", "") or "").strip()
-                    _hzr_diger_satirlari = [s.strip() for s in _hzr_mevcut_diger.split("\n") if s.strip()]
-                    if _hzr_il_bulunan.upper() not in _hzr_diger_satirlari:
-                        _hzr_diger_satirlari.append(_hzr_il_bulunan.upper())
-                    _hzr_tum_matris[_hzr_id_str]["Diğer"] = "\n".join(_hzr_diger_satirlari)
-                    _hzr_il_isaretlenen.append(_hzr_il_bulunan)
-            _il_gonderim_matrisi_kaydet(_hzr_tum_matris)
-            _il_gonderim_matrisi_yukle.clear()
-        except Exception:
-            pass
-
-        # ── Teklif Fiyat (basit TL/desi özeti + detaylı barem kırılımı) ──
-        try:
-            _hzr_teklif_onerisi = _fy_teklif_onerisi_hesapla(_hzr_girisler)
-            _hzr_barem_detay = _fy_desi_baremli_teklif_hesapla(_hzr_girisler)
-            _hzr_teklif_parcalari = []
-            if _hzr_teklif_onerisi:
-                _hzr_teklif_parcalari.append(_hzr_teklif_onerisi)
-            if _hzr_barem_detay:
-                _hzr_teklif_parcalari.append("--- Detaylı Barem Bazlı Teklif ---")
-                for _hzr_il_ad in sorted(_hzr_barem_detay.keys()):
-                    _hzr_teklif_parcalari.append(f"\n{_hzr_il_ad}:")
-                    _hzr_teklif_parcalari.append(_hzr_barem_detay[_hzr_il_ad])
-            _hzr_teklif_tam = "\n".join(_hzr_teklif_parcalari)
-            if _hzr_teklif_tam.strip():
-                _hzr_tf_harita = _cari_ek_bilgi_yukle()
-                _hzr_tf_harita.setdefault(str(int(cari_id)), {})["teklif_fiyat"] = _hzr_teklif_tam
-                _cari_ek_bilgi_kaydet(_hzr_tf_harita)
-        except Exception:
-            pass
-
-        # ── Koli/Palet KAYDET — metin ZATEN doğru "FİYAT İNCELE" formatında
-        # olduğu için YENİDEN BİÇİMLENDİRİLMEDEN, AYNEN kaydedilir. Eskinin
-        # üzerine yazar (birleştirmez).
-        _sb_hzr = get_sb_client()
-        if _sb_hzr:
-            import json as _hzrj
-            _r_hzr = _sb_hzr.table("kullanici_tercih").select("deger").eq(
-                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
-            _kp_map_hzr = _hzrj.loads(_r_hzr.data[0]["deger"]) if _r_hzr.data else {}
-            _kp_map_hzr[str(int(cari_id))] = str(hazir_metin).strip()
-            _kpo_deger_hzr = _hzrj.dumps(_kp_map_hzr, ensure_ascii=False)
-            _kpo_guncelle_hzr = _sb_hzr.table("kullanici_tercih").update({"deger": _kpo_deger_hzr}).eq(
-                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
-            if not _kpo_guncelle_hzr.data:
-                _sb_hzr.table("kullanici_tercih").insert({
-                    "kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel", "deger": _kpo_deger_hzr
-                }).execute()
-            st.session_state["_koli_palet_manuel"] = _kp_map_hzr
-        get_cari_listesi.clear()
-
-        _hzr_mesaj = (f"✅ {firma_adi or cari_id}: {len(_hzr_girisler)} satır ayrıştırıldı → "
-                      f"Hedef Ciro {_kg_tr_format(_hzr_hedef_toplam)} ₺ + İl Ciroları + Teklif Fiyat + "
-                      f"Koli/Palet güncellendi")
-        if _hzr_il_isaretlenen:
-            _hzr_mesaj += f" + işaretlenen iller: {', '.join(_hzr_il_isaretlenen)}"
-        return True, _hzr_mesaj
-    except Exception as _hzr_hata:
-        return False, f"Hata: {_hzr_hata}"
-
 
 def _alt_ilerleme_cubugu_html(_yuzde, _mesaj):
     """KULLANICI İSTEĞİ (2026-09): kaydetme gibi işlemler sürerken, ekranın
@@ -6865,10 +6709,6 @@ section[data-testid="stSidebar"] { display: none !important; }
     # sonucu Koli/Palet'e yazılır — kendisi BOŞ kalmaya devam eder.
     if not df.empty:
         df["hesaplama"] = ""
-        # 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Hazır Hesaplama" —
-        # "Hesaplama"dan TAMAMEN AYRI, bağımsız bir tetikleyici kutu. AYNI
-        # şekilde kalıcı bir değeri YOKTUR, her zaman BOŞ başlar.
-        df["hazir_hesaplama"] = ""
 
     # ── MÜŞTERİ KODU (MW1, MW2, ...) — KULLANICI İSTEĞİ (2026-09): eski
     # karışık ID'ler yerine kayıt tarihine göre sıralı, boşluksuz "MW1,
@@ -8633,13 +8473,12 @@ function kartSec(id){
     # ── KOLON GENİŞLİKLERİ — DB'den oku ─────────────────────────────────────
     _KOL_VARSAYILAN = {
         "tarih":90,"guncelleme_tarihi":100,
-        "hesaplama":120,"hazir_hesaplama":130,"firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
+        "hesaplama":120,"firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
         "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
         "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
-        "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,"musteri_kodu":80,
-        "beklenen_ciro":70,"gerceklesen_ciro":70,"✅ Analiz":70,"Varış İli":90,"Koli/Palet":110,
-        "🧾 Teklif":70,"💬 Mesaj":70,
-        "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"il_ciro_ozet":110,"sektor":100,"rut":90
+        "islem_asamasi":80,"aciklama":110,"📨 Notlar":50,"id":40,"musteri_kodu":80,
+        "beklenen_ciro":70,"gerceklesen_ciro":70,"Varış İli":90,"Koli/Palet":110,
+                "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"il_ciro_ozet":110,"sektor":100,"rut":90
     }
     for _il_vars in _IL_SUTUN_LISTESI:
         _KOL_VARSAYILAN[_il_vars] = 10
@@ -8712,8 +8551,6 @@ function kartSec(id){
         "rakip_firma":   st.column_config.TextColumn("Özel", width=_w("rakip_firma")),
         "hesaplama":     st.column_config.TextColumn("Hesaplama", width=_w("hesaplama"),
                                                        help="Şehir, Desi, Birim Fiyat satır satır yapıştır (örn. 'AMASYA 227 3.574') — Kaydet'e basınca İl İşaretleme + Ayrıştırma + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet OTOMATİK hesaplanıp kaydedilir (eskinin üzerine yazar). ÖNEMLİ: yapıştırdıktan sonra Kaydet'e basmadan ÖNCE Tab tuşuna basın veya başka bir hücreye/yere tıklayın — yoksa hücredeki en son değişiklik bazen ilk tıklamada algılanmayabilir."),
-        "hazir_hesaplama": st.column_config.TextColumn("Hazır Hesaplama", width=_w("hazir_hesaplama"),
-                                                       help="'Hesaplama'dan TAMAMEN AYRI, bağımsız — ona dokunmaz. Bu, ÖNCEDEN hazır 'FİYAT İNCELE' tablo formatındaki (V.İLİ - TÜR   DESİ DESİ-KG   TOPLAM TL) metni doğrudan yapıştırmak için. Kaydet'e basınca 'Hesaplama' ile AYNI şeyler olur: İl İşaretleme + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet kaydedilir — sadece giriş formatı farklı (ayrıştırma gerekmez, tablo zaten hazır). ÖNEMLİ: yapıştırdıktan sonra Kaydet'e basmadan ÖNCE Tab tuşuna basın veya başka bir hücreye/yere tıklayın — yoksa hücredeki en son değişiklik bazen ilk tıklamada algılanmayabilir."),
         "firma":         st.column_config.TextColumn("Firma",     width=_w("firma")),
         "yetkili":       st.column_config.TextColumn("Yetkili",   width=_w("yetkili")),
         "gsm":           st.column_config.TextColumn("GSM",       width=_w("gsm")),
@@ -8732,11 +8569,7 @@ function kartSec(id){
         "temsilci":      st.column_config.TextColumn("Temsilci",  width=_w("temsilci")),
         "islem_asamasi": st.column_config.SelectboxColumn("İlk Temas", options=["Tümü", "Arama", "Tekrar Ara", "Mesaj", "E-Mail"], width=_w("islem_asamasi")),
         "aciklama":      st.column_config.TextColumn("Açıklama",  width=_w("aciklama")),
-        "📅 Son Randevu": st.column_config.TextColumn("📅 Son Randevu", disabled=False, width=_w("📅 Son Randevu"), help="Manuel tarih yazıp kaydedebilirsin (örn. 15.08.2026 veya 15.08.2026 14:00) — gerçek bir randevu kaydı oluşturulur."),
         "📨 Notlar":     st.column_config.TextColumn("📨 Notlar", disabled=True, width=_w("📨 Notlar")),
-        "✅ Analiz":     st.column_config.TextColumn("✅ Analiz", disabled=False, width=_w("✅ Analiz"), help="Herhangi bir şey yazıp kaydedin (örn. bir nokta) — ✅ ikonu manuel olarak gösterilir. Boş bırakırsan otomatik eşleşme geri döner."),
-        "🧾 Teklif":     st.column_config.TextColumn("🧾 Teklif", disabled=False, width=_w("🧾 Teklif"), help="Sadece rakam girin (örn. 5). İkon otomatik eklenir. Boş bırakırsan otomatik hesaplanan sayı geri döner."),
-        "💬 Mesaj":      st.column_config.TextColumn("💬 Mesaj", disabled=False, width=_w("💬 Mesaj"), help="Sadece rakam girin (örn. 3). İkon otomatik eklenir. Boş bırakırsan otomatik hesaplanan sayı geri döner."),
         "Varış İli":     st.column_config.TextColumn("Varış İli", disabled=False, width=_w("Varış İli"), help="Müşterinin kargo varış ili — manuel serbest metin. Buraya veya Koli/Palet'e bir şey yazılırsa Analiz otomatik ✅ olur."),
         "Koli/Palet":    st.column_config.TextColumn("Koli/Palet", disabled=False, width=_w("Koli/Palet"), help="Koli, palet vb. bilgiler — manuel, sınırsız serbest metin."),
         "asama1":        st.column_config.SelectboxColumn("1. Aşama", options=_asama_secenek_guvenli("asama1", ["", "Randevu"]), width=_w("asama1")),
@@ -8780,19 +8613,19 @@ function kartSec(id){
             df_f["_cl2_key"] = df_f["id"].map(_cl2_map).fillna(len(_cl2_sirali))
             df_f = df_f.sort_values("_cl2_key").drop(columns=["_cl2_key"]).reset_index(drop=True)
 
-    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","hesaplama","hazir_hesaplama","firma","yetkili","gsm","sabit","email","adres","ilce","il",
+    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","hesaplama","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
-                 "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
-                 "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
-                 "🧾 Teklif","💬 Mesaj","ara_islem","il_ciro_ozet","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
+                 "beklenen_ciro","gerceklesen_ciro","durum","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
+                 "asama1","asama2","asama3","aciklama","📨 Notlar",
+                 "ara_islem","il_ciro_ozet","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
-    _kol_gizli_map = {"hesaplama":"hesaplama","hazir_hesaplama":"hazir_hesaplama","firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
+    _kol_gizli_map = {"hesaplama":"hesaplama","firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
                       "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat","islem_tarihi_manuel":"islem_tarihi_manuel","takip_tarihi_manuel":"takip_tarihi_manuel","randevu_tarihi_manuel":"randevu_tarihi_manuel",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
-                      "📅 Son Randevu":"📅 Son Randevu","📨 Notlar":"📨 Notlar","id":"id",
-                      "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro","✅ Analiz":"✅ Analiz",
-                      "🧾 Teklif":"🧾 Teklif","💬 Mesaj":"💬 Mesaj","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
+                      "📨 Notlar":"📨 Notlar","id":"id",
+                      "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro",
+                      "Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
                       "asama1":"asama1","asama2":"asama2","asama3":"asama3","sonuc":"sonuc","ara_islem":"ara_islem","il_ciro_ozet":"il_ciro_ozet","sektor":"sektor","rut":"rut"}
     col_order = [c for c in col_order if not any(c == _kol_gizli_map.get(g,g) for g in _GIZLI_KOLONLAR)]
 
@@ -8867,28 +8700,6 @@ function kartSec(id){
     elif "rut" not in df_edit.columns:
         df_edit["rut"] = ""
 
-    # Son randevu bilgisini ekle (tarih + saat + bölge) — normalize edilmiş eşleştirme
-    try:
-        _df_rand_join = db_read("randevular", extra_sql="ORDER BY randevu_tarihi DESC, randevu_saati DESC")
-        if not _df_rand_join.empty and "musteri_adi" in _df_rand_join.columns:
-            def _norm_rand(s):
-                return (str(s or "").strip()
-                        .upper()
-                        .replace("İ","I").replace("Ş","S").replace("Ğ","G")
-                        .replace("Ü","U").replace("Ö","O").replace("Ç","C")
-                        .replace("  "," "))
-            _son_rand = {}
-            for _, _rj in _df_rand_join.iterrows():
-                _mn_norm = _norm_rand(_rj.get("musteri_adi",""))
-                if _mn_norm and _mn_norm not in _son_rand:
-                    _dt = fmt_tarih(str(_rj.get("randevu_tarihi","") or ""))
-                    _st = str(_rj.get("randevu_saati","") or "")[:5]
-                    _bl = str(_rj.get("bolge","") or "")
-                    _sc = str(_rj.get("sonuc","") or "")
-                    _son_rand[_mn_norm] = f"📅 {_dt} {_st}"
-            df_edit["📅 Son Randevu"] = df_edit["firma"].apply(lambda x: _son_rand.get(_norm_rand(x),""))
-    except:
-        df_edit["📅 Son Randevu"] = ""
     # Aşama 1-4 ve Sonuç kolonları — yoksa boş ekle
     for _ak in ["asama1","asama2","asama3","sonuc"]:
         if _ak not in df_edit.columns:
@@ -8920,49 +8731,6 @@ function kartSec(id){
     _cikis_ili_map   = st.session_state.get("_cikis_ili_manuel", {})
     _koli_palet_map  = st.session_state.get("_koli_palet_manuel", {})
 
-    try:
-        # Analiz yapılmış firmaları işaretle
-        try:
-            _sb_an = get_sb_client()
-            if _sb_an:
-                _an_raw = _sb_an.table("musteri_analiz").select("firma").execute().data or []
-                def _norm_firma(s):
-                    return (str(s or "").strip()
-                            .upper()
-                            .replace("İ","I").replace("Ş","S").replace("Ğ","G")
-                            .replace("Ü","U").replace("Ö","O").replace("Ç","C")
-                            .replace("  "," "))
-                _analiz_firma_list = [
-                    _norm_firma(_ar.get("firma",""))
-                    for _ar in _an_raw
-                    if _ar.get("firma")
-                ]
-                _analiz_firma_set = set(_analiz_firma_list)
-                def _analiz_esles(firma_adi):
-                    _n = _norm_firma(firma_adi)
-                    if not _n:
-                        return ""
-                    # 1) Tam eşleşme
-                    if _n in _analiz_firma_set:
-                        return "✅"
-                    # 2) Kısmi eşleşme — biri diğerinin içinde mi
-                    for _af in _analiz_firma_list:
-                        if not _af:
-                            continue
-                        if _n in _af or _af in _n:
-                            return "✅"
-                        # 3) İlk 8 karakter eşleşmesi
-                        if len(_n) >= 8 and len(_af) >= 8 and _n[:8] == _af[:8]:
-                            return "✅"
-                    return ""
-                df_edit["✅ Analiz"] = df_edit["firma"].apply(_analiz_esles)
-            else:
-                df_edit["✅ Analiz"] = ""
-        except Exception as _ane:
-            df_edit["✅ Analiz"] = ""
-    except:
-        df_edit["✅ Analiz"] = ""
-
     # Manuel Analiz override — otomatik eşleşme olmasa bile hücreye bir şey
     # yazılırsa (örn. "." veya "ok") ✅ ikonu manuel olarak gösterilir. Ayrıca
     # Varış İli veya Koli/Palet'e bir şey yazılırsa (Analiz'e hiç dokunulmasa
@@ -8970,11 +8738,6 @@ function kartSec(id){
     if "id" in df_edit.columns:
         df_edit["Varış İli"] = [(_cikis_ili_map.get(str(int(rid)), "") or "") for rid in df_edit["id"]]
         df_edit["Koli/Palet"] = [(_koli_palet_map.get(str(int(rid)), "") or "") for rid in df_edit["id"]]
-        df_edit["✅ Analiz"] = [
-            ("✅" if (str(int(rid)) in _analiz_override or str(otomatik or "").strip()
-                      or str(varis or "").strip() or str(koli or "").strip()) else "")
-            for rid, otomatik, varis, koli in zip(df_edit["id"], df_edit["✅ Analiz"], df_edit["Varış İli"], df_edit["Koli/Palet"])
-        ]
     else:
         df_edit["Varış İli"] = ""
         df_edit["Koli/Palet"] = ""
@@ -9028,23 +8791,6 @@ function kartSec(id){
     else:
         df_edit["📨 Notlar"] = ""
 
-    # ── Manuel Teklif/Mesaj override'ları — DB'den yükle (bir kere) ──
-    if "_teklif_manuel_override" not in st.session_state or "_mesaj_manuel_override" not in st.session_state:
-        st.session_state["_teklif_manuel_override"] = {}
-        st.session_state["_mesaj_manuel_override"] = {}
-        try:
-            _sb_ov0 = get_sb_client()
-            if _sb_ov0:
-                import json as _ovj0
-                _r_ov0 = _sb_ov0.table("kullanici_tercih").select("anahtar,deger").eq("kullanici","__liste_ui__").in_(
-                    "anahtar", ["_teklif_manuel_override", "_mesaj_manuel_override"]).execute()
-                for _row_ov in (_r_ov0.data or []):
-                    st.session_state[_row_ov["anahtar"]] = _ovj0.loads(_row_ov["deger"])
-        except:
-            pass
-    _teklif_override = st.session_state.get("_teklif_manuel_override", {})
-    _mesaj_override  = st.session_state.get("_mesaj_manuel_override", {})
-
     # ── Cari kartında GERÇEKTEN yapılan her kaydetme (aşama/durum/alan
     # değişikliği vb.) burada iz bırakır — "Güncelleme Tarihi" bunun üzerinden
     # hesaplanır. cari_kartlar'da updated_at kolonu/tetikleyicisi olmadığı için
@@ -9063,65 +8809,6 @@ function kartSec(id){
         except:
             pass
     _cari_son_guncelleme = st.session_state.get("_cari_son_guncelleme", {})
-
-    # ── Teklif sayısı (yeni sütun, Notlar ile aynı mantık) ──
-
-    _tek_sayac_cl = {}
-    if sb_liste:
-        try:
-            @st.cache_data(ttl=60, show_spinner=False)
-            def _tum_teklif_sayac_yukle():
-                _sb3 = get_sb_client()
-                if _sb3:
-                    _r3 = _sb3.table("teklifler").select("musteri_id").execute()
-                    return _r3.data or []
-                return []
-            def _id_norm_cl(_v):
-                _s = str(_v).strip()
-                try:
-                    return str(int(float(_s)))
-                except Exception:
-                    return _s
-            _res_tek_data_cl = _tum_teklif_sayac_yukle()
-            if _res_tek_data_cl:
-                import collections as _coltek_cl
-                _tek_sayac_cl = _coltek_cl.Counter([_id_norm_cl(r.get("musteri_id","")) for r in _res_tek_data_cl])
-        except Exception:
-            _tek_sayac_cl = {}
-    if "id" in df_edit.columns:
-        # Manuel override varsa onu göster, yoksa otomatik hesaplanan sayıyı göster
-        df_edit["🧾 Teklif"] = df_edit["id"].apply(
-            lambda x: (f"🧾 {_teklif_override.get(str(int(x)))}" if str(int(x)) in _teklif_override
-            else (f"🧾 {_tek_sayac_cl.get(str(int(x)),0)}" if _tek_sayac_cl.get(str(int(x)),0) > 0 else "")))
-    else:
-        df_edit["🧾 Teklif"] = ""
-
-    # ── Mesaj (yeni sütun) — gerçek WhatsApp/Email gönderim kayıtları (islem_kaydi
-    # tablosu, musteri_id ile bağlı) — WhatsApp Teklif ve Email Teklif türleri sayılır ──
-    _mesaj_sayac_cl = {}
-    if sb_liste:
-        try:
-            @st.cache_data(ttl=60, show_spinner=False)
-            def _tum_mesaj_sayac_yukle():
-                _sb4 = get_sb_client()
-                if _sb4:
-                    _r4 = _sb4.table("islem_kaydi").select("musteri_id,islem_turu").in_(
-                        "islem_turu", ["WhatsApp Teklif", "Email Teklif"]).execute()
-                    return _r4.data or []
-                return []
-            _res_mesaj_data_cl = _tum_mesaj_sayac_yukle()
-            if _res_mesaj_data_cl:
-                import collections as _colmsg_cl
-                _mesaj_sayac_cl = _colmsg_cl.Counter([str(r.get("musteri_id","")) for r in _res_mesaj_data_cl])
-        except Exception:
-            _mesaj_sayac_cl = {}
-    if "id" in df_edit.columns:
-        # Manuel override varsa onu göster, yoksa otomatik hesaplanan sayıyı göster
-        df_edit["💬 Mesaj"] = df_edit["id"].apply(
-            lambda x: (f"💬 {_mesaj_override.get(str(int(x)))}" if str(int(x)) in _mesaj_override
-            else (f"💬 {_mesaj_sayac_cl.get(str(int(x)),0)}" if _mesaj_sayac_cl.get(str(int(x)),0) > 0 else "")))
-    else:
-        df_edit["💬 Mesaj"] = ""
 
     # ── İşlem Tarih — sadece tarih+saat gösterir, ham/karışık format değil ──
     if "tarih" in df_edit.columns:
@@ -9260,12 +8947,6 @@ function kartSec(id){
         _aktif_col_order = [c for c in _aktif_col_order if c != "hesaplama"]
         _fh_pos = _aktif_col_order.index("firma")
         _aktif_col_order.insert(_fh_pos, "hesaplama")
-    # "Hazır Hesaplama" da AYNI SEBEPLE HER ZAMAN "Firma"nın hemen soluna
-    # (ve "Hesaplama"nın hemen sağına) zorla yerleştirilir.
-    if "hazir_hesaplama" in _aktif_col_order and "firma" in _aktif_col_order:
-        _aktif_col_order = [c for c in _aktif_col_order if c != "hazir_hesaplama"]
-        _fhh_pos = _aktif_col_order.index("firma")
-        _aktif_col_order.insert(_fhh_pos, "hazir_hesaplama")
 
     # ── SAĞ TARAFTAKİ BOŞLUĞU KAPAT ─────────────────────────────────────────
     # Tüm kolonlara sabit piksel genişliği verildiğinde, toplam genişlik ekran
@@ -9644,10 +9325,9 @@ function kartSec(id){
             kayit_sayi = 0
             hata_list  = []
             # KULLANICI İSTEĞİ (2026-09): Kaydet'e basınca NELERİN kaydedildiğini
-            # (Hesaplama/Hazır Hesaplama tetiklendi mi, kaç satır, vs.) açıkça
-            # gösterebilmek için ayrı sayaçlar.
+            # (Hesaplama tetiklendi mi, kaç satır, vs.) açıkça gösterebilmek
+            # için ayrı sayaç.
             _hesaplama_tetiklenen = 0
-            _hazir_hesaplama_tetiklenen = 0
             if not _edited_rows:
                 st.info("Değişiklik yok.")
             else:
@@ -9741,58 +9421,6 @@ function kartSec(id){
                     # firma alanı boş bırakılan taslak(lar) ekranda kalmaya devam etsin.
                     st.session_state["_cl_taslak_sayisi"] = max(0, _cl_taslak_sayisi - _taslak_basarili_sayisi)
 
-                # ── Teklif/Mesaj manuel override'ları — cari_kartlar'da bu isimde
-                # kolon yok, bu yüzden ayrı kullanici_tercih JSON'unda saklanır.
-                # Hücre boş bırakılırsa override silinir, otomatik sayı geri döner.
-                _teklif_ov_guncel = dict(st.session_state.get("_teklif_manuel_override", {}))
-                _mesaj_ov_guncel  = dict(st.session_state.get("_mesaj_manuel_override", {}))
-                _ov_degisti = False
-                for _idx_str_ov, _deg_ov in _edited_rows.items():
-                    _idxn_ov = int(_idx_str_ov)
-                    if _idxn_ov >= len(_rows):
-                        continue
-                    _rid_ov = int(float(str(_rows[_idxn_ov].get("id", 0))))
-                    if not _rid_ov:
-                        continue
-                    if "🧾 Teklif" in _deg_ov:
-                        _v_ov_ham = str(_deg_ov["🧾 Teklif"] or "")
-                        _v_ov = "".join(ch for ch in _v_ov_ham if ch.isdigit())  # sadece rakam — ikon zaten otomatik eklenir
-                        if _v_ov:
-                            _teklif_ov_guncel[str(_rid_ov)] = _v_ov
-                        else:
-                            _teklif_ov_guncel.pop(str(_rid_ov), None)
-                        _ov_degisti = True
-                    if "💬 Mesaj" in _deg_ov:
-                        _v_ov_ham = str(_deg_ov["💬 Mesaj"] or "")
-                        _v_ov = "".join(ch for ch in _v_ov_ham if ch.isdigit())  # sadece rakam — ikon zaten otomatik eklenir
-                        if _v_ov:
-                            _mesaj_ov_guncel[str(_rid_ov)] = _v_ov
-                        else:
-                            _mesaj_ov_guncel.pop(str(_rid_ov), None)
-                        _ov_degisti = True
-                if _ov_degisti:
-                    st.session_state["_teklif_manuel_override"] = _teklif_ov_guncel
-                    st.session_state["_mesaj_manuel_override"] = _mesaj_ov_guncel
-                    try:
-                        _sb_ov1 = get_sb_client()
-                        if _sb_ov1:
-                            import json as _ovj1
-                            _sb_ov1.table("kullanici_tercih").upsert([
-                                {"kullanici": "__liste_ui__", "anahtar": "_teklif_manuel_override",
-                                 "deger": _ovj1.dumps(_teklif_ov_guncel, ensure_ascii=False)},
-                                {"kullanici": "__liste_ui__", "anahtar": "_mesaj_manuel_override",
-                                 "deger": _ovj1.dumps(_mesaj_ov_guncel, ensure_ascii=False)},
-                            ], on_conflict="kullanici,anahtar").execute()
-                    except:
-                        pass
-                    # Üst AŞAMA raporundaki Mesaj toplam kutusu ve 2.AŞAMA'daki
-                    # Teklif firma sayısı 60 sn önbellekli — kaydettikten hemen
-                    # sonra güncel görünsün diye önbellek burada da temizlenir.
-                    try: _rbar_mesaj_toplam_yukle.clear()
-                    except: pass
-                    try: _rbar_teklif_toplam_yukle.clear()
-                    except: pass
-
                 # ── Analiz / Çıkış İli / Koli-Palet manuel override'ları ────────────────
                 _analiz_ov_guncel = dict(st.session_state.get("_analiz_manuel_override", {}))
                 _cikis_ov_guncel  = dict(st.session_state.get("_cikis_ili_manuel", {}))
@@ -9806,13 +9434,6 @@ function kartSec(id){
                     _rid_ex = int(float(str(_rows[_idxn_ex].get("id", 0))))
                     if not _rid_ex:
                         continue
-                    if "✅ Analiz" in _deg_ex:
-                        _v_ex = str(_deg_ex["✅ Analiz"] or "").strip()
-                        if _v_ex:
-                            _analiz_ov_guncel[str(_rid_ex)] = "1"
-                        else:
-                            _analiz_ov_guncel.pop(str(_rid_ex), None)
-                        _ex_degisti = True
                     if "Varış İli" in _deg_ex:
                         _v_ex = str(_deg_ex["Varış İli"] or "").strip()
                         if _v_ex:
@@ -9859,31 +9480,6 @@ function kartSec(id){
                             # senkronize ediyoruz, yoksa aşağıdaki toplu kayıt
                             # bu satırın YENİ verisinin ÜZERİNE ESKİ veriyi
                             # yazıp SİLERDİ.
-                            _koli_ov_guncel = dict(st.session_state.get("_koli_palet_manuel", _koli_ov_guncel))
-                            _ex_degisti = True
-                    # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Hazır
-                    # Hesaplama" — "Hesaplama"dan TAMAMEN AYRI, ona HİÇ
-                    # dokunmayan bağımsız bir tetikleyici. Kullanıcının
-                    # ÖNCEDEN hazırladığı "FİYAT İNCELE" TABLO formatındaki
-                    # (V.İLİ - TÜR  DESİ DESİ-KG  TOPLAM TL) metni doğrudan
-                    # ayrıştırır — "Hesaplama"nın ham 'Şehir Desi Fiyat'
-                    # formatını DEĞİL, bu HAZIR tabloyu okur. Sonuçta AYNI
-                    # 5 şey olur: İl İşaretleme + Hedeflenen Ciro + İl
-                    # Ciroları + Teklif Fiyat + Koli/Palet kaydetme.
-                    if "hazir_hesaplama" in _deg_ex:
-                        _v_hazir = str(_deg_ex["hazir_hesaplama"] or "").strip()
-                        if _v_hazir:
-                            _hzr_firma_adi = str(_rows[_idxn_ex].get("firma", "")) if _idxn_ex < len(_rows) else ""
-                            _kaydet_ilerleme.progress(60, text=f"⏳ '{_hzr_firma_adi or _rid_ex}' için Hazır Hesaplama çalıştırılıyor...")
-                            _hzr_basarili, _hzr_mesaj = _hazir_hesaplama_ana_tablo(_rid_ex, _v_hazir, _hzr_firma_adi)
-                            if _hzr_basarili:
-                                _hazir_hesaplama_tetiklenen += 1
-                                st.toast(f"📐 {_hzr_mesaj}", icon="✅")
-                            else:
-                                st.toast(f"⚠️ {_hzr_firma_adi or _rid_ex}: {_hzr_mesaj}", icon="⚠️")
-                            # KRİTİK: aynı senkronizasyon nedeni — yukarıdaki
-                            # fonksiyon "_koli_palet_manuel"yi DOĞRUDAN
-                            # kaydetti, buradaki eski kopyayı güncelliyoruz.
                             _koli_ov_guncel = dict(st.session_state.get("_koli_palet_manuel", _koli_ov_guncel))
                             _ex_degisti = True
                 _kaydet_ilerleme.progress(75, text="⏳ Diğer değişiklikler veritabanına yazılıyor...")
@@ -9957,78 +9553,6 @@ function kartSec(id){
                 # otomatik hesaplanıyor (bkz. _cari_rut_hesapla_otomatik).
                 # Sütun disabled=True olduğu için _edited_rows'a hiç girmez;
                 # bu yüzden burada ayrı bir kaydetme bloğuna gerek kalmadı.
-
-                # ── "📅 Son Randevu" hücresine manuel tarih yazılırsa GERÇEK bir
-                # randevu kaydı (randevular tablosu) oluşturulur — override değil,
-                # gerçek veri. Format: "15.08.2026" veya "15.08.2026 14:00".
-                import re as _rndre
-                for _idx_str_rn, _deg_rn in _edited_rows.items():
-                    if "📅 Son Randevu" not in _deg_rn:
-                        continue
-                    _rn_ham = str(_deg_rn["📅 Son Randevu"] or "").strip()
-                    if not _rn_ham:
-                        continue  # boşaltma = randevu silme değil, sadece görmezden gel
-                    _idxn_rn = int(_idx_str_rn)
-                    if _idxn_rn >= len(_rows):
-                        continue
-                    _rid_rn = int(float(str(_rows[_idxn_rn].get("id", 0))))
-                    _firma_rn = str(_rows[_idxn_rn].get("firma", "") or "")
-                    if not _rid_rn:
-                        continue
-                    # Emoji/etiket kalıntılarını temizle (örn. "📅 15.08.2026 14:00")
-                    _rn_temiz = _rndre.sub(r"[^\d.:/ ]", "", _rn_ham).strip()
-                    _rn_saat_m = _rndre.search(r"(\d{1,2}):(\d{2})", _rn_temiz)
-                    _rn_saat = f"{_rn_saat_m.group(1).zfill(2)}:{_rn_saat_m.group(2)}" if _rn_saat_m else "10:00"
-                    _rn_tarih_str = _rndre.sub(r"\d{1,2}:\d{2}", "", _rn_temiz).strip()
-                    _rn_dt = _guncelleme_tarih_parse(_rn_tarih_str) or _guncelleme_tarih_parse(_rn_temiz)
-                    if not _rn_dt:
-                        # Doğrudan DD.MM.YYYY formatını dene (parse edemediyse)
-                        _rn_m = _rndre.match(r"(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})", _rn_tarih_str)
-                        if _rn_m:
-                            try:
-                                _gg, _aa, _yy = int(_rn_m.group(1)), int(_rn_m.group(2)), int(_rn_m.group(3))
-                                if _yy < 100: _yy += 2000
-                                _rn_dt = datetime(_yy, _aa, _gg)
-                            except Exception:
-                                _rn_dt = None
-                    if not _rn_dt:
-                        continue  # anlaşılamayan tarih — sessizce atla, veri bozma
-                    _rn_basarili = False
-                    _rn_hata = ""
-                    try:
-                        _sb_rn = get_sb_client()
-                        if _sb_rn:
-                            _res_rn = _sb_rn.table("randevular").insert({
-                                "randevu_tarihi": _rn_dt.strftime("%Y-%m-%d"),
-                                "randevu_saati": _rn_saat,
-                                "musteri_id": _rid_rn, "musteri_adi": _firma_rn,
-                                "bolge": "", "gorev": "", "takip": "",
-                                "adet": 1, "aciklama": "Cari Liste'den hızlı eklendi",
-                                "sonuc": "", "temsilci": st.session_state.get("kullanici",""),
-                                "olusturan": st.session_state.get("kullanici","")
-                            }).execute()
-                            _rn_basarili = bool(_res_rn.data)
-                        else:
-                            _rn_hata = "Supabase bağlantısı yok."
-                    except Exception as _rn_e:
-                        _rn_hata = str(_rn_e)
-                    if _rn_basarili:
-                        try: db_read.clear()
-                        except: pass
-                        # Randevu tarihi eklenince, müşterinin "1. Aşama"sı henüz
-                        # boşsa otomatik "Randevu" yapılır — Kanban'daki "1. AŞAMA"
-                        # sayacına yansısın diye (aksi halde sayaç hiç değişmiyordu).
-                        _mevcut_asama1 = str(_rows[_idxn_rn].get("asama1","") or "").strip()
-                        if not _mevcut_asama1:
-                            try:
-                                if _sb_rn:
-                                    _sb_rn.table("cari_kartlar").update({"asama1":"Randevu"}).eq("id", _rid_rn).execute()
-                                    try: get_cari_listesi.clear()
-                                    except: pass
-                            except Exception:
-                                pass
-                    else:
-                        st.error(f"❌ Randevu kaydedilemedi ({_firma_rn}): {_rn_hata}")
 
                 # ── Güncelleme Tarihi izi — gerçekten bir alan (aşama, durum, açıklama,
                 # ciro vb.) değişen HER satır için "şu an" damgası basılır. "Seç"
@@ -10116,7 +9640,7 @@ function kartSec(id){
                         return None
                     guncelle = {}
                     for k, v in degisiklikler.items():
-                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma", "Hesaplama", "hesaplama", "Hazır Hesaplama", "hazir_hesaplama",
+                        if k in ("Seç", "🗑️ Sil", "Varış İli", "Koli/Palet", "Varış İlleri", "Fiyatlandırma", "Hesaplama", "hesaplama",
                                  "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "randevu_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
@@ -10254,8 +9778,6 @@ function kartSec(id){
                 # Hesaplama tetiklenmişse özete EKLENİR.
                 if _hesaplama_tetiklenen > 0:
                     _ozet_msg += f" · 🎯 Hesaplama: {_hesaplama_tetiklenen} müşteri (İl İşaretleme+Hedef Ciro+İl Ciroları+Teklif Fiyat+Koli/Palet)"
-                if _hazir_hesaplama_tetiklenen > 0:
-                    _ozet_msg += f" · 📐 Hazır Hesaplama: {_hazir_hesaplama_tetiklenen} müşteri (aynı 5 hesaplama)"
                 _kaydet_ilerleme.progress(100, text=f"✅ Tamamlandı — {_ozet_msg}")
                 # Toast rerun sonrası da görünür ama kalıcı bir banner için ayrıca sakla —
                 # kullanıcı notunun/kaydının gerçekten kaydedildiğini rerun sonrası da görsün.
@@ -10939,26 +10461,24 @@ elif aktif == "kullanici":
         st.caption("Genişlik ayarlayın, gizlemek istediklerinizi kapatın → Kaydet")
         _KOL_VARS_UI = {
             "Seç":40,"tarih":90,"guncelleme_tarihi":100,
-            "hesaplama":130,"hazir_hesaplama":140,"firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
+            "hesaplama":130,"firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
             "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
-            "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,"musteri_kodu":80,
+            "islem_asamasi":90,"aciklama":120,"📨 Notlar":60,"id":50,"musteri_kodu":80,
             "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"il_ciro_ozet":120,"sektor":100,"rut":100,
-            "beklenen_ciro":80,"gerceklesen_ciro":80,"✅ Analiz":80,"Varış İli":100,"Koli/Palet":120,
-            "🧾 Teklif":70,"💬 Mesaj":70
+            "beklenen_ciro":80,"gerceklesen_ciro":80,"Varış İli":100,"Koli/Palet":120,
         }
         for _il_kv in _IL_SUTUN_LISTESI:
             _KOL_VARS_UI[_il_kv] = 60
         _KG_UI_ETIKET = {
             "Seç":"Seç (işaret kutusu)","tarih":"İşlem Tarih","guncelleme_tarihi":"Güncelleme Tarihi",
-            "hesaplama":"Hesaplama","hazir_hesaplama":"Hazır Hesaplama","firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
+            "hesaplama":"Hesaplama","firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
             "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi","randevu_tarihi_manuel":"Randevu Tarihi",
-            "aciklama":"Açıklama","📅 Son Randevu":"Randevu","📨 Notlar":"Notlar","id":"ID",
+            "aciklama":"Açıklama","📨 Notlar":"Notlar","id":"ID",
             "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","il_ciro_ozet":"İl Ciroları","sektor":"Sektör","rut":"🛣️ Rut",
-            "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","✅ Analiz":"Analiz","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
-            "🧾 Teklif":"Teklif","💬 Mesaj":"Mesaj"
+            "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
         }
         for _il_ke in _IL_SUTUN_LISTESI:
             _KG_UI_ETIKET[_il_ke] = _il_ke
