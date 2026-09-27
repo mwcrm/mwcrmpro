@@ -638,7 +638,26 @@ def _fy_hepsini_yerlestir_ana_tablo(cari_id, ham_metin, firma_adi=""):
         _fyat_iller_bulunan_set = set()
         _fyat_girisler = []
         _fyat_son_sehir = None
-        for _satir_ham in str(ham_metin).strip().split("\n"):
+
+        # 🚨 KRİTİK DÜZELTME (2026-09): "Hazır Hesaplama"da bulunan AYNI sorun
+        # burada da var — hücreye kopyala-yapıştırırken satır sonları
+        # kaybolup TÜM metin TEK bir uzun satıra dönüşebiliyor, bu durumda
+        # eski kod SADECE İLK satırı işleyip GERİ KALAN TÜM veriler sessizce
+        # kayboluyordu. Çözüm: metinde BİLİNEN BİR İL İSMİ (İstanbul, Bursa,
+        # Amasya, vb.) her göründüğünde, bunun YENİ bir satır/kayıt
+        # başlangıcı olduğu varsayılıp oraya bir satır sonu EKLENİR — zaten
+        # doğru satır sonlu metinlerde bu ZARARSIZDIR (olması gereken yerde
+        # olması gerekeni tekrar ekler), ama satır sonu KAYBOLMUŞ metinlerde
+        # HAYAT KURTARIR.
+        _fyat_iller_uzundan_kisaya = sorted(_fyat_tum_iller, key=len, reverse=True)
+        _fyat_onarilmis_metin = str(ham_metin)
+        for _fyat_il_onar in _fyat_iller_uzundan_kisaya:
+            _fyat_onarilmis_metin = _fyat_re.sub(
+                r'(?<!\n)\b(' + _fyat_re.escape(_fyat_il_onar) + r')\b',
+                r'\n\1', _fyat_onarilmis_metin, flags=_fyat_re.IGNORECASE
+            )
+
+        for _satir_ham in _fyat_onarilmis_metin.strip().split("\n"):
             _s = _satir_ham.strip()
             if not _s:
                 continue
@@ -8692,9 +8711,9 @@ function kartSec(id){
                                 help="OTOMATİK hesaplanır — bu müşterinin TÜM kargo kayıtlarındaki Yekün toplamı. Elle düzenlenmez; değiştirmek için Kargolar sayfasından ilgili kargo kaydını düzenleyin."),
         "rakip_firma":   st.column_config.TextColumn("Özel", width=_w("rakip_firma")),
         "hesaplama":     st.column_config.TextColumn("Hesaplama", width=_w("hesaplama"),
-                                                       help="Şehir, Desi, Birim Fiyat satır satır yapıştır (örn. 'AMASYA 227 3.574') — Kaydet'e basınca İl İşaretleme + Ayrıştırma + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet OTOMATİK hesaplanıp kaydedilir (eskinin üzerine yazar)."),
+                                                       help="Şehir, Desi, Birim Fiyat satır satır yapıştır (örn. 'AMASYA 227 3.574') — Kaydet'e basınca İl İşaretleme + Ayrıştırma + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet OTOMATİK hesaplanıp kaydedilir (eskinin üzerine yazar). ÖNEMLİ: yapıştırdıktan sonra Kaydet'e basmadan ÖNCE Tab tuşuna basın veya başka bir hücreye/yere tıklayın — yoksa hücredeki en son değişiklik bazen ilk tıklamada algılanmayabilir."),
         "hazir_hesaplama": st.column_config.TextColumn("Hazır Hesaplama", width=_w("hazir_hesaplama"),
-                                                       help="'Hesaplama'dan TAMAMEN AYRI, bağımsız — ona dokunmaz. Bu, ÖNCEDEN hazır 'FİYAT İNCELE' tablo formatındaki (V.İLİ - TÜR   DESİ DESİ-KG   TOPLAM TL) metni doğrudan yapıştırmak için. Kaydet'e basınca 'Hesaplama' ile AYNI şeyler olur: İl İşaretleme + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet kaydedilir — sadece giriş formatı farklı (ayrıştırma gerekmez, tablo zaten hazır)."),
+                                                       help="'Hesaplama'dan TAMAMEN AYRI, bağımsız — ona dokunmaz. Bu, ÖNCEDEN hazır 'FİYAT İNCELE' tablo formatındaki (V.İLİ - TÜR   DESİ DESİ-KG   TOPLAM TL) metni doğrudan yapıştırmak için. Kaydet'e basınca 'Hesaplama' ile AYNI şeyler olur: İl İşaretleme + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet kaydedilir — sadece giriş formatı farklı (ayrıştırma gerekmez, tablo zaten hazır). ÖNEMLİ: yapıştırdıktan sonra Kaydet'e basmadan ÖNCE Tab tuşuna basın veya başka bir hücreye/yere tıklayın — yoksa hücredeki en son değişiklik bazen ilk tıklamada algılanmayabilir."),
         "firma":         st.column_config.TextColumn("Firma",     width=_w("firma")),
         "yetkili":       st.column_config.TextColumn("Yetkili",   width=_w("yetkili")),
         "gsm":           st.column_config.TextColumn("GSM",       width=_w("gsm")),
@@ -9286,6 +9305,20 @@ function kartSec(id){
         with _sb1:
             if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust", use_container_width=True):
                 st.session_state["_kaydet_flag"] = True
+        # 🚨 KULLANICI İSTEĞİ (2026-09): "Kaydet"e basılınca, aşağıdaki asıl
+        # işlem (birkaç saniye sürebilir) tamamlanana kadar beklemek zorunda
+        # kalmadan, TIKLANIR TIKLANMAZ, üst sabit çubukta (kaydırmaya gerek
+        # kalmadan HER ZAMAN görünen yerde) "işlem başladı" net bir şekilde
+        # görülsün diye ANINDA bir gösterge — asıl "💾 N satır kaydediliyor"
+        # spinner'ı aşağıda AYRICA gösterilmeye devam ediyor, bu SADECE en
+        # üstte anında beliren ek bir onaydır.
+        if st.session_state.get("_kaydet_flag"):
+            st.markdown(
+                "<div style='background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;"
+                "padding:6px 10px;margin-top:4px;font-size:13px;font-weight:600;color:#92400e;'>"
+                "⏳ Kaydetme işlemi başladı, lütfen bekleyin...</div>",
+                unsafe_allow_html=True
+            )
         with _sb2:
             if st.button("➕ Satır Ekle", key="cl_hizli_ekle_btn_ust", use_container_width=True):
                 st.session_state["_cl_taslak_sayisi"] = st.session_state.get("_cl_taslak_sayisi", 0) + 1
@@ -9585,10 +9618,17 @@ function kartSec(id){
             _tablo_json   = st.session_state.get("_ls_tablo")
             kayit_sayi = 0
             hata_list  = []
+            # KULLANICI İSTEĞİ (2026-09): Kaydet'e basınca NELERİN kaydedildiğini
+            # (Hesaplama/Hazır Hesaplama tetiklendi mi, kaç satır, vs.) açıkça
+            # gösterebilmek için ayrı sayaçlar.
+            _hesaplama_tetiklenen = 0
+            _hazir_hesaplama_tetiklenen = 0
             if not _edited_rows:
                 st.info("Değişiklik yok.")
             else:
+              _kaydet_ilerleme = st.progress(0, text="⏳ Kaydetme başladı...")
               with st.spinner(f"💾 {len(_edited_rows)} satır kaydediliyor..."):
+                _kaydet_ilerleme.progress(10, text="⏳ Satırlar hazırlanıyor...")
                 try:
                     _rows = _json_ls.loads(_tablo_json) if _tablo_json else []
                 except:
@@ -9781,8 +9821,10 @@ function kartSec(id){
                         _v_fiyat = str(_deg_ex["hesaplama"] or "").strip()
                         if _v_fiyat:
                             _fyat_firma_adi = str(_rows[_idxn_ex].get("firma", "")) if _idxn_ex < len(_rows) else ""
+                            _kaydet_ilerleme.progress(50, text=f"⏳ '{_fyat_firma_adi or _rid_ex}' için Hesaplama çalıştırılıyor...")
                             _fyat_basarili, _fyat_mesaj = _fy_hepsini_yerlestir_ana_tablo(_rid_ex, _v_fiyat, _fyat_firma_adi)
                             if _fyat_basarili:
+                                _hesaplama_tetiklenen += 1
                                 st.toast(f"🎯 {_fyat_mesaj}", icon="✅")
                             else:
                                 st.toast(f"⚠️ {_fyat_firma_adi or _rid_ex}: {_fyat_mesaj}", icon="⚠️")
@@ -9807,8 +9849,10 @@ function kartSec(id){
                         _v_hazir = str(_deg_ex["hazir_hesaplama"] or "").strip()
                         if _v_hazir:
                             _hzr_firma_adi = str(_rows[_idxn_ex].get("firma", "")) if _idxn_ex < len(_rows) else ""
+                            _kaydet_ilerleme.progress(60, text=f"⏳ '{_hzr_firma_adi or _rid_ex}' için Hazır Hesaplama çalıştırılıyor...")
                             _hzr_basarili, _hzr_mesaj = _hazir_hesaplama_ana_tablo(_rid_ex, _v_hazir, _hzr_firma_adi)
                             if _hzr_basarili:
+                                _hazir_hesaplama_tetiklenen += 1
                                 st.toast(f"📐 {_hzr_mesaj}", icon="✅")
                             else:
                                 st.toast(f"⚠️ {_hzr_firma_adi or _rid_ex}: {_hzr_mesaj}", icon="⚠️")
@@ -9817,6 +9861,7 @@ function kartSec(id){
                             # kaydetti, buradaki eski kopyayı güncelliyoruz.
                             _koli_ov_guncel = dict(st.session_state.get("_koli_palet_manuel", _koli_ov_guncel))
                             _ex_degisti = True
+                _kaydet_ilerleme.progress(75, text="⏳ Diğer değişiklikler veritabanına yazılıyor...")
                 if _ex_degisti:
                     st.session_state["_analiz_manuel_override"] = _analiz_ov_guncel
                     st.session_state["_cikis_ili_manuel"] = _cikis_ov_guncel
@@ -10179,6 +10224,14 @@ function kartSec(id){
                     _ozet_msg = f"{_arsiv_sayi} not arşivlendi!"
                 else:
                     _ozet_msg = "Değişiklik kaydedildi."
+                # KULLANICI İSTEĞİ (2026-09): Kaydet'e basınca NELERİN
+                # kaydedildiğini açıkça görsün diye, Hesaplama/Hazır
+                # Hesaplama tetiklenmişse özete EKLENİR.
+                if _hesaplama_tetiklenen > 0:
+                    _ozet_msg += f" · 🎯 Hesaplama: {_hesaplama_tetiklenen} müşteri (İl İşaretleme+Hedef Ciro+İl Ciroları+Teklif Fiyat+Koli/Palet)"
+                if _hazir_hesaplama_tetiklenen > 0:
+                    _ozet_msg += f" · 📐 Hazır Hesaplama: {_hazir_hesaplama_tetiklenen} müşteri (aynı 5 hesaplama)"
+                _kaydet_ilerleme.progress(100, text=f"✅ Tamamlandı — {_ozet_msg}")
                 # Toast rerun sonrası da görünür ama kalıcı bir banner için ayrıca sakla —
                 # kullanıcı notunun/kaydının gerçekten kaydedildiğini rerun sonrası da görsün.
                 st.session_state["_son_kaydet_ozeti"] = "✅ " + _ozet_msg
