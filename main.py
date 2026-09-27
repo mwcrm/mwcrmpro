@@ -9301,10 +9301,24 @@ function kartSec(id){
 
     with st.container():
         st.markdown('<div class="cl-sticky-bar">', unsafe_allow_html=True)
-        _sb1, _sb2, _sb3, _sb4, _sb5, _sb6, _sb7, _sb8 = st.columns([1.2, 0.9, 0.9, 1.1, 1.0, 1.1, 1.0, 1.3])
+        _sb1, _sb2b, _sb2, _sb3, _sb4, _sb5, _sb6, _sb7, _sb8 = st.columns([1.2, 1.3, 0.9, 0.9, 1.1, 1.0, 1.1, 1.0, 1.3])
         with _sb1:
             if st.button("💾 Değişiklikleri Kaydet", type="primary", key="liste_kaydet_ust", use_container_width=True):
                 st.session_state["_kaydet_flag"] = True
+        # 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Seç" ile işaretlenen
+        # firmaları TEK TIKLA "🔍 Çoklu Firma Seçimi" filtresine aktarır —
+        # 2. sırada, üst sabit çubukta, HER ZAMAN görünür. "Kaydet" ile AYNI
+        # yöntem: bu noktada henüz kimin "Seç" ile işaretli olduğu (tablo
+        # daha çizilmediği için) bilinmiyor, o yüzden SADECE bir bayrak
+        # koyulur — asıl aktarma, "secili_idler" hazır olduğu yerde
+        # (aşağıda) bu bayrağa bakılarak yapılır.
+        with _sb2b:
+            if st.button("📋 Seçilenleri Çoklu Firmaya Aktar", key="cl_coklu_aktar_ust", use_container_width=True):
+                st.session_state["_coklu_aktar_flag"] = True
+        with _sb2:
+            if st.button("➕ Satır Ekle", key="cl_hizli_ekle_btn_ust", use_container_width=True):
+                st.session_state["_cl_taslak_sayisi"] = st.session_state.get("_cl_taslak_sayisi", 0) + 1
+                st.rerun()
         # 🚨 KULLANICI İSTEĞİ (2026-09): "Kaydet"e basılınca, aşağıdaki asıl
         # işlem (birkaç saniye sürebilir) tamamlanana kadar beklemek zorunda
         # kalmadan, TIKLANIR TIKLANMAZ, üst sabit çubukta (kaydırmaya gerek
@@ -9319,10 +9333,6 @@ function kartSec(id){
                 "⏳ Kaydetme işlemi başladı, lütfen bekleyin...</div>",
                 unsafe_allow_html=True
             )
-        with _sb2:
-            if st.button("➕ Satır Ekle", key="cl_hizli_ekle_btn_ust", use_container_width=True):
-                st.session_state["_cl_taslak_sayisi"] = st.session_state.get("_cl_taslak_sayisi", 0) + 1
-                st.rerun()
         with _sb3:
             if st.button("🔄 Kolon Sıfırla", key="cl_kolon_sifirla_ust", use_container_width=True):
                 st.session_state.pop("_cl_kolon_sira", None)
@@ -9537,15 +9547,20 @@ function kartSec(id){
     secili_sayi = len(secili_df)
     secili_idler = secili_df["id"].tolist() if not secili_df.empty else []
 
-    # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Seç" ile işaretlenen
-    # firmaları TEK TIKLA "🔍 Çoklu Firma Seçimi" filtresine aktarır — aynı
-    # "Taslak Yükle" mekanizması (_cok_tsk_bekleyen) kullanılıyor, bu yüzden
-    # o filtreye HİÇ dokunmadan, ona zaten var olan bir "besleme" yolundan
-    # yararlanıyor. Tek satırda, sade bir buton.
-    if secili_sayi > 0:
-        if st.button(f"📋 Seçili {secili_sayi} Firmayı Çoklu Firma Filtresine Aktar", key="cl_secili_cokluya_aktar_btn", use_container_width=True):
+    # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "📋 Seçilenleri Çoklu
+    # Firmaya Aktar" butonu üst sabit çubukta (2. sırada); burada, artık
+    # "secili_idler" hazır olduğuna göre, o butona basılıp basılmadığına
+    # (bayrak) bakılıp asıl aktarma İŞTE BURADA yapılır — "Kaydet" ile
+    # birebir aynı yöntem. Aynı "Taslak Yükle" mekanizması (_cok_tsk_bekleyen)
+    # kullanılıyor, "🔍 Çoklu Firma Seçimi" filtresine HİÇ dokunmadan, ona
+    # zaten var olan bir "besleme" yolundan yararlanıyor.
+    if st.session_state.pop("_coklu_aktar_flag", False):
+        if secili_sayi > 0:
             st.session_state["_cok_tsk_bekleyen"] = list(secili_idler)
+            st.toast(f"📋 {secili_sayi} firma Çoklu Firma Seçimi filtresine aktarıldı.", icon="✅")
             st.rerun()
+        else:
+            st.toast("⚠️ Aktarılacak firma yok — önce en az bir tanesinde 'Seç' kutusunu işaretle.", icon="⚠️")
 
     # ── "Seç" işaretli firmaları taslak olarak kaydetme paneli kullanıcı
     # isteğiyle kaldırıldı (arşivleme/silme butonlarıyla birlikte, aşağıda) ──
