@@ -225,25 +225,6 @@ def _musteri_kodu_kaydet(_sozluk):
         return False
 
 
-def _musteri_kodu_yeniden_baslat(_df_tum):
-    """KULLANICI İSTEĞİ (2026-09): TÜM (silinmemiş) müşterileri KAYIT
-    TARİHİNE göre sıralayıp MW1'den başlayarak boşluksuz yeniden numaralar.
-    _df_tum: en az "id" ve "tarih" sütunlu, silinmiş kayıtları İÇERMEYEN
-    DataFrame (get_cari_listesi() zaten silindi=1 olanları eledi)."""
-    if _df_tum.empty or "id" not in _df_tum.columns:
-        return {}
-    _siralama_sutunu = "tarih" if "tarih" in _df_tum.columns else "id"
-    _sirali = _df_tum.sort_values(by=_siralama_sutunu, na_position="last")
-    _yeni_harita = {}
-    for _sira_no, (_idx, _satir) in enumerate(_sirali.iterrows(), start=1):
-        try:
-            _cid = str(int(_satir["id"]))
-        except Exception:
-            continue
-        _yeni_harita[_cid] = f"MW{_sira_no}"
-    return _yeni_harita
-
-
 def _musteri_kodu_sonraki_bul(_harita, _tum_gecerli_idler):
     """Yeni bir müşteri eklendiğinde çağrılır. Silinen (artık "harita"da id'si
     olmayan ama sayısı hâlâ kullanılan) numaraları BULUP boşta olanı
@@ -835,12 +816,150 @@ def _fy_hepsini_yerlestir_ana_tablo(cari_id, ham_metin, firma_adi=""):
             st.session_state["_koli_palet_manuel"] = _kp_map_fyat
         get_cari_listesi.clear()
 
-        _mesaj = f"✅ {firma_adi or cari_id}: Hedef Ciro {_kg_tr_format(_fyat_hedef_toplam)} ₺"
+        _mesaj = (f"✅ {firma_adi or cari_id}: {len(_fyat_girisler)} satır ayrıştırıldı → "
+                  f"Hedef Ciro {_kg_tr_format(_fyat_hedef_toplam)} ₺ + İl Ciroları + Teklif Fiyat + "
+                  f"Koli/Palet güncellendi")
         if _fyat_il_isaretlenen:
-            _mesaj += f", işaretlenen iller: {', '.join(_fyat_il_isaretlenen)}"
+            _mesaj += f" + işaretlenen iller: {', '.join(_fyat_il_isaretlenen)}"
         return True, _mesaj
     except Exception as _fyat_hata:
         return False, f"Hata: {_fyat_hata}"
+
+
+def _hazir_hesaplama_ana_tablo(cari_id, hazir_metin, firma_adi=""):
+    """🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ) — "Hesaplama" sütunundan
+    TAMAMEN BAĞIMSIZ, ona hiç dokunmayan AYRI bir özellik. Kullanıcının
+    DAHA ÖNCEDEN (yeni sistem kurulmadan önce) hazırlamış olduğu, ZATEN
+    "FİYAT İNCELE" TABLO FORMATINDA olan metni (V.İLİ - TÜR   DESİ DESİ-KG
+    TOPLAM TL biçiminde, örn. 'İSTANBUL - PALET  375 DESİ -KG  743.00 TL')
+    doğrudan ayrıştırır — "Hesaplama"nın kullandığı 'Şehir Desi BirimFiyat'
+    HAM formatını DEĞİL, bu HAZIR TABLO formatını okur. Ayrıştırma
+    başarılıysa "Hesaplama" ile AYNI 5 sonucu üretir: İl İşaretleme +
+    Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet kaydetme
+    (metin ZATEN doğru formatta olduğu için AYNEN, yeniden biçimlendirmeden
+    kaydedilir). Dönüş: (basarili: bool, mesaj: str)"""
+    import re as _hzr_re
+
+    def _hzr_norm(_s):
+        return (str(_s or "").strip().upper().replace("İ", "I").replace("Ş", "S")
+                .replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C"))
+
+    try:
+        if not str(hazir_metin or "").strip():
+            return False, "Hazır Hesaplama hücresi boş."
+
+        _hzr_desen = _hzr_re.compile(r'^(\S+)\s*-\s*(KOLİ|PALET)\s+(\d+)\s*DESİ\s*-KG\s+([\d.]+)\s*TL', _hzr_re.IGNORECASE)
+        _hzr_girisler = []
+        _hzr_iller_bulunan_set = set()
+        _hzr_tum_iller = _IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI
+        _hzr_il_kanonik_map = {_hzr_norm(a): a for a in _hzr_tum_iller}
+        for _hzr_satir in str(hazir_metin).strip().split("\n"):
+            _hzr_s = _hzr_satir.strip()
+            _hzr_m = _hzr_desen.match(_hzr_s)
+            if not _hzr_m:
+                continue
+            _hzr_sehir_ham, _hzr_tur, _hzr_desi, _hzr_toplam = _hzr_m.groups()
+            try:
+                _hzr_desi_int = int(_hzr_desi)
+                _hzr_toplam_f = float(_hzr_toplam)
+            except Exception:
+                continue
+            _hzr_girisler.append((_hzr_sehir_ham, _hzr_tur.upper(), _hzr_desi_int, _hzr_toplam_f, _hzr_toplam_f, _hzr_toplam_f))
+            _hzr_kanonik = _hzr_il_kanonik_map.get(_hzr_norm(_hzr_sehir_ham))
+            if _hzr_kanonik:
+                _hzr_iller_bulunan_set.add(_hzr_kanonik)
+
+        if not _hzr_girisler:
+            return False, "Metin tanınan 'FİYAT İNCELE' tablo formatında değil (örn. 'İSTANBUL - PALET  375 DESİ -KG  743.00 TL' gibi satırlar bekleniyor)."
+
+        # ── Hedeflenen Ciro ──
+        _hzr_hedef_toplam = round(sum(_g[5] for _g in _hzr_girisler), 2)
+        db_update("cari_kartlar", {"beklenen_ciro": _hzr_hedef_toplam}, "id", int(cari_id))
+        try: db_read.clear()
+        except Exception: pass
+        try: get_cari_listesi.clear()
+        except Exception: pass
+
+        # ── İl Ciroları (Hedef ile AYNI kaynaktan) ──
+        try:
+            _hzr_icy_ozet = _fy_il_ciro_ozet_girislerden(_hzr_girisler)
+            _hzr_icy_harita = _cari_ek_bilgi_yukle()
+            _hzr_icy_harita.setdefault(str(int(cari_id)), {})["il_ciro_ozet"] = _hzr_icy_ozet
+            _cari_ek_bilgi_kaydet(_hzr_icy_harita)
+        except Exception:
+            pass
+
+        # ── İlleri İşaretle ──
+        _hzr_il_isaretlenen = []
+        try:
+            _hzr_tum_matris = dict(_il_gonderim_matrisi_yukle())
+            _hzr_id_str = str(int(cari_id))
+            _hzr_tum_matris.setdefault(_hzr_id_str, {})
+            for _hzr_il_bulunan in _hzr_iller_bulunan_set:
+                if _hzr_il_bulunan in _IL_SUTUN_LISTESI and _hzr_il_bulunan != "Diğer":
+                    if not str(_hzr_tum_matris[_hzr_id_str].get(_hzr_il_bulunan, "")).strip():
+                        _hzr_tum_matris[_hzr_id_str][_hzr_il_bulunan] = _hzr_il_bulunan.upper()
+                    _hzr_il_isaretlenen.append(_hzr_il_bulunan)
+                elif _hzr_il_bulunan in _IL_DIGER_LISTESI:
+                    _hzr_mevcut_diger = str(_hzr_tum_matris[_hzr_id_str].get("Diğer", "") or "").strip()
+                    _hzr_diger_satirlari = [s.strip() for s in _hzr_mevcut_diger.split("\n") if s.strip()]
+                    if _hzr_il_bulunan.upper() not in _hzr_diger_satirlari:
+                        _hzr_diger_satirlari.append(_hzr_il_bulunan.upper())
+                    _hzr_tum_matris[_hzr_id_str]["Diğer"] = "\n".join(_hzr_diger_satirlari)
+                    _hzr_il_isaretlenen.append(_hzr_il_bulunan)
+            _il_gonderim_matrisi_kaydet(_hzr_tum_matris)
+            _il_gonderim_matrisi_yukle.clear()
+        except Exception:
+            pass
+
+        # ── Teklif Fiyat (basit TL/desi özeti + detaylı barem kırılımı) ──
+        try:
+            _hzr_teklif_onerisi = _fy_teklif_onerisi_hesapla(_hzr_girisler)
+            _hzr_barem_detay = _fy_desi_baremli_teklif_hesapla(_hzr_girisler)
+            _hzr_teklif_parcalari = []
+            if _hzr_teklif_onerisi:
+                _hzr_teklif_parcalari.append(_hzr_teklif_onerisi)
+            if _hzr_barem_detay:
+                _hzr_teklif_parcalari.append("--- Detaylı Barem Bazlı Teklif ---")
+                for _hzr_il_ad in sorted(_hzr_barem_detay.keys()):
+                    _hzr_teklif_parcalari.append(f"\n{_hzr_il_ad}:")
+                    _hzr_teklif_parcalari.append(_hzr_barem_detay[_hzr_il_ad])
+            _hzr_teklif_tam = "\n".join(_hzr_teklif_parcalari)
+            if _hzr_teklif_tam.strip():
+                _hzr_tf_harita = _cari_ek_bilgi_yukle()
+                _hzr_tf_harita.setdefault(str(int(cari_id)), {})["teklif_fiyat"] = _hzr_teklif_tam
+                _cari_ek_bilgi_kaydet(_hzr_tf_harita)
+        except Exception:
+            pass
+
+        # ── Koli/Palet KAYDET — metin ZATEN doğru "FİYAT İNCELE" formatında
+        # olduğu için YENİDEN BİÇİMLENDİRİLMEDEN, AYNEN kaydedilir. Eskinin
+        # üzerine yazar (birleştirmez).
+        _sb_hzr = get_sb_client()
+        if _sb_hzr:
+            import json as _hzrj
+            _r_hzr = _sb_hzr.table("kullanici_tercih").select("deger").eq(
+                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+            _kp_map_hzr = _hzrj.loads(_r_hzr.data[0]["deger"]) if _r_hzr.data else {}
+            _kp_map_hzr[str(int(cari_id))] = str(hazir_metin).strip()
+            _kpo_deger_hzr = _hzrj.dumps(_kp_map_hzr, ensure_ascii=False)
+            _kpo_guncelle_hzr = _sb_hzr.table("kullanici_tercih").update({"deger": _kpo_deger_hzr}).eq(
+                "kullanici", "__liste_ui__").eq("anahtar", "_koli_palet_manuel").execute()
+            if not _kpo_guncelle_hzr.data:
+                _sb_hzr.table("kullanici_tercih").insert({
+                    "kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel", "deger": _kpo_deger_hzr
+                }).execute()
+            st.session_state["_koli_palet_manuel"] = _kp_map_hzr
+        get_cari_listesi.clear()
+
+        _hzr_mesaj = (f"✅ {firma_adi or cari_id}: {len(_hzr_girisler)} satır ayrıştırıldı → "
+                      f"Hedef Ciro {_kg_tr_format(_hzr_hedef_toplam)} ₺ + İl Ciroları + Teklif Fiyat + "
+                      f"Koli/Palet güncellendi")
+        if _hzr_il_isaretlenen:
+            _hzr_mesaj += f" + işaretlenen iller: {', '.join(_hzr_il_isaretlenen)}"
+        return True, _hzr_mesaj
+    except Exception as _hzr_hata:
+        return False, f"Hata: {_hzr_hata}"
 
 
 def _alt_ilerleme_cubugu_html(_yuzde, _mesaj):
@@ -904,39 +1023,6 @@ def _cari_rut_hesapla_otomatik(_cari_id, _il_matrisi):
             _kisaltmalar.append(_IL_KISA_ETIKET.get(_il_kol, _il_kol[:3]).upper())
     return " - ".join(_kisaltmalar)
 
-
-def _fy_tablo_olustur_global(_girisler):
-    """Kargo Girişi dialog'undaki fiyat tablosu formatlayıcısıyla (_fy_format_tablo)
-    AYNI mantık — GLOBAL bir kopyası, eski (BİRİM FİYAT'lı, "FİYAT İNCELE"
-    başlıksız) 'Koli/Palet' metinlerini toplu olarak yeni formata çevirebilmek
-    için burada tutuluyor. _girisler: [(sehir, tur, desi, toplam), ...]."""
-    if not _girisler:
-        return ""
-    _sehir_w = max(len("V.İLİ"), max(len(g[0]) for g in _girisler))
-    _tur_metinleri = [f"- {g[1]}" for g in _girisler]
-    _tur_w = max(len("TÜR"), max(len(t) for t in _tur_metinleri))
-    _desi_sayi_w = max(len(str(g[2])) for g in _girisler)
-    _desi_metinleri = [f"{str(g[2]).rjust(_desi_sayi_w)} DESİ -KG" for g in _girisler]
-    _desi_w = max(len("DESİ-KG"), max(len(t) for t in _desi_metinleri))
-    _toplam_metinleri = [f"{g[3]:.2f}" for g in _girisler]
-    _toplam_sayi_w = max(len(t) for t in _toplam_metinleri)
-    _toplam_metinleri = [f"{t.rjust(_toplam_sayi_w)} TL" for t in _toplam_metinleri]
-    _toplam_w = max(len("TOPLAM"), max(len(t) for t in _toplam_metinleri))
-    _baslik = (f"{'V.İLİ'.ljust(_sehir_w)}   {'TÜR'.ljust(_tur_w)}   {'DESİ-KG'.ljust(_desi_w)}   "
-               f"{'TOPLAM'.ljust(_toplam_w)}")
-    _ayrac = "-" * len(_baslik)
-    _satirlar = ["FİYAT İNCELE", _ayrac, "", _baslik, _ayrac]
-    _onceki_sehir = None
-    for _i, _g in enumerate(_girisler):
-        if _onceki_sehir is not None and _g[0] != _onceki_sehir:
-            _satirlar.append(_ayrac)
-        _satirlar.append(f"{_g[0].ljust(_sehir_w)}   {_tur_metinleri[_i].ljust(_tur_w)}   {_desi_metinleri[_i].ljust(_desi_w)}   "
-                          f"{_toplam_metinleri[_i].ljust(_toplam_w)}")
-        _onceki_sehir = _g[0]
-    return "\n".join(_satirlar)
-
-
-import re as _fy_re_erken
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _tum_musteri_kargo_yekun_toplami():
@@ -1999,9 +2085,6 @@ def segment_renk(seg):
     if "B"  in s: return "#eff6ff","#1e40af","#3b82f6"
     if "C"  in s: return "#f8fafc","#64748b","#cbd5e1"
     return "#ffffff","#374151","#e2e8f0"
-
-def get_supabase():
-    return get_sb_client()
 
 def _tel_gruplu(s):
     """Ham rakamlardan '541 357 80 20' gibi gruplu, baştaki 0/90'sız görünüm
@@ -6423,6 +6506,16 @@ elif aktif == "mukerrer":
 
 elif aktif == "liste":
     sayfa_log("liste")
+    # 🚨 KRİTİK GÜVENLİK (2026-09): Streamlit AYNI ANDA sadece TEK bir modal
+    # pencere (dialog) açılmasına izin verir — ikinci bir tanesi çağrılırsa
+    # "StreamlitInvalidLayoutContextError" ile UYGULAMA ÇÖKER. Bu sayfada
+    # BİRDEN FAZLA bağımsız yer (Arşiv, ana tablo "Seç", "Yeni Firma
+    # Kontrolü" arama sonucu tablosu) kendi pencere açma denemesi
+    # yapabildiği için, bu TEK bayrak TÜM sayfa boyunca paylaşılır: bir
+    # pencere AÇILDIKTAN SONRA, aynı sayfa çalışmasında BAŞKA HİÇBİR pencere
+    # denenmez — hangisi önce gelirse o açılır, diğerleri o an sessizce
+    # atlanır (kullanıcı zaten aynı anda sadece bir pencereyle ilgilenebilir).
+    _cl_bu_turda_pencere_acildi = False
     st.markdown("""<style>
 .block-container { padding-left: 0.6rem !important; padding-right: 0.6rem !important; max-width: 100% !important; }
 [data-testid="stAppViewContainer"] { max-width: 100% !important; }
@@ -6732,6 +6825,10 @@ section[data-testid="stSidebar"] { display: none !important; }
     # sonucu Koli/Palet'e yazılır — kendisi BOŞ kalmaya devam eder.
     if not df.empty:
         df["hesaplama"] = ""
+        # 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Hazır Hesaplama" —
+        # "Hesaplama"dan TAMAMEN AYRI, bağımsız bir tetikleyici kutu. AYNI
+        # şekilde kalıcı bir değeri YOKTUR, her zaman BOŞ başlar.
+        df["hazir_hesaplama"] = ""
 
     # ── MÜŞTERİ KODU (MW1, MW2, ...) — KULLANICI İSTEĞİ (2026-09): eski
     # karışık ID'ler yerine kayıt tarihine göre sıralı, boşluksuz "MW1,
@@ -7681,7 +7778,9 @@ function kartSec(id){
                     st.error(f"Hata: {_kbae}")
 
             if _kp4.button("📋 Not", key="kb_not_ac", use_container_width=True):
-                not_dialog(_kb_sel_id, _kb_sel_firma)
+                if not _cl_bu_turda_pencere_acildi:
+                    not_dialog(_kb_sel_id, _kb_sel_firma)
+                    _cl_bu_turda_pencere_acildi = True
 
         st.caption(f"📋 Kanban — {len(_kb_df)} müşteri · {len(_kanban_filtreli)} sütun")
         st.stop()
@@ -7932,10 +8031,11 @@ function kartSec(id){
                 # ── NOT PANELİ — ana Cari Liste tablosuyla AYNI davranış: tek
                 # satır "Seç" işaretlenince o müşterinin not paneli açılır. ──
                 _yf_secili_satirlar = _yf_duzenlenen[_yf_duzenlenen["Seç"] == True]
-                if len(_yf_secili_satirlar) == 1 and pd.notna(_yf_secili_satirlar.iloc[0].get("id")):
+                if len(_yf_secili_satirlar) == 1 and pd.notna(_yf_secili_satirlar.iloc[0].get("id")) and not _cl_bu_turda_pencere_acildi:
                     _yf_sel_id = int(_yf_secili_satirlar.iloc[0]["id"])
                     _yf_sel_firma = str(_yf_secili_satirlar.iloc[0].get("firma", ""))
                     not_dialog(_yf_sel_id, _yf_sel_firma)
+                    _cl_bu_turda_pencere_acildi = True
                 if st.button("💾 Değişiklikleri Kaydet", key="_yf_duzenle_kaydet_btn"):
                     _yf_guncellenen = 0
                     _yf_eklenen = 0
@@ -8493,7 +8593,7 @@ function kartSec(id){
     # ── KOLON GENİŞLİKLERİ — DB'den oku ─────────────────────────────────────
     _KOL_VARSAYILAN = {
         "tarih":90,"guncelleme_tarihi":100,
-        "hesaplama":120,"firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
+        "hesaplama":120,"hazir_hesaplama":130,"firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
         "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
         "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
         "islem_asamasi":80,"aciklama":110,"📅 Son Randevu":170,"📨 Notlar":50,"id":40,"musteri_kodu":80,
@@ -8572,6 +8672,8 @@ function kartSec(id){
         "rakip_firma":   st.column_config.TextColumn("Özel", width=_w("rakip_firma")),
         "hesaplama":     st.column_config.TextColumn("Hesaplama", width=_w("hesaplama"),
                                                        help="Şehir, Desi, Birim Fiyat satır satır yapıştır (örn. 'AMASYA 227 3.574') — Kaydet'e basınca İl İşaretleme + Ayrıştırma + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet OTOMATİK hesaplanıp kaydedilir (eskinin üzerine yazar)."),
+        "hazir_hesaplama": st.column_config.TextColumn("Hazır Hesaplama", width=_w("hazir_hesaplama"),
+                                                       help="'Hesaplama'dan TAMAMEN AYRI, bağımsız — ona dokunmaz. Bu, ÖNCEDEN hazır 'FİYAT İNCELE' tablo formatındaki (V.İLİ - TÜR   DESİ DESİ-KG   TOPLAM TL) metni doğrudan yapıştırmak için. Kaydet'e basınca 'Hesaplama' ile AYNI şeyler olur: İl İşaretleme + Hedeflenen Ciro + İl Ciroları + Teklif Fiyat + Koli/Palet kaydedilir — sadece giriş formatı farklı (ayrıştırma gerekmez, tablo zaten hazır)."),
         "firma":         st.column_config.TextColumn("Firma",     width=_w("firma")),
         "yetkili":       st.column_config.TextColumn("Yetkili",   width=_w("yetkili")),
         "gsm":           st.column_config.TextColumn("GSM",       width=_w("gsm")),
@@ -8638,13 +8740,13 @@ function kartSec(id){
             df_f["_cl2_key"] = df_f["id"].map(_cl2_map).fillna(len(_cl2_sirali))
             df_f = df_f.sort_values("_cl2_key").drop(columns=["_cl2_key"]).reset_index(drop=True)
 
-    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","hesaplama","firma","yetkili","gsm","sabit","email","adres","ilce","il",
+    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","guncelleme_tarihi","musteri_kodu","id","rakip_firma","hesaplama","hazir_hesaplama","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
                  "beklenen_ciro","gerceklesen_ciro","durum","✅ Analiz","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar","📅 Son Randevu",
                  "🧾 Teklif","💬 Mesaj","ara_islem","il_ciro_ozet","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
-    _kol_gizli_map = {"hesaplama":"hesaplama","firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
+    _kol_gizli_map = {"hesaplama":"hesaplama","hazir_hesaplama":"hazir_hesaplama","firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
                       "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
                       "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat","islem_tarihi_manuel":"islem_tarihi_manuel","takip_tarihi_manuel":"takip_tarihi_manuel","randevu_tarihi_manuel":"randevu_tarihi_manuel",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
@@ -9118,6 +9220,12 @@ function kartSec(id){
         _aktif_col_order = [c for c in _aktif_col_order if c != "hesaplama"]
         _fh_pos = _aktif_col_order.index("firma")
         _aktif_col_order.insert(_fh_pos, "hesaplama")
+    # "Hazır Hesaplama" da AYNI SEBEPLE HER ZAMAN "Firma"nın hemen soluna
+    # (ve "Hesaplama"nın hemen sağına) zorla yerleştirilir.
+    if "hazir_hesaplama" in _aktif_col_order and "firma" in _aktif_col_order:
+        _aktif_col_order = [c for c in _aktif_col_order if c != "hazir_hesaplama"]
+        _fhh_pos = _aktif_col_order.index("firma")
+        _aktif_col_order.insert(_fhh_pos, "hazir_hesaplama")
 
     # ── SAĞ TARAFTAKİ BOŞLUĞU KAPAT ─────────────────────────────────────────
     # Tüm kolonlara sabit piksel genişliği verildiğinde, toplam genişlik ekran
@@ -9209,8 +9317,9 @@ function kartSec(id){
                 st.session_state["_cl_arsiv_penceresi_acik"] = True
                 st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-        if st.session_state.get("_cl_arsiv_penceresi_acik", False):
+        if st.session_state.get("_cl_arsiv_penceresi_acik", False) and not _cl_bu_turda_pencere_acildi:
             _cari_arsiv_goruntule_dialog()
+            _cl_bu_turda_pencere_acildi = True
 
 
     _tbl_col = st.container()
@@ -9386,14 +9495,25 @@ function kartSec(id){
     # işaretlemedikçe) bir daha görünmez. Bu, hem "yenilesem bile açık
     # kalsın" hem "kapatınca kendi kendine açılmasın" isteklerini birlikte
     # karşılar.
-    if secili_sayi == 1:
+    # 🚨 KRİTİK DÜZELTME (2026-09): bu sayfada BİRDEN FAZLA bağımsız yer
+    # (Arşiv, "Yeni Firma Kontrolü" arama sonucu, Kanban) kendi pencere açma
+    # denemesi yapabildiği için, artık TEK bir paylaşılan bayrak
+    # (_cl_bu_turda_pencere_acildi) kullanılıyor — bu sayfa çalışmasında BİR
+    # pencere zaten açıldıysa, buradaki tetikleyici HİÇ denenmez. Streamlit
+    # aynı anda sadece TEK bir modal pencereye izin verir; ikincisi
+    # denenirse "StreamlitInvalidLayoutContextError" ile uygulama çöker.
+    if _cl_bu_turda_pencere_acildi:
+        pass
+    elif secili_sayi == 1:
         _sel_id = int(secili_idler[0])
         if st.session_state.get("_not_dialog_son_kapatilan_id") != _sel_id:
             _sel_rows = df_edit[df_edit["id"] == _sel_id]
             _sel_firma = str(_sel_rows.iloc[0].get("firma","")) if not _sel_rows.empty else ""
             not_dialog(_sel_id, _sel_firma)
+            _cl_bu_turda_pencere_acildi = True
     elif st.session_state.get("_not_dialog_kalici_id"):
         not_dialog(st.session_state["_not_dialog_kalici_id"], st.session_state.get("_not_dialog_kalici_firma", ""))
+        _cl_bu_turda_pencere_acildi = True
     else:
         # Hiçbir şey seçili değil VE pencere kalıcı olarak da açık değilse —
         # "kapatılan" hafızasını da temizle, böylece BİR SONRAKİ kez aynı
@@ -9653,6 +9773,29 @@ function kartSec(id){
                             # yazıp SİLERDİ.
                             _koli_ov_guncel = dict(st.session_state.get("_koli_palet_manuel", _koli_ov_guncel))
                             _ex_degisti = True
+                    # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Hazır
+                    # Hesaplama" — "Hesaplama"dan TAMAMEN AYRI, ona HİÇ
+                    # dokunmayan bağımsız bir tetikleyici. Kullanıcının
+                    # ÖNCEDEN hazırladığı "FİYAT İNCELE" TABLO formatındaki
+                    # (V.İLİ - TÜR  DESİ DESİ-KG  TOPLAM TL) metni doğrudan
+                    # ayrıştırır — "Hesaplama"nın ham 'Şehir Desi Fiyat'
+                    # formatını DEĞİL, bu HAZIR tabloyu okur. Sonuçta AYNI
+                    # 5 şey olur: İl İşaretleme + Hedeflenen Ciro + İl
+                    # Ciroları + Teklif Fiyat + Koli/Palet kaydetme.
+                    if "hazir_hesaplama" in _deg_ex:
+                        _v_hazir = str(_deg_ex["hazir_hesaplama"] or "").strip()
+                        if _v_hazir:
+                            _hzr_firma_adi = str(_rows[_idxn_ex].get("firma", "")) if _idxn_ex < len(_rows) else ""
+                            _hzr_basarili, _hzr_mesaj = _hazir_hesaplama_ana_tablo(_rid_ex, _v_hazir, _hzr_firma_adi)
+                            if _hzr_basarili:
+                                st.toast(f"📐 {_hzr_mesaj}", icon="✅")
+                            else:
+                                st.toast(f"⚠️ {_hzr_firma_adi or _rid_ex}: {_hzr_mesaj}", icon="⚠️")
+                            # KRİTİK: aynı senkronizasyon nedeni — yukarıdaki
+                            # fonksiyon "_koli_palet_manuel"yi DOĞRUDAN
+                            # kaydetti, buradaki eski kopyayı güncelliyoruz.
+                            _koli_ov_guncel = dict(st.session_state.get("_koli_palet_manuel", _koli_ov_guncel))
+                            _ex_degisti = True
                 if _ex_degisti:
                     st.session_state["_analiz_manuel_override"] = _analiz_ov_guncel
                     st.session_state["_cikis_ili_manuel"] = _cikis_ov_guncel
@@ -9882,7 +10025,7 @@ function kartSec(id){
                         return None
                     guncelle = {}
                     for k, v in degisiklikler.items():
-                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma", "Hesaplama", "hesaplama",
+                        if k in ("Seç", "🗑️ Sil", "🧾 Teklif", "💬 Mesaj", "✅ Analiz", "Varış İli", "Koli/Palet", "📅 Son Randevu", "Varış İlleri", "Fiyatlandırma", "Hesaplama", "hesaplama", "Hazır Hesaplama", "hazir_hesaplama",
                                  "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "randevu_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
@@ -10697,7 +10840,7 @@ elif aktif == "kullanici":
         st.caption("Genişlik ayarlayın, gizlemek istediklerinizi kapatın → Kaydet")
         _KOL_VARS_UI = {
             "Seç":40,"tarih":90,"guncelleme_tarihi":100,
-            "hesaplama":130,"firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
+            "hesaplama":130,"hazir_hesaplama":140,"firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
             "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
             "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
             "islem_asamasi":90,"aciklama":120,"📅 Son Randevu":180,"📨 Notlar":60,"id":50,"musteri_kodu":80,
@@ -10709,7 +10852,7 @@ elif aktif == "kullanici":
             _KOL_VARS_UI[_il_kv] = 60
         _KG_UI_ETIKET = {
             "Seç":"Seç (işaret kutusu)","tarih":"İşlem Tarih","guncelleme_tarihi":"Güncelleme Tarihi",
-            "hesaplama":"Hesaplama","firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
+            "hesaplama":"Hesaplama","hazir_hesaplama":"Hazır Hesaplama","firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
             "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
             "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi","randevu_tarihi_manuel":"Randevu Tarihi",
@@ -10754,53 +10897,53 @@ elif aktif == "kullanici":
         _yeni_kg_ui = {}
         _yeni_gizli_ui = []
         # NOT: 50+ alan tek satıra sığmadığı için (bazıları görünmez oluyordu),
-        # 12'şerli satırlara bölünüyor — görünüm (kutu/ikon YOK, sade göz+
-        # kaydırıcı) aynı kalıyor, sadece satır satır devam ediyor.
+        # KULLANICI İSTEĞİ (2026-09): Kargo Girişi Kolon Ayarları'ndaki AYNI
+        # düzen — sabit 6 dikey sütun, her öğe sırayla bu 6 sütuna (0,1,2,3,
+        #4,5,0,1,2...) yerleştirilip o sütunda AŞAĞI doğru yığılır. Satır
+        # satır bölme YOK — Kargo'da nasılsa burada da öyle.
         _kg_ui_anahtarlar = list(_KOL_VARS_UI.keys())
-        for _s in range(0, len(_kg_ui_anahtarlar), 12):
-            _ui_cols = st.columns(min(12, len(_kg_ui_anahtarlar) - _s))
-            for _j, _k in enumerate(_kg_ui_anahtarlar[_s:_s + 12]):
-                _i = _s + _j
-                _etiket = _KG_UI_ETIKET.get(_k, _k)
-                _gizli_mi = _k in _gizli_ui
-                with _ui_cols[_j]:
-                    # Göz ikonu — tıklayınca gizle/göster
-                    _goz = "🙈" if _gizli_mi else "👁"
-                    if st.button(_goz, key=f"ui_giz_{_i}_{_k[:4]}", use_container_width=True,
-                                 help="Gizle/Göster"):
-                        if _gizli_mi:
-                            _gizli_ui = [x for x in _gizli_ui if x != _k]
-                        else:
-                            _gizli_ui.append(_k)
-                        # Oturum içinde HEMEN uygula — DB yazımı başarısız olsa bile
-                        # buton görsel olarak tepkisiz kalmasın.
-                        st.session_state["_kol_gizli"] = _gizli_ui
-                        st.session_state.pop("_kol_genislik_init", None)
-                        # Kalıcı olması için DB'ye de yaz (upsert+on_conflict yerine
-                        # sil+ekle — kullanici_tercih tablosunda bu kısıt olmadığı
-                        # için upsert sessizce başarısız oluyordu, ayarlar hiç
-                        # kalıcı olmuyordu).
-                        try:
-                            _kguj_deger = _kguj.dumps(_gizli_ui, ensure_ascii=False)
-                            _kgui_guncelle = _sb_kg_ui.table("kullanici_tercih").update({"deger": _kguj_deger}).eq(
-                                "kullanici", "__liste_ui__").eq("anahtar", "_kol_gizli").execute()
-                            if not _kgui_guncelle.data:
-                                _sb_kg_ui.table("kullanici_tercih").insert({
-                                    "kullanici": "__liste_ui__", "anahtar": "_kol_gizli", "deger": _kguj_deger
-                                }).execute()
-                        except Exception as _kgize:
-                            st.toast(f"⚠️ Gizle/Göster kaydedilemedi: {_kgize}", icon="⚠️")
-                        st.rerun()
-                    # Slider — gizliyse devre dışı.
-                    _yeni_kg_ui[_k] = st.slider(
-                        f"{'~~' if _gizli_mi else ''}{_etiket}",
-                        min_value=5, max_value=50,
-                        value=max(min(int(_kg_ui_mevcut.get(_k, _KOL_VARS_UI.get(_k,100))), 50), 5),
-                        step=5, key=f"ui_kg_{_k}",
-                        disabled=_gizli_mi
-                    )
+        _ui_cols = st.columns(6)
+        for _i, _k in enumerate(_kg_ui_anahtarlar):
+            _etiket = _KG_UI_ETIKET.get(_k, _k)
+            _gizli_mi = _k in _gizli_ui
+            with _ui_cols[_i % 6]:
+                # Göz ikonu — tıklayınca gizle/göster
+                _goz = "🙈" if _gizli_mi else "👁"
+                if st.button(_goz, key=f"ui_giz_{_i}_{_k[:4]}", use_container_width=True,
+                             help="Gizle/Göster"):
                     if _gizli_mi:
-                        _yeni_gizli_ui.append(_k)
+                        _gizli_ui = [x for x in _gizli_ui if x != _k]
+                    else:
+                        _gizli_ui.append(_k)
+                    # Oturum içinde HEMEN uygula — DB yazımı başarısız olsa bile
+                    # buton görsel olarak tepkisiz kalmasın.
+                    st.session_state["_kol_gizli"] = _gizli_ui
+                    st.session_state.pop("_kol_genislik_init", None)
+                    # Kalıcı olması için DB'ye de yaz (upsert+on_conflict yerine
+                    # sil+ekle — kullanici_tercih tablosunda bu kısıt olmadığı
+                    # için upsert sessizce başarısız oluyordu, ayarlar hiç
+                    # kalıcı olmuyordu).
+                    try:
+                        _kguj_deger = _kguj.dumps(_gizli_ui, ensure_ascii=False)
+                        _kgui_guncelle = _sb_kg_ui.table("kullanici_tercih").update({"deger": _kguj_deger}).eq(
+                            "kullanici", "__liste_ui__").eq("anahtar", "_kol_gizli").execute()
+                        if not _kgui_guncelle.data:
+                            _sb_kg_ui.table("kullanici_tercih").insert({
+                                "kullanici": "__liste_ui__", "anahtar": "_kol_gizli", "deger": _kguj_deger
+                            }).execute()
+                    except Exception as _kgize:
+                        st.toast(f"⚠️ Gizle/Göster kaydedilemedi: {_kgize}", icon="⚠️")
+                    st.rerun()
+                # Slider — gizliyse devre dışı.
+                _yeni_kg_ui[_k] = st.slider(
+                    f"{'~~' if _gizli_mi else ''}{_etiket}",
+                    min_value=5, max_value=50,
+                    value=max(min(int(_kg_ui_mevcut.get(_k, _KOL_VARS_UI.get(_k,100))), 50), 5),
+                    step=5, key=f"ui_kg_{_k}",
+                    disabled=_gizli_mi
+                )
+                if _gizli_mi:
+                    _yeni_gizli_ui.append(_k)
 
         # Canlı önizleme: Kaydet'e basmadan slider'ı hareket ettirir ettirmez
         # ana listedeki tablo hemen bu genişlikleri kullanır (henüz DB'ye yazılmaz,
