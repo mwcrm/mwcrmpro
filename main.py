@@ -9537,6 +9537,16 @@ function kartSec(id){
     secili_sayi = len(secili_df)
     secili_idler = secili_df["id"].tolist() if not secili_df.empty else []
 
+    # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Seç" ile işaretlenen
+    # firmaları TEK TIKLA "🔍 Çoklu Firma Seçimi" filtresine aktarır — aynı
+    # "Taslak Yükle" mekanizması (_cok_tsk_bekleyen) kullanılıyor, bu yüzden
+    # o filtreye HİÇ dokunmadan, ona zaten var olan bir "besleme" yolundan
+    # yararlanıyor. Tek satırda, sade bir buton.
+    if secili_sayi > 0:
+        if st.button(f"📋 Seçili {secili_sayi} Firmayı Çoklu Firma Filtresine Aktar", key="cl_secili_cokluya_aktar_btn", use_container_width=True):
+            st.session_state["_cok_tsk_bekleyen"] = list(secili_idler)
+            st.rerun()
+
     # ── "Seç" işaretli firmaları taslak olarak kaydetme paneli kullanıcı
     # isteğiyle kaldırıldı (arşivleme/silme butonlarıyla birlikte, aşağıda) ──
 
