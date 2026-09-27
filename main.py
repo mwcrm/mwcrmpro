@@ -844,20 +844,41 @@ def _hazir_hesaplama_ana_tablo(cari_id, hazir_metin, firma_adi=""):
         return (str(_s or "").strip().upper().replace("İ", "I").replace("Ş", "S")
                 .replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C"))
 
+    def _hzr_boslu_normalize(_s):
+        # 🚨 GÜVENLİK (2026-09): kopyala-yapıştır sırasında GÖRÜNMEYEN özel
+        # boşluk karakterleri (non-breaking space \xa0, sıfır-genişlikli
+        # boşluk, TAB) VE — daha da önemlisi — SATIR SONLARININ TAMAMEN
+        # KAYBOLUP tüm tablonun TEK bir uzun satıra dönüşmesi (bazı grid
+        # hücrelerine yapıştırırken olabiliyor) ihtimaline karşı, satır
+        # sonları da (varsa) boşluğa çevrilir — aşağıdaki ayrıştırma zaten
+        # satır sonuna HİÇ bağlı değildir.
+        _s = str(_s or "").replace("\xa0", " ").replace("\t", " ").replace("\u200b", "").replace("\u2007", " ").replace("\u2009", " ")
+        _s = _s.replace("\r", " ").replace("\n", " ")
+        return _hzr_re.sub(r"\s+", " ", _s).strip()
+
+    _hzr_satir_deseni = _hzr_re.compile(
+        r'(\S+)\s*-\s*(KOLİ|PALET)\s+(\d+)\s*DESİ\s*-KG\s+([\d.]+)\s*TL', _hzr_re.IGNORECASE
+    )
+
     try:
         if not str(hazir_metin or "").strip():
             return False, "Hazır Hesaplama hücresi boş."
 
-        _hzr_desen = _hzr_re.compile(r'^(\S+)\s*-\s*(KOLİ|PALET)\s+(\d+)\s*DESİ\s*-KG\s+([\d.]+)\s*TL', _hzr_re.IGNORECASE)
+        # 🚨 KRİTİK DÜZELTME (2026-09): eskiden metin ÖNCE "\n" ile satırlara
+        # bölünüp HER SATIR ayrı ayrı işleniyordu — ama kopyala-yapıştırda
+        # satır sonları KAYBOLUP tüm tablo TEK bir uzun satıra dönüşünce,
+        # SADECE İLK satır (veya hiçbiri) doğru okunup GERİ KALAN TÜM
+        # veriler SESSİZCE kayboluyordu (Hedef Ciro'nun eksik çıkmasının
+        # sebebi buydu). Artık satır sonuna HİÇ bağlı değil — TÜM metin TEK
+        # bir bloğa (satır sonları da boşluğa çevrilerek) normalize edilip,
+        # desen metnin İÇİNDE KAÇ KERE geçiyorsa (finditer) HEPSİ, satır
+        # sonu olsun ya da olmasın, doğru bulunur.
+        _hzr_tum_metin = _hzr_boslu_normalize(hazir_metin)
         _hzr_girisler = []
         _hzr_iller_bulunan_set = set()
         _hzr_tum_iller = _IL_SUTUN_LISTESI[:-1] + _IL_DIGER_LISTESI
         _hzr_il_kanonik_map = {_hzr_norm(a): a for a in _hzr_tum_iller}
-        for _hzr_satir in str(hazir_metin).strip().split("\n"):
-            _hzr_s = _hzr_satir.strip()
-            _hzr_m = _hzr_desen.match(_hzr_s)
-            if not _hzr_m:
-                continue
+        for _hzr_m in _hzr_satir_deseni.finditer(_hzr_tum_metin):
             _hzr_sehir_ham, _hzr_tur, _hzr_desi, _hzr_toplam = _hzr_m.groups()
             try:
                 _hzr_desi_int = int(_hzr_desi)
