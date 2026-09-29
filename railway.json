@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "streamlit run main.py --server.address 0.0.0.0 --server.port $PORT --server.fileWatcherType none --browser.gatherUsageStats false --client.showErrorDetails false --client.toolbarMode minimal",
+    "startCommand": "mkdir -p .streamlit && printf 'SUPABASE_URL = \"%s\"\\nSUPABASE_KEY = \"%s\"\\n' \"$SUPABASE_URL\" \"$SUPABASE_KEY\" > .streamlit/secrets.toml && streamlit run main.py --server.address 0.0.0.0 --server.port $PORT --server.fileWatcherType none --browser.gatherUsageStats false --client.showErrorDetails false --client.toolbarMode minimal",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
