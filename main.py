@@ -1373,6 +1373,16 @@ import io
 import re
 import json
 import time
+_SAYFA_BASLANGIC = time.perf_counter()
+_SURE_ISARETLERI = []
+
+
+def _sure_isaretle(_ad):
+    """Admin'e özel süre ölçer — sayfanın hangi bölümü ne kadar sürdü."""
+    try:
+        _SURE_ISARETLERI.append((_ad, time.perf_counter()))
+    except Exception:
+        pass
 import concurrent.futures
 from datetime import datetime, timedelta
 
@@ -5349,7 +5359,8 @@ if "_cl_kolon_sira" not in st.session_state:
     st.session_state["_cl_kolon_sira"] = []
 
 # Versiyon kontrolü — sadece admin olmayanlara
-if st.session_state.get("rol") != "admin":
+if st.session_state.get("rol") != "admin" and time.time() - st.session_state.get("_surum_kontrol_zamani", 0) > 300:
+    st.session_state["_surum_kontrol_zamani"] = time.time()
     try:
         _sb_s = get_sb_client()
         if _sb_s:
@@ -5596,7 +5607,12 @@ button[data-testid="manage-app-button"] { display: none !important; }
         st.rerun()
 
     # ── MENÜ LİSTESİ ──────────────────────────────────────────────────────────
-    _sb_liste = get_menu_tercihi(st.session_state.get("kullanici",""))
+    # HIZ: menü sırası her tıklamada Supabase'den okunuyordu — artık oturum
+    # başına BİR kez okunur (bu ayar kodda hiçbir yerde değiştirilmiyor).
+    _menu_cache_anahtar = f"_menu_tercihi_cache_{st.session_state.get('kullanici','')}_{st.session_state.get('rol','')}"
+    if _menu_cache_anahtar not in st.session_state:
+        st.session_state[_menu_cache_anahtar] = get_menu_tercihi(st.session_state.get("kullanici",""))
+    _sb_liste = list(st.session_state[_menu_cache_anahtar])
     if st.session_state.get("rol") == "admin":
         for _t in ["kullanici"]:
             if _t not in _sb_liste:
@@ -6349,7 +6365,7 @@ elif aktif == "liste":
     # ── KAYDETME SONRASI ONAY BANNER'I — toast kaçırılırsa diye burada da göster ──
     _son_kaydet_msg = st.session_state.pop("_son_kaydet_ozeti", None)
     if _son_kaydet_msg:
-        st.success(_son_kaydet_msg, icon="✅")
+        st.success(_son_kaydet_msg + "  ·  Aşağıdaki tablo, veritabanından yeniden okunmuş (kaydedilmiş) haliyle gösteriliyor.", icon="✅")
 
     # NOT (ÖNEMLİ KURAL): Geçici teşhis/debug panelleri asla önbelleksiz (cache'siz)
     # tam tablo taraması yapıp HER sayfa yenilemesinde (rerun) otomatik ("expanded=True")
@@ -6561,14 +6577,24 @@ section[data-testid="stSidebar"] { display: none !important; }
     # ve ekran titremesine sebep oluyordu. Artık önbellek SADECE gerçek bir
     # kayıt/silme/arşivleme işleminden SONRA (ilgili yerlerde zaten çağrılıyor)
     # temizleniyor; salt düzenleme sırasında 60 saniyelik önbellek kullanılıyor.
+    _sure_isaretle("başlangıç → müşteri listesi yüklenene kadar")
     df = get_cari_listesi()
+    _sure_isaretle("müşteri listesi yüklendi")
 
     # "Rut" — filtre kutusunun kullanacağı erken hesap. KULLANICI İSTEĞİ
     # (2026-09): elle atanmıyor, hangi İL sütun(lar)ına gönderim bilgisi
     # girildiyse (bkz. _il_gonderim_matrisi_yukle) OTOMATİK hesaplanır.
     _il_gonderim_matrisi_erken = _il_gonderim_matrisi_yukle()
     if not df.empty and "id" in df.columns:
-        df["rut"] = df["id"].apply(lambda _rid: _cari_rut_hesapla_otomatik(_rid, _il_gonderim_matrisi_erken))
+        # HIZ (aynı sonuç, önbellek YOK): Rut sadece il bilgisi girilmiş
+        # müşteriler için hesaplanır; diğerleri zaten boş.
+        _rut_harita = {}
+        for _rk in _il_gonderim_matrisi_erken.keys():
+            try:
+                _rut_harita[str(int(_rk))] = _cari_rut_hesapla_otomatik(int(_rk), _il_gonderim_matrisi_erken)
+            except Exception:
+                pass
+        df["rut"] = df["id"].apply(lambda _rid: str(int(_rid)) if pd.notna(_rid) else "").map(_rut_harita).fillna("")
 
     # "Gerçekleşen Ciro" — KULLANICI İSTEĞİ (2026-09): artık kargo
     # kayıtlarının kendisinden CANLI toplanır (bkz. _tum_musteri_kargo_yekun_toplami),
@@ -6915,17 +6941,25 @@ section[data-testid="stSidebar"] { display: none !important; }
                 .replace("İ","I").replace("Ş","S").replace("Ğ","G")
                 .replace("Ü","U").replace("Ö","O").replace("Ç","C"))
 
+    # HIZ (aynı sonuç): her sütun BİR KEZ normalize edilip sayılır, her kutu
+    # bu hazır sayımdan okunur (eskiden her kutu için 4.800 satır taranıyordu).
+    _norm_sayim_cache = {}
+
+    def _norm_sayim(kolon):
+        if kolon not in _norm_sayim_cache:
+            _norm_sayim_cache[kolon] = (df[kolon].map(_asama_norm).value_counts().to_dict()
+                                         if kolon in df.columns else {})
+        return _norm_sayim_cache[kolon]
+
     def _asama_sayi(ad):
         """islem_asamasi kolonundan say — AŞAMA grubu (Arama vs.)"""
         if "islem_asamasi" not in df.columns: return 0
-        _ad_n = _asama_norm(ad)
-        return len(df[df["islem_asamasi"].apply(_asama_norm) == _ad_n])
+        return int(_norm_sayim("islem_asamasi").get(_asama_norm(ad), 0))
 
     def _kolon_sayi(kolon, ad):
         """Belirtilen kolonda değeri say (büyük/küçük harf farkı yok sayılır)"""
         if kolon not in df.columns: return 0
-        _ad_n = _asama_norm(ad)
-        return len(df[df[kolon].apply(_asama_norm) == _ad_n])
+        return int(_norm_sayim(kolon).get(_asama_norm(ad), 0))
 
     def _durum_sayi(ad):
         if ad == "Toplam": return len(df)
@@ -8579,36 +8613,33 @@ function kartSec(id){
         df_edit["Varış İli"] = ""
         df_edit["Koli/Palet"] = ""
 
-    _not_detay = {}
     _not_sayac = {}
     if sb_liste:
         try:
             @st.cache_data(ttl=180, show_spinner=False)
-            def _tum_notlari_yukle():
+            def _not_sayilari_yukle():
+                """HIZ + DOĞRULUK: tüm notların içeriği yerine sadece müşteri başına
+                not SAYISI tutulur. 1000 satırlık sorgu sınırına takılmasın diye
+                sayfalanarak okunur (eskiden 1000'den fazla not varsa sayılar eksik
+                çıkabiliyordu). Yetkili kayıtları (##YETKILI##) sayılmaz."""
+                import collections as _nscol
                 _sb2 = get_sb_client()
-                if _sb2:
-                    _r2 = _sb2.table("cari_aciklamalar").select("*").execute()
-                    return _r2.data or []
-                return []
-            _res_notlar_data = _tum_notlari_yukle()
-            # NOT: Yetkililer sekmesi de aynı cari_aciklamalar tablosuna "##YETKILI##"
-            # etiketiyle kayıt atıyor — bunlar gerçek not değil, rozet sayısına dahil
-            # edilmemeli (Notlar penceresindeki sayıyla tutarlı olsun diye).
-            _res_notlar_data = [r for r in _res_notlar_data
-                                 if not str(r.get("aciklama","") or "").startswith("##YETKILI##")]
-            if _res_notlar_data:
-                import collections
-                _not_sayac = collections.Counter([str(r["cari_id"]) for r in _res_notlar_data])
-                for _nr in _res_notlar_data:
-                    _ncid = str(_nr.get("cari_id",""))
-                    if _ncid not in _not_detay:
-                        _not_detay[_ncid] = []
-                    _not_detay[_ncid].append({
-                        "id": _nr.get("id",""),
-                        "tarih": fmt_tarih(_nr.get("created_at","") or _nr.get("tarih","")),
-                        "kim": str(_nr.get("olusturan","") or ""),
-                        "metin": str(_nr.get("aciklama","") or ""),
-                    })
+                _sayac2 = _nscol.Counter()
+                if not _sb2:
+                    return {}
+                _off2 = 0
+                while True:
+                    _r2 = _sb2.table("cari_aciklamalar").select("cari_id,aciklama").range(_off2, _off2 + 999).execute()
+                    _b2 = _r2.data or []
+                    for _nr in _b2:
+                        if not str(_nr.get("aciklama", "") or "").startswith("##YETKILI##"):
+                            _sayac2[str(_nr.get("cari_id", ""))] += 1
+                    if len(_b2) < 1000:
+                        break
+                    _off2 += 1000
+                return dict(_sayac2)
+            _not_sayac = _not_sayilari_yukle()
+            if _not_sayac:
                 if "id" in df_edit.columns:
                     df_edit["📨 Notlar"] = df_edit["id"].apply(lambda x: f"📨 {_not_sayac.get(str(int(x)),0)}" if _not_sayac.get(str(int(x)),0) > 0 else "")
                 else:
@@ -8770,7 +8801,7 @@ function kartSec(id){
             st.markdown(
                 "<div style='background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;"
                 "padding:6px 10px;margin-top:4px;font-size:13px;font-weight:600;color:#92400e;'>"
-                "⏳ Kaydetme işlemi başladı, lütfen bekleyin...</div>",
+                "💾 Kaydediliyor... Tablo birkaç saniyeliğine ekrandan kalkıp <u>veritabanından kaydedilmiş haliyle</u> geri gelecek — bu normal, verilerin güvende.</div>",
                 unsafe_allow_html=True
             )
         with _sb3:
@@ -8826,6 +8857,7 @@ function kartSec(id){
             _cl_bu_turda_pencere_acildi = True
 
 
+    _sure_isaretle("rapor, filtreler ve tablo hazırlığı")
     _tbl_col = st.container()
     _not_col = None
 
@@ -12213,6 +12245,19 @@ elif aktif == "tedarikci":
         st.session_state["_td_silinenler_goster"] = not _td_silinenler_aktif
         st.session_state["_td_editor_versiyon"] += 1
         st.rerun()
+
+# ── ADMIN SÜRE ÖLÇER (sadece admin görür, hiçbir davranışı değiştirmez) ─────
+if st.session_state.get("rol") == "admin" and st.session_state.get("aktif_tab") == "liste":
+    try:
+        _sure_isaretle("bitiş")
+        _onceki_t = _SAYFA_BASLANGIC
+        _sure_parcalar = []
+        for _s_ad, _s_t in _SURE_ISARETLERI:
+            _sure_parcalar.append(f"{_s_ad}: {(_s_t - _onceki_t):.2f} sn")
+            _onceki_t = _s_t
+        st.caption(f"⏱ Sayfa toplam {(time.perf_counter() - _SAYFA_BASLANGIC):.2f} sn · " + " · ".join(_sure_parcalar))
+    except Exception:
+        pass
 
 # ── FOOTER ────────────────────────────────────────────────────────────────────
 st.markdown(
