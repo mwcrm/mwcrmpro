@@ -2222,41 +2222,56 @@ def get_cari_listesi():
     _pagination_guvenilir = False
     if _url and _key:
         try:
-            _offset = 0
-            while True:
-                _hdrs = {
-                    "apikey": _key,
-                    "Authorization": f"Bearer {_key}",
-                    "Range-Unit": "items",
-                    "Range": f"{_offset}-{_offset+999}"
-                }
-                _batch = None
+            # HIZ (2026-09): 1000'lik sayfalar SIRAYLA değil AYNI ANDA çekilir.
+            # GÜVENLİK AYNI: her sayfa 3 kez denenir; herhangi biri başarısız
+            # olursa sonuç ATILIR ve ikinci yönteme geçilir (yarım liste yok).
+            _adres = f"{_url}/rest/v1/cari_kartlar?select=*&order=id.asc"
+
+            def _sayfa_cek(_off, _say=False):
                 for _deneme_cl in range(3):
                     try:
-                        _r = _rq.get(
-                            f"{_url}/rest/v1/cari_kartlar?select=*&order=id.asc",
-                            headers=_hdrs, timeout=30
-                        )
+                        _hdrs = {
+                            "apikey": _key,
+                            "Authorization": f"Bearer {_key}",
+                            "Range-Unit": "items",
+                            "Range": f"{_off}-{_off+999}",
+                        }
+                        if _say:
+                            _hdrs["Prefer"] = "count=exact"
+                        _r = _rq.get(_adres, headers=_hdrs, timeout=30)
                         if _r.status_code in [200, 206]:
-                            _batch = _r.json()
-                            break
+                            return _r.json(), _r.headers.get("Content-Range", "")
                     except Exception:
                         pass
                     _cl_time.sleep(0.5)
-                if _batch is None:
-                    # 3 denemede de başarısız — bu sonucu GÜVENİLİR SAYMA,
-                    # ikinci yönteme düş (yarım listeyi asla döndürme).
-                    _tum = []
-                    _pagination_guvenilir = False
-                    break
-                if not _batch:
+                return None, ""
+
+            _ilk, _cr = _sayfa_cek(0, True)
+            if _ilk is not None:
+                try:
+                    _toplam_sayi = int(str(_cr).split("/")[-1])
+                except Exception:
+                    _toplam_sayi = 0
+                _offsetler = list(range(1000, _toplam_sayi, 1000)) if len(_ilk) >= 1000 else []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=6) as _havuz_cl:
+                    _sonuclar = list(_havuz_cl.map(lambda _o: _sayfa_cek(_o)[0], _offsetler))
+                if all(_s is not None for _s in _sonuclar):
+                    _tum = list(_ilk)
+                    for _s in _sonuclar:
+                        _tum.extend(_s)
+                    _son_sayfa = _sonuclar[-1] if _sonuclar else _ilk
+                    _sonraki = 1000 * (len(_offsetler) + 1)
                     _pagination_guvenilir = True
-                    break
-                _tum.extend(_batch)
-                if len(_batch) < 1000:
-                    _pagination_guvenilir = True
-                    break
-                _offset += 1000
+                    # Sayım ile çekim arasında yeni kayıt eklendiyse devamını sırayla al
+                    while len(_son_sayfa) >= 1000:
+                        _ek_sayfa, _ = _sayfa_cek(_sonraki)
+                        if _ek_sayfa is None:
+                            _tum = []
+                            _pagination_guvenilir = False
+                            break
+                        _tum.extend(_ek_sayfa)
+                        _son_sayfa = _ek_sayfa
+                        _sonraki += 1000
         except Exception:
             _tum = []
             _pagination_guvenilir = False
@@ -6910,6 +6925,7 @@ section[data-testid="stSidebar"] { display: none !important; }
     _grp4_toplam = sum(_asama_sayi(a) for a in _grp4_asama)
     _grp5_toplam = sum(_asama_sayi(a) for a in _grp5_asama)
 
+    _sure_isaretle("rut / ciro / ek bilgi / müşteri kodu hesapları")
     # ── HTML RAPOR SATIRI ─────────────────────────────────────────────────────
     import json as _rjson
     _aktif_fil_durum = st.session_state.get("_cl_fil_durum_multi", [])
@@ -7516,6 +7532,7 @@ function kartSec(id){
     # ── 📦 ARŞİVİ GÖSTER — artık üstteki sticky buton satırında (Kaydet/Satır
     # Ekle/Sil ile aynı satır), burada tekrar tanımlanmaz.
 
+    _sure_isaretle("üst rapor sayıları")
     with st.expander("🔍 Filtreler & Arama", expanded=False):
         # ── TEK SATIR FİLTRE ───────────────────────────────────────────────────
         if st.session_state.get("kart_sec_reset"):
@@ -8475,6 +8492,7 @@ function kartSec(id){
         except Exception:
             pass
 
+    _sure_isaretle("filtreler ve sıralama")
     # ── SAYFALAMA (2026-09, KULLANICI İSTEĞİ — bellek/hız için) ────────────────
     # 4.800 satırın tamamı yerine ekranda 100/250/500'lük sayfalar gösterilir.
     # Filtreler, arama, sıralama, rapor sayıları ve Excel İndir yine TÜM listede
@@ -8857,7 +8875,7 @@ function kartSec(id){
             _cl_bu_turda_pencere_acildi = True
 
 
-    _sure_isaretle("rapor, filtreler ve tablo hazırlığı")
+    _sure_isaretle("ekrandaki 100 satırın hazırlanması")
     _tbl_col = st.container()
     _not_col = None
 
