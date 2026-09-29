@@ -7670,7 +7670,7 @@ function kartSec(id){
         # sen değiştirene kadar (Kaydet dahil) HİÇBİR ŞEY onu sıfırlamaz.
         # Kullanıcı isteğiyle diğer filtrelerle AYNI tek satırda gösterilir.
         _CL_SIRALA_SECENEKLERI = {
-            "": "-- Sıralama Yok (varsayılan) --",
+            "": "-- Varsayılan: Hedef Ciro (büyükten küçüğe) --",
             "musteri_kodu": "Müşteri Kodu", "id": "ID", "firma": "Firma Adı", "rakip_firma": "Özel (Rakip Firma)",
             "yetkili": "Yetkili", "gsm": "GSM", "sabit": "Sabit Tel", "email": "Email", "adres": "Adres",
             "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
@@ -8512,12 +8512,22 @@ function kartSec(id){
         _cl_sirala_azalan = _cl_sirala_yon.startswith("Azalan")
         try:
             if _cl_sirala_alan in ("beklenen_ciro", "gerceklesen_ciro", "id"):
-                df_f = df_f.sort_values(by=_cl_sirala_alan, ascending=not _cl_sirala_azalan, na_position="last")
+                df_f = df_f.sort_values(by=_cl_sirala_alan, key=lambda _s: pd.to_numeric(_s, errors="coerce"),
+                                        ascending=not _cl_sirala_azalan, na_position="last", kind="stable")
             else:
                 df_f = df_f.sort_values(
                     by=_cl_sirala_alan, key=lambda _s: _s.astype(str).str.lower(),
                     ascending=not _cl_sirala_azalan, na_position="last"
                 )
+        except Exception:
+            pass
+    elif "beklenen_ciro" in df_f.columns:
+        # KULLANICI İSTEĞİ (2026-09): başka bir sıralama seçilmediyse liste HER
+        # ZAMAN Hedef Ciro'ya göre BÜYÜKTEN KÜÇÜĞE gelir — 1. sayfada en yüksek
+        # hedefli müşteriler. Eşit hedefliler kendi aralarındaki sırayı korur.
+        try:
+            df_f = df_f.sort_values(by="beklenen_ciro", key=lambda _s: pd.to_numeric(_s, errors="coerce").fillna(0),
+                                    ascending=False, kind="stable")
         except Exception:
             pass
 
