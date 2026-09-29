@@ -72,7 +72,6 @@ _CL_OZEL_FILTRE_SECENEKLERI = {
     "il": "İl",
     "ilce": "İlçe",
     "durum": "Durum",
-    "temsilci": "Temsilci",
     "islem_asamasi": "İlk Temas",
     "vergi_no": "Vergi No",
     "vergi_dairesi": "Vergi Dairesi",
@@ -180,65 +179,6 @@ def _cari_ek_bilgi_kaydet(_sozluk):
         return True
     except Exception:
         return False
-
-
-# ── MÜŞTERİ KODU (MW1, MW2, ...) — KULLANICI İSTEĞİ (2026-09): gerçek
-# veritabanı "id"sine (kargo/not/randevu/il gönderim gibi ONLARCA yerde
-# kullanılan asıl anahtar) ASLA dokunulmaz — o sabit kalır. Bunun yerine
-# SADECE GÖRÜNTÜLEME/REFERANS amaçlı, kayıt tarihine göre sıralı, boşluksuz
-# "MW1, MW2, ..." şeklinde AYRI bir kod tutulur (kullanici_tercih'te,
-# {cari_id_str: "MW<n>"} olarak). Bir müşteri silinirse, o numara "boşta"
-# sayılır ve BİR SONRAKİ yeni müşteriye otomatik verilir (numara tekrar
-# kullanılır) — ama bu SADECE bu kozmetik kod içindir, gerçek id etkilenmez.
-_MUSTERI_KODU_ANAHTAR = "_musteri_kodu_haritasi"
-
-
-@st.cache_data(ttl=60, show_spinner=False)
-def _musteri_kodu_yukle_goster():
-    _s = _kt_oku_taze(_MUSTERI_KODU_ANAHTAR)
-    return {} if (_s is _OKUMA_BASARISIZ or _s is None) else _s
-
-
-
-def _musteri_kodu_kaydet(_sozluk):
-    """GÜVENLİ — SİLME YOK, satır varsa UPDATE, yoksa INSERT."""
-    try: _musteri_kodu_yukle_goster.clear()
-    except Exception: pass
-    try:
-        sb = get_sb_client()
-        if not sb:
-            return False
-        _deger = json.dumps(_sozluk, ensure_ascii=False)
-        _guncelle = sb.table("kullanici_tercih").update({"deger": _deger}).eq(
-            "kullanici", "__liste_ui__").eq("anahtar", _MUSTERI_KODU_ANAHTAR).execute()
-        if not _guncelle.data:
-            sb.table("kullanici_tercih").insert({
-                "kullanici": "__liste_ui__", "anahtar": _MUSTERI_KODU_ANAHTAR, "deger": _deger
-            }).execute()
-        try: _musteri_kodu_yukle_goster.clear()
-        except Exception: pass
-        return True
-    except Exception:
-        return False
-
-
-def _musteri_kodu_sonraki_bul(_harita, _tum_gecerli_idler):
-    """Yeni bir müşteri eklendiğinde çağrılır. Silinen (artık "harita"da id'si
-    olmayan ama sayısı hâlâ kullanılan) numaraları BULUP boşta olanı
-    (en küçük boşluğu) döndürür — yoksa bir sonraki (max+1) numarayı verir."""
-    _kullanilan_no = set()
-    for _cid_str, _kod in _harita.items():
-        if _cid_str in _tum_gecerli_idler and str(_kod or "").startswith("MW"):
-            try:
-                _kullanilan_no.add(int(str(_kod)[2:]))
-            except Exception:
-                pass
-    if not _kullanilan_no:
-        return "MW1"
-    _n = 1
-    while _n in _kullanilan_no:
-        _n += 1
-    return f"MW{_n}"
 
 
 # ── CARİ ARŞİV — KULLANICI İSTEĞİ (2026-09): bazı müşteriler SİLİNMEYECEK
@@ -2018,8 +1958,7 @@ def _cari_gerceklesen_ciro_ekle(_cari_id, _miktar):
     """Kargo kaydı eklenince/düzenlenince/silinince, ana Cari Liste'deki
     müşterinin 'gerçekleşen ciro' alanını otomatik günceller — _miktar
     pozitifse artırır, negatifse azaltır (0'ın altına düşürmez). Böylece
-    kargo girdikçe müşterinin gerçekleşen cirosu (ve buna bağlı segment —
-    Özel Müşteri/Portföy) elle dokunmadan kendiliğinden güncel kalır."""
+    kargo girdikçe müşterinin gerçekleşen cirosu elle dokunmadan kendiliğinden güncel kalır."""
     try:
         _miktar = float(_miktar or 0)
     except Exception:
@@ -2057,35 +1996,6 @@ def get_sb_service():
     except:
         pass
     return None
-
-def hesapla_segment(manuel_segment, gerceklesen_ciro):
-    """Manuel segment varsa onu normalize et, yoksa ciroya göre otomatik hesapla"""
-    # Normalize — eski kayıtlardaki farklı ikonları düzelt
-    _norm = {"⭐ A+":"👑 A+","A+":"👑 A+","⭐ A-":"⭐ A","A":"⭐ A","A-":"⭐ A","B":"🔵 B","C":"⚪ C"}
-    if manuel_segment:
-        _m = str(manuel_segment).strip()
-        if _m and _m not in ["","--","nan","None"]:
-            # Önce tam eşleşme dene
-            if _m in ["👑 A+","⭐ A","🔵 B","⚪ C"]: return _m
-            # Sonra normalize
-            for _k,_v in _norm.items():
-                if _k in _m: return _v
-            return _m
-    ger = float(gerceklesen_ciro or 0)
-    if ger >= 500000: return "👑 A+"
-    if ger >= 200000: return "⭐ A"
-    if ger >= 50000:  return "🔵 B"
-    if ger > 0:       return "⚪ C"
-    return ""
-
-def segment_renk(seg):
-    """Segment → arka plan ve yazı rengi"""
-    s = str(seg or "")
-    if "A+" in s: return "#fef3c7","#92400e","#f59e0b"  # bg, text, border
-    if "A"  in s: return "#f1f5f9","#475569","#94a3b8"
-    if "B"  in s: return "#eff6ff","#1e40af","#3b82f6"
-    if "C"  in s: return "#f8fafc","#64748b","#cbd5e1"
-    return "#ffffff","#374151","#e2e8f0"
 
 def _tel_gruplu(s):
     """Ham rakamlardan '541 357 80 20' gibi gruplu, baştaki 0/90'sız görünüm
@@ -2126,25 +2036,6 @@ def _telefon_temizle(seri):
             pass
         return _tel_gruplu(s)
     return seri.apply(_tek)
-
-def _atama_filtresi_uygula(df):
-    """Admin hepsini görür, diğerleri sadece kendine atananları"""
-    try:
-        _rol = str(st.session_state.get("rol","")).strip().lower()
-        _kul = str(st.session_state.get("kullanici","")).strip()
-        # Admin veya kullanıcı yoksa hepsini göster
-        if "admin" in _rol or _kul == "admin" or not _kul:
-            return df
-        if df.empty or "atanan_kullanici" not in df.columns:
-            return df
-        # Kullanıcıya atananlar VEYA atanmamışlar
-        return df[
-            (df["atanan_kullanici"].astype(str) == _kul) |
-            (df["atanan_kullanici"].isna()) |
-            (df["atanan_kullanici"].astype(str).isin(["None","nan",""]))
-        ]
-    except:
-        return df
 
 # ── BÖLGE EŞLEŞTİRME (il + ilçe → bölge adı) ────────────────────────────────
 _BL_ISTANBUL_ANADOLU = {"adalar","atasehir","beykoz","cekmekoy","kadikoy","kartal",
@@ -2380,7 +2271,7 @@ def db_read(table, filters=None, order_col="id", desc=True, limit=None, extra_sq
 
 
 def db_insert(table, data):
-    """Insert — Supabase önce, SQLite fallback — firma_id otomatik eklenir"""
+    """Insert — Supabase önce, SQLite fallback"""
     sb = get_sb_client()
     _sb_hata = None
     if sb:
@@ -2736,7 +2627,6 @@ div[data-testid="stRadio"] div[role="radiogroup"]{gap:0.4rem;}
                     _yetki = "tam" if _yetki_val == "tam" else _yjson.loads(_yetki_val)
                 except:
                     _yetki = "tam"
-                _firma_id_giris = 1
 
                 # Tüm state'i tek seferde set et — kopma olmasın
                 st.session_state.update({
@@ -3183,8 +3073,8 @@ def _duzenleme_form_key_temizle(fid):
     session_state'ten siler. Düzenle her tıklandığında çağrılmalı —
     yoksa eskiden o key'e yapışmış (boş veya yanlış) değer, yeni
     value= parametresini görmezden gelip ekranda kalmaya devam eder."""
-    _alanlar = ["yeni_il_dis","yeni_ilce_dis","yeni_durum_dis","yeni_temsilci_dis",
-                "yeni_seg_dis","yeni_asama_dis","yeni_firma","yeni_yetkili",
+    _alanlar = ["yeni_il_dis","yeni_ilce_dis","yeni_durum_dis",
+                "yeni_asama_dis","yeni_firma","yeni_yetkili",
                 "yeni_gsm","yeni_sabit","yeni_email","yeni_adres","yeni_notlar",
                 "bek_ciro_str","ger_ciro_str"]
     for _a in _alanlar:
@@ -3602,9 +3492,7 @@ def not_dialog(cari_id, firma_adi=""):
                         "ilce": _tr_buyuk(_hf_ilce) if _hf_ilce != "-- Önce il seç --" else "",
                         "il": _tr_buyuk(_hf_il) if _hf_il != "-- İl seçilir --" else "",
                         "durum": "Portföy", "silindi": 0,
-                        "olusturan": st.session_state.get("kullanici", ""),
-                        "beklenen_ciro": 0, "gerceklesen_ciro": 0,
-                        "atanan_kullanici": st.session_state.get("kullanici", "")
+                        "beklenen_ciro": 0, "gerceklesen_ciro": 0
                     })
                     try: db_read.clear()
                     except: pass
@@ -4881,7 +4769,7 @@ textarea[aria-label="Koli/Palet önizleme"] {
                 else:
                     kart_row = _satir_duz.iloc[0]
                     d2 = {str(k):(None if str(v) in ["nan","None","NaT"] else v) for k,v in kart_row.items()}
-                    for _k in ["firma","yetkili","gsm","sabit","email","adres","il","ilce","durum","temsilci","islem_asamasi","aciklama"]:
+                    for _k in ["firma","yetkili","gsm","sabit","email","adres","il","ilce","durum","islem_asamasi","aciklama"]:
                         if _k in d2: d2[_k] = "" if d2[_k] is None else str(d2[_k])
                     if not d2.get("gsm"):
                         d2["gsm"] = str(kart_row.get("telefon") or kart_row.get("tel") or "")
@@ -5924,8 +5812,8 @@ if aktif == "yeni":
         f"yeni_gsm_{_form_id}", f"yeni_sabit_{_form_id}", f"yeni_email_{_form_id}",
         f"yeni_adres_{_form_id}", f"yeni_notlar_{_form_id}",
         f"yeni_il_dis_{_form_id}", f"yeni_ilce_dis_{_form_id}",
-        f"yeni_durum_dis_{_form_id}", f"yeni_temsilci_dis_{_form_id}",
-        f"yeni_seg_dis_{_form_id}", f"yeni_asama_dis_{_form_id}",
+        f"yeni_durum_dis_{_form_id}",
+        f"yeni_asama_dis_{_form_id}",
     ]
     # Sadece müşteri değişince temizle
     _onceki_form_id = st.session_state.get("_onceki_form_id","")
@@ -5989,10 +5877,6 @@ if aktif == "yeni":
     durum_opts = _tanimlar_yukle("durum") or ["Özel Müşteri","Portföy"]
     durum_idx  = durum_opts.index(duzenle.get("durum","")) if duzenle and duzenle.get("durum","") in durum_opts else 0
     durum   = r2c3.selectbox("Durum", durum_opts, index=durum_idx, key=f"yeni_durum_dis_{_form_id}")
-    temsilci_dis = r2c4.text_input("Temsilci", value=duzenle.get("temsilci","") if duzenle else "", key=f"yeni_temsilci_dis_{_form_id}", placeholder="Temsilci adı")
-    seg_opts = ["--","👑 A+","⭐ A","🔵 B","⚪ C"]
-    seg_idx  = seg_opts.index(duzenle.get("segment","--")) if duzenle and duzenle.get("segment","--") in seg_opts else 0
-    segment  = r2c5.selectbox("Segment", seg_opts, index=seg_idx, key=f"yeni_seg_dis_{_form_id}")
     _asama_default = duzenle.get("islem_asamasi") if duzenle else st.session_state.pop("varsayilan_asama", None)
     asama_idx = _asama_base.index(_asama_default) if _asama_default and _asama_default in _asama_base else 0
     asama    = r2c6.selectbox("İşlem Aşaması", _asama_base, index=asama_idx, key=f"yeni_asama_dis_{_form_id}")
@@ -6006,7 +5890,6 @@ if aktif == "yeni":
         gsm     = r1c3.text_input("GSM",         value=fmt_tel(duzenle.get("gsm","")) if duzenle else "", placeholder="05xx xxx xx xx", key=f"yeni_gsm_{_form_id}")
         sabit   = r1c4.text_input("Sabit Tel",   value=fmt_tel(duzenle.get("sabit","")) if duzenle else "", placeholder="0212 xxx xx xx", key=f"yeni_sabit_{_form_id}")
         email   = r1c5.text_input("E-Mail",      value=duzenle.get("email","") if duzenle else "", placeholder="mail@firma.com", key=f"yeni_email_{_form_id}")
-        temsilci = temsilci_dis  # form dışından al
 
         # ── SATIR 3: Adres, Açıklama ─────────────────────────────────────────
         r3c1, r3c2 = st.columns(2)
@@ -6032,9 +5915,7 @@ if aktif == "yeni":
             _il_kayit    = st.session_state.get(f"yeni_il_dis_{_form_id}", il)
             _ilce_kayit  = st.session_state.get(f"yeni_ilce_dis_{_form_id}", ilce)
             _durum_kayit = st.session_state.get(f"yeni_durum_dis_{_form_id}", durum)
-            _seg_kayit   = st.session_state.get(f"yeni_seg_dis_{_form_id}", "--")
             _asama_kayit = st.session_state.get(f"yeni_asama_dis_{_form_id}", asama)
-            _tem_kayit   = st.session_state.get(f"yeni_temsilci_dis_{_form_id}", temsilci)
 
             # ── CİRO'YA GÖRE DURUM OTOMATİK BELİRLE ──────────────────────────
             # 100.000₺ altı → Portföy | 100.000₺ ve üzeri → Özel Müşteri
@@ -6055,8 +5936,8 @@ if aktif == "yeni":
                     "firma": firma, "rakip_firma": rakip_firma, "yetkili": yetkili, "gsm": gsm,
                     "sabit": sabit, "email": email, "adres": adres,
                     "ilce": _ilce_kayit, "il": _il_kayit, "durum": _durum_kayit,
-                    "temsilci": _tem_kayit, "islem_asamasi": _asama_kayit,
-                    "segment": _seg_kayit, "aciklama": notlar_v,
+                    "islem_asamasi": _asama_kayit,
+                    "aciklama": notlar_v,
                     "beklenen_ciro": beklenen_ciro, "gerceklesen_ciro": gerceklesen_ciro
                 }, "id", duzenle.get("id"))
                 try: db_read.clear()
@@ -6071,11 +5952,10 @@ if aktif == "yeni":
                     "firma": firma, "rakip_firma": rakip_firma, "yetkili": yetkili, "gsm": gsm,
                     "sabit": sabit, "email": email, "adres": adres,
                     "ilce": _ilce_kayit, "il": _il_kayit, "durum": _durum_kayit,
-                    "temsilci": _tem_kayit, "islem_asamasi": _asama_kayit,
-                    "segment": _seg_kayit, "aciklama": notlar_v,
-                    "silindi": 0, "olusturan": st.session_state["kullanici"],
-                    "beklenen_ciro": beklenen_ciro, "gerceklesen_ciro": gerceklesen_ciro,
-                    "atanan_kullanici": st.session_state.get("kullanici","")
+                    "islem_asamasi": _asama_kayit,
+                    "aciklama": notlar_v,
+                    "silindi": 0,
+                    "beklenen_ciro": beklenen_ciro, "gerceklesen_ciro": gerceklesen_ciro
                 })
                 try: db_read.clear()
                 except: pass
@@ -6147,9 +6027,7 @@ elif aktif == "hizli_firma":
                     "ilce": _tr_buyuk(_hfs_ilce) if _hfs_ilce != "-- Önce il seç --" else "",
                     "il": _tr_buyuk(_hfs_il) if _hfs_il != "-- İl seçilir --" else "",
                     "durum": "Portföy", "silindi": 0,
-                    "olusturan": st.session_state.get("kullanici", ""),
-                    "beklenen_ciro": 0, "gerceklesen_ciro": 0,
-                    "atanan_kullanici": st.session_state.get("kullanici", "")
+                    "beklenen_ciro": 0, "gerceklesen_ciro": 0
                 })
                 try: db_read.clear()
                 except: pass
@@ -6237,7 +6115,6 @@ elif aktif == "mukerrer":
     _mk_df = get_cari_listesi()
     if not _mk_df.empty and "silindi" in _mk_df.columns:
         _mk_df = _mk_df[~(_mk_df["silindi"].astype(str).str.strip().isin(["1","True","true","1.0"]))]
-    _mk_df = _atama_filtresi_uygula(_mk_df)
 
     if _mk_df.empty or "firma" not in _mk_df.columns:
         st.caption("Veri yok.")
@@ -6551,12 +6428,9 @@ section[data-testid="stSidebar"] { display: none !important; }
                 _asama   = str(_row.get("islem_asamasi","") or "")
                 _bek     = float(_row.get("beklenen_ciro",0) or 0)
                 _ger     = float(_row.get("gerceklesen_ciro",0) or 0)
-                _seg     = str(_row.get("segment","") or "")
                 _rut     = str(_row.get("rut","") or "")
                 _cari_id = _row.get("id","")
 
-                # Segment dot
-                _dot = "🟢" if "A" in _seg else ("🔵" if "B" in _seg else ("⚪" if "C" in _seg else ""))
                 # Analiz var mı
                 def _nrm(s): return str(s or "").strip().upper().replace("İ","I").replace("Ş","S").replace("Ğ","G").replace("Ü","U").replace("Ö","O").replace("Ç","C")
                 _analiz_var = _nrm(_firma) in _analiz_set
@@ -6583,7 +6457,7 @@ section[data-testid="stSidebar"] { display: none !important; }
 
                 st.markdown(f"""<div class="mw-firma-card">
   <div class="mw-kart-top">
-    <div class="mw-kart-adi">{_dot} {_firma}</div>
+    <div class="mw-kart-adi">{_firma}</div>
     <span class="mw-kart-badge" style="background:{_bg};color:{_tc};">{_durum}</span>
   </div>
   <div class="mw-kart-meta">{_meta_html}</div>
@@ -6667,30 +6541,6 @@ section[data-testid="stSidebar"] { display: none !important; }
     if not df.empty:
         df["hesaplama"] = ""
 
-    # ── MÜŞTERİ KODU (MW1, MW2, ...) — KULLANICI İSTEĞİ (2026-09): eski
-    # karışık ID'ler yerine kayıt tarihine göre sıralı, boşluksuz "MW1,
-    # MW2..." kodu görüntülenir. Gerçek "id" (kargo/not/randevu/il gönderim
-    # gibi onlarca yerde kullanılan asıl anahtar) HİÇ DEĞİŞMEZ — sadece bu
-    # YENİ kod GÖRÜNTÜLEME/REFERANS için eklenir. Henüz kodu olmayan (yeni
-    # eklenmiş) müşterilere otomatik, silinen müşterilerin boşta kalan
-    # numarası öncelikli olacak şekilde kod atanır.
-    _musteri_kodu_erken = dict(_musteri_kodu_yukle_goster())
-    if not df.empty and "id" in df.columns:
-        _mk_gecerli_idler = set(str(int(_r)) for _r in df["id"] if pd.notna(_r))
-        if any(_mk_id not in _musteri_kodu_erken for _mk_id in _mk_gecerli_idler):
-            # Yeni kod atanacak — GÜVENLİK: önbellekteki değil, TAZE listeye ekle.
-            _mk_taze = _kt_oku_taze(_MUSTERI_KODU_ANAHTAR)
-            if _mk_taze is not _OKUMA_BASARISIZ:
-                _musteri_kodu_erken = dict(_mk_taze or {})
-                _mk_degisti = False
-                for _mk_id in sorted(_mk_gecerli_idler, key=lambda _x: int(_x)):
-                    if _mk_id not in _musteri_kodu_erken:
-                        _musteri_kodu_erken[_mk_id] = _musteri_kodu_sonraki_bul(_musteri_kodu_erken, _mk_gecerli_idler)
-                        _mk_degisti = True
-                if _mk_degisti:
-                    _musteri_kodu_kaydet(_musteri_kodu_erken)
-        df["musteri_kodu"] = df["id"].apply(
-            lambda _rid: _musteri_kodu_erken.get(str(int(_rid)), "") if pd.notna(_rid) else "")
 
     # KULLANICI İSTEĞİ (2026-09): "Güncelleme Tarihi" sütunu ve filtresi HIZ için
     # kaldırıldı (her tıklamada 4.800 müşteri + 3 tablo taranıyordu). Kayıt
@@ -6722,8 +6572,6 @@ section[data-testid="stSidebar"] { display: none !important; }
             if _tk in df.columns:
                 df[_tk] = _telefon_temizle(df[_tk])
 
-    # ── ATAMA FİLTRESİ — admin hepsini görür, kullanıcı sadece kendine atananları ──
-    df = _atama_filtresi_uygula(df)
 
     for _kol in ["aciklama","adres","notlar"]:
         if _kol not in df.columns: df[_kol] = ""
@@ -6867,7 +6715,7 @@ section[data-testid="stSidebar"] { display: none !important; }
                                 st.session_state["_toplam_aktif"] = True
                                 for _fk in ["_cl_fil_durum_multi","_cl_fil_asama_multi",
                                             "_cl_fil_il_multi","_cl_fil_ilce_multi",
-                                            "_cl_fil_temsilci_multi","_cl_sec_kart"]:
+                                            "_cl_sec_kart"]:
                                     if _fk in st.session_state: del st.session_state[_fk]
                                 st.session_state["_filtre_reset_sayac"] = st.session_state.get("_filtre_reset_sayac", 0) + 1
                             elif d_adlar and _ad in d_adlar:
@@ -7301,7 +7149,7 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
             st.session_state["_mesaj_gercek_aktif"] = False
             st.session_state["_filtre_reset_sayac"] = st.session_state.get("_filtre_reset_sayac",0)+1
             _tekli_asama_temizle()
-            for _fk in ["_cl_fil_durum_multi","_cl_fil_asama_multi","_cl_fil_il_multi","_cl_fil_ilce_multi","_cl_fil_temsilci_multi"]:
+            for _fk in ["_cl_fil_durum_multi","_cl_fil_asama_multi","_cl_fil_il_multi","_cl_fil_ilce_multi"]:
                 st.session_state.pop(_fk, None)
         elif _qp_rfil == "asamasiz":
             st.session_state["_asamasiz_aktif"] = True
@@ -7629,7 +7477,6 @@ function kartSec(id){
         st.session_state["_cl_fil_durum_multi"] = _durum_sec_raw
         _durum_sec = _durum_sec_raw
 
-        filtre_seg = "Tümü"
 
         _il_opts = sorted(df["il"].dropna().astype(str).unique().tolist()) if "il" in df.columns else []
         _il_def  = [x for x in st.session_state.get("_cl_fil_il_multi",[]) if x in _il_opts]
@@ -7639,7 +7486,6 @@ function kartSec(id){
         _ilce_opts = [x for x in _ilce_opts if x not in ["nan","None",""]]
         _ilce_sec  = _fc[6].multiselect("ilce", _ilce_opts, default=[x for x in st.session_state.get("_cl_fil_ilce_multi",[]) if x in _ilce_opts], key="_cl_fil_ilce_multi", placeholder="İlçe...", label_visibility="collapsed")
 
-        _tem_sec = []
         siralama_kol = "Tarih↓"
 
         _guncelleme_tarih_sec = []  # filtre kaldırıldı (hız)
@@ -7660,9 +7506,9 @@ function kartSec(id){
         # Kullanıcı isteğiyle diğer filtrelerle AYNI tek satırda gösterilir.
         _CL_SIRALA_SECENEKLERI = {
             "": "-- Varsayılan: Hedef Ciro (büyükten küçüğe) --",
-            "musteri_kodu": "Müşteri Kodu", "id": "ID", "firma": "Firma Adı", "rakip_firma": "Özel (Rakip Firma)",
+            "id": "ID", "firma": "Firma Adı", "rakip_firma": "Özel (Rakip Firma)",
             "yetkili": "Yetkili", "gsm": "GSM", "sabit": "Sabit Tel", "email": "Email", "adres": "Adres",
-            "il": "İl", "ilce": "İlçe", "durum": "Durum", "temsilci": "Temsilci",
+            "il": "İl", "ilce": "İlçe", "durum": "Durum",
             "vergi_no": "Vergi No", "vergi_dairesi": "Vergi Dairesi", "musteri_subesi": "Müşteri Şubesi",
             "vade": "Vade", "odeme": "Ödeme", "teklif_fiyat": "Teklif Fiyat",
             "beklenen_ciro": "Hedeflenen Ciro", "gerceklesen_ciro": "Gerçekleşen Ciro",
@@ -7938,7 +7784,7 @@ function kartSec(id){
         df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
     # Toplam aktifse tüm filtreleri zorla sıfırla
     if st.session_state.get("_toplam_aktif", False):
-        ara_txt = ""; _asama_sec = []; _durum_sec = []; _il_sec = []; _ilce_sec = []; _tem_sec = []; filtre_seg = "Tümü"; _guncelleme_tarih_sec = []; _ozel_sec = []; _rut_sec = []
+        ara_txt = ""; _asama_sec = []; _durum_sec = []; _il_sec = []; _ilce_sec = []; _guncelleme_tarih_sec = []; _ozel_sec = []; _rut_sec = []
         for _fk in ["_cl_fil_asama1","_cl_fil_asama2","_cl_fil_asama3","_cl_fil_sonuc"]:
             st.session_state.pop(_fk, None)
     # Aşamasız filtresi
@@ -7998,10 +7844,6 @@ function kartSec(id){
             df_f = df_f[df_f["sonuc"].apply(_asama_norm) == _asama_norm(st.session_state["_cl_fil_sonuc"])]
         if _durum_sec:
             df_f = df_f[df_f["durum"].isin(_durum_sec)]
-        if filtre_seg != "Tümü":
-            df_f["_seg_tmp"] = df_f.apply(lambda r: hesapla_segment(r.get("segment",""), r.get("gerceklesen_ciro",0)), axis=1)
-            if filtre_seg == "Segmentsiz": df_f = df_f[df_f["_seg_tmp"]==""]
-            else: df_f = df_f[df_f["_seg_tmp"]==filtre_seg]
         if _il_sec:
             df_f = df_f[df_f["il"].astype(str).isin(_il_sec)]
         if _ilce_sec:
@@ -8012,8 +7854,6 @@ function kartSec(id){
                 lambda _rv: bool({p.strip() for p in _rv.split(" - ") if p.strip()} & _rut_secili_set))]
         if _ozel_sec and "rakip_firma" in df_f.columns:
             df_f = df_f[df_f["rakip_firma"].astype(str).isin(_ozel_sec)]
-        if _tem_sec:
-            df_f = df_f[df_f["temsilci"].astype(str).isin(_tem_sec)]
         if _guncelleme_tarih_sec:
             # Güncelleme Tarihi — ÇOKLU seçim, saatsiz. Bir müşteri, seçilen
             # tarihlerden HERHANGİ BİRİNDE gerçekten işlem görmüşse gelir
@@ -8122,16 +7962,13 @@ function kartSec(id){
 
     # ── HİÇ FİLTRE SEÇİLİ DEĞİLKEN — sadece işlem görmemiş (Özel Müşteri/Portföy) göster ──
     # Bir müşteriye durum atanınca (Randevu, Teklif, Tekrar Ara vb.) artık burada görünmesin,
-    # Segment hesapla ve sırala
     if df_f.empty or "firma" not in df_f.columns:
         df_f = pd.DataFrame()
     else:
-        # KULLANICI İSTEĞİ (2026-09): Segment hesabı HIZ için kaldırıldı.
         df_f = df_f.sort_values("firma", kind="stable").reset_index(drop=True)
         if siralama_kol == "Firma A-Z":      df_f = df_f.sort_values("firma", ascending=True)
         elif siralama_kol == "Firma Z-A":    df_f = df_f.sort_values("firma", ascending=False)
         elif siralama_kol == "İl A-Z" and "il" in df_f.columns:       df_f = df_f.sort_values("il", ascending=True)
-        elif siralama_kol == "Temsilci A-Z" and "temsilci" in df_f.columns: df_f = df_f.sort_values("temsilci", ascending=True)
         elif siralama_kol == "Hedef ₺↓" and "beklenen_ciro" in df_f.columns:
             df_f = df_f.copy(); df_f["_s"] = pd.to_numeric(df_f["beklenen_ciro"], errors="coerce").fillna(0)
             df_f = df_f.sort_values("_s", ascending=False).drop(columns=["_s"])
@@ -8168,7 +8005,7 @@ function kartSec(id){
                        "muhtemelen arşivlenmiş/silinmiş ya da başka bir kullanıcı tarafından kaldırılmış. "
                        "Bu bir gösterim sınırı değil, o kayıtlar artık mevcut değil.")
 
-    _aktif_fil_sayisi = sum([bool(ara_txt),bool(_asama_sec),bool(_durum_sec),filtre_seg!="Tümü",bool(_il_sec),bool(_ilce_sec),bool(_tem_sec),bool(_guncelleme_tarih_sec),bool(_ozel_sec),bool(_rut_sec)])
+    _aktif_fil_sayisi = sum([bool(ara_txt),bool(_asama_sec),bool(_durum_sec),bool(_il_sec),bool(_ilce_sec),bool(_guncelleme_tarih_sec),bool(_ozel_sec),bool(_rut_sec)])
     if secili_kart != "-- Müşteri Seçin --" and "[" in secili_kart:
         try:
             kart_id = int(secili_kart.split("]")[0].replace("[","").strip())
@@ -8183,7 +8020,6 @@ function kartSec(id){
             kart_row = _km.iloc[0]
             bek = float(kart_row.get("beklenen_ciro",0) or 0)
             ger = float(kart_row.get("gerceklesen_ciro",0) or 0)
-            _seg_val = str(kart_row.get("segment","") or "")
             def _temiz(v):
                 s = str(v or "").strip()
                 return s if s and s not in ["nan","None","-",""] else "-"
@@ -8195,15 +8031,12 @@ function kartSec(id){
             _ilce = str(kart_row.get("ilce","") or "-")
             _durum = str(kart_row.get("durum","") or "-")
             _asama = str(kart_row.get("islem_asamasi","") or "-")
-            _temsilci = str(kart_row.get("temsilci","") or "-")
             _yuzde = round((ger/bek)*100) if bek > 0 else 0
             _fark = ger - bek
             _fark_renk = "#16a34a" if _fark >= 0 else "#dc2626"
 
             # ── BAŞLIK ───────────────────────────────────────────────────────
-            _seg_auto = hesapla_segment(kart_row.get("segment",""), kart_row.get("gerceklesen_ciro",0))
-            _sbg, _stxt, _sbrd = segment_renk(_seg_auto)
-            _baslik_renk = {"👑 A+":"#92400e","⭐ A":"#374151","🔵 B":"#1e3a8a","⚪ C":"#334155"}.get(_seg_auto,"#1e293b")
+            _baslik_renk = "#1e293b"
             st.markdown(f"""
 <div style='background:{_baslik_renk};color:white;padding:12px 20px;border-radius:10px 10px 0 0;display:flex;align-items:center;justify-content:space-between'>
   <div style='display:flex;align-items:center;gap:12px'>
@@ -8213,7 +8046,6 @@ function kartSec(id){
       <div style='font-size:20px;font-weight:800;letter-spacing:0.5px'>{kart_row.get('firma','').upper()}</div>
     </div>
   </div>
-  {f"<div style='background:rgba(255,255,255,0.2);padding:4px 14px;border-radius:20px;font-size:14px;font-weight:700'>{_seg_auto}</div>" if _seg_auto else ""}
 </div>""", unsafe_allow_html=True)
 
             # ── 3 PANEL ──────────────────────────────────────────────────────
@@ -8239,8 +8071,6 @@ function kartSec(id){
     <div>🏙️ {_il} / {_ilce}</div>
     <div>📊 {_durum}</div>
     <div>🔄 {_asama}</div>
-    <div>👔 {_temsilci}</div>
-    {f"<div><span style='background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600'>{_seg_val}</span></div>" if _seg_val and _seg_val not in ["--",""] else ""}
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -8274,7 +8104,7 @@ function kartSec(id){
             _ax1,_ax2,_ax3,_ax4,_ax5 = st.columns([1,1,1.2,1,1])
             if _ax1.button("✏️ Düzenle", key=f"kd_{kart_id}", use_container_width=True):
                 d2 = {str(k):(None if str(v) in ["nan","None","NaT"] else v) for k,v in kart_row.items()}
-                for _k in ["firma","yetkili","gsm","sabit","email","adres","il","ilce","durum","temsilci","islem_asamasi","aciklama"]:
+                for _k in ["firma","yetkili","gsm","sabit","email","adres","il","ilce","durum","islem_asamasi","aciklama"]:
                     if _k in d2: d2[_k] = "" if d2[_k] is None else str(d2[_k])
                 # GSM/Sabit bazı eski kayıtlarda farklı sütunlarda olabiliyor (telefon/tel/sabit_hat) —
                 # detay kartındaki gösterimle aynı fallback'i burada da uyguluyoruz, yoksa form boş açılır.
@@ -8291,7 +8121,7 @@ function kartSec(id){
                 st.markdown(f"<span style='opacity:0.4;cursor:not-allowed' title='Geçici devre dışı'>WhatsApp aç (devre dışı)</span>", unsafe_allow_html=True)
             if _ax4.button("💾 Kaydet", key=f"kkaydet_{kart_id}", use_container_width=True, type="primary"):
                 try:
-                    _g = {"firma":str(kart_row.get("firma","")), "yetkili":str(kart_row.get("yetkili","")), "gsm":str(kart_row.get("gsm","")), "sabit":str(kart_row.get("sabit","")), "email":str(kart_row.get("email","")), "il":str(kart_row.get("il","")), "ilce":str(kart_row.get("ilce","")), "durum":str(kart_row.get("durum","")), "temsilci":str(kart_row.get("temsilci","")), "islem_asamasi":str(kart_row.get("islem_asamasi",""))}
+                    _g = {"firma":str(kart_row.get("firma","")), "yetkili":str(kart_row.get("yetkili","")), "gsm":str(kart_row.get("gsm","")), "sabit":str(kart_row.get("sabit","")), "email":str(kart_row.get("email","")), "il":str(kart_row.get("il","")), "ilce":str(kart_row.get("ilce","")), "durum":str(kart_row.get("durum","")), "islem_asamasi":str(kart_row.get("islem_asamasi",""))}
                     if sb_liste: sb_liste.table("cari_kartlar").update(_g).eq("id",kart_id).execute()
                     else: db_update("cari_kartlar",_g,"id",kart_id)
                     try: db_read.clear()
@@ -8325,9 +8155,9 @@ function kartSec(id){
     _KOL_VARSAYILAN = {
         "tarih":90,"guncelleme_tarihi":100,
         "hesaplama":120,"firma":90,"rakip_firma":90,"yetkili":90,"gsm":100,"sabit":90,"email":90,
-        "adres":110,"il":70,"ilce":60,"durum":80,"temsilci":80,
+        "adres":110,"il":70,"ilce":60,"durum":80,
         "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
-        "islem_asamasi":80,"aciklama":110,"📨 Notlar":50,"id":40,"musteri_kodu":80,
+        "islem_asamasi":80,"aciklama":110,"📨 Notlar":50,"id":40,
         "beklenen_ciro":70,"gerceklesen_ciro":70,"Varış İli":90,"Koli/Palet":110,
                 "asama1":90,"asama2":90,"asama3":90,"sonuc":90,"ara_islem":90,"il_ciro_ozet":110,"sektor":100,"rut":90
     }
@@ -8393,9 +8223,8 @@ function kartSec(id){
         "Seç":           st.column_config.CheckboxColumn("Seç", default=False, width=_w("Seç")),
         "tarih":         st.column_config.TextColumn("İşlem Tarih", disabled=True, width=_w("tarih")),
         "guncelleme_tarihi": st.column_config.TextColumn("Güncelleme Tarihi", disabled=True, width=_w("guncelleme_tarihi"), help="Bu müşteriye en son ne zaman not, teklif veya mesaj/işlem eklendiğini gösterir."),
-        "musteri_kodu":  st.column_config.TextColumn("Müşteri Kodu", disabled=True, width=_w("musteri_kodu"), help="Kayıt tarihine göre sıralı, boşluksuz referans kodu. Silinen müşterinin kodu yeni bir müşteriye yeniden verilir."),
         "id":            st.column_config.NumberColumn("ID", disabled=True, width=_w("id")),
-        "olusturan": None, "silindi": None,
+        "silindi": None,
         "beklenen_ciro":    st.column_config.NumberColumn("Hedef ₺",  format="%,.0f ₺", width=_w("beklenen_ciro")),
         "gerceklesen_ciro": st.column_config.NumberColumn("Gerçek ₺", format="%,.0f ₺", width=_w("gerceklesen_ciro"), disabled=True,
                                 help="OTOMATİK hesaplanır — bu müşterinin TÜM kargo kayıtlarındaki Yekün toplamı. Elle düzenlenmez; değiştirmek için Kargolar sayfasından ilgili kargo kaydını düzenleyin."),
@@ -8417,7 +8246,6 @@ function kartSec(id){
         "odeme":           st.column_config.TextColumn("Ödeme", width=_w("odeme")),
         "teklif_fiyat":    st.column_config.TextColumn("Teklif Fiyat", width=_w("teklif_fiyat")),
         "durum":         st.column_config.SelectboxColumn("Durum", options=["Tümü"] + [x for x in tum_durum_opts if str(x).upper() not in ["NONE","NAN",""]], width=_w("durum")),
-        "temsilci":      st.column_config.TextColumn("Temsilci",  width=_w("temsilci")),
         "islem_asamasi": st.column_config.SelectboxColumn("İlk Temas", options=["Tümü", "Arama", "Tekrar Ara", "Mesaj", "E-Mail"], width=_w("islem_asamasi")),
         "aciklama":      st.column_config.TextColumn("Açıklama",  width=_w("aciklama")),
         "📨 Notlar":     st.column_config.TextColumn("📨 Notlar", disabled=True, width=_w("📨 Notlar")),
@@ -8442,10 +8270,10 @@ function kartSec(id){
             help=f"{_il_kol_cfg} — Bu firmanın bu ile ne gönderdiğini serbestçe yazın (sayı veya metin).")
     # Sütun sırası — sizin verdiğiniz şablonla birebir: Seç, İşlem Tarih, Id, Firma, Yetkili,
     # Gsm, S.Tel, E-Mail, Adres, İlçe, İl, Hedef(+Gerçek), Durum, Analiz, Aşama, 1-2-3.Aşama,
-    # Açıklama, Notlar, Son Randevu, Teklif, Mesaj, Sonuç. Temsilci silinmedi, en sona eklendi.
-    # ── SATIR SIRASINI DONDUR — segment/ciro gibi kayıt sırasında değişebilen
+    # Açıklama, Notlar, Son Randevu, Teklif, Mesaj, Sonuç.
+    # ── SATIR SIRASINI DONDUR — ciro gibi kayıt sırasında değişebilen
     # alanlara göre yapılan sıralama (yukarıda), her kayıttan sonra o müşterinin
-    # segmenti/cirosu değiştiği için satırın yerini kaydırıyordu. Bu da "Seç"
+    # cirosu değiştiği için satırın yerini kaydırıyordu. Bu da "Seç"
     # işaretinin ve genel çalışma sırasının bir kayıttan diğerine kaymasına
     # sebep oluyordu. Çözüm: GÖRÜNEN (filtrelenmiş) müşteri KÜMESİ değişmediği
     # sürece (yeni/silinen/filtre dışı kalan müşteri yoksa) sırayı burada
@@ -8464,15 +8292,15 @@ function kartSec(id){
             df_f["_cl2_key"] = df_f["id"].map(_cl2_map).fillna(len(_cl2_sirali))
             df_f = df_f.sort_values("_cl2_key").drop(columns=["_cl2_key"]).reset_index(drop=True)
 
-    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","musteri_kodu","id","rakip_firma","hesaplama","firma","yetkili","gsm","sabit","email","adres","ilce","il",
+    col_order = ["islem_tarihi_manuel","takip_tarihi_manuel","randevu_tarihi_manuel","Seç","tarih","id","rakip_firma","hesaplama","firma","yetkili","gsm","sabit","email","adres","ilce","il",
                  "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme",
                  "beklenen_ciro","gerceklesen_ciro","durum","Varış İli","Koli/Palet","teklif_fiyat","islem_asamasi",
                  "asama1","asama2","asama3","aciklama","📨 Notlar",
-                 "ara_islem","il_ciro_ozet","sektor","rut","sonuc","temsilci"] + _IL_SUTUN_LISTESI
+                 "ara_islem","il_ciro_ozet","sektor","rut","sonuc"] + _IL_SUTUN_LISTESI
     # Gizli kolonları çıkar
     _kol_gizli_map = {"hesaplama":"hesaplama","firma":"firma","rakip_firma":"rakip_firma","yetkili":"yetkili","gsm":"gsm","sabit":"sabit","email":"email",
-                      "adres":"adres","il":"il","ilce":"ilce","durum":"durum","temsilci":"temsilci",
-                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","musteri_kodu":"musteri_kodu","teklif_fiyat":"teklif_fiyat","islem_tarihi_manuel":"islem_tarihi_manuel","takip_tarihi_manuel":"takip_tarihi_manuel","randevu_tarihi_manuel":"randevu_tarihi_manuel",
+                      "adres":"adres","il":"il","ilce":"ilce","durum":"durum",
+                      "vergi_no":"vergi_no","vergi_dairesi":"vergi_dairesi","musteri_subesi":"musteri_subesi","vade":"vade","odeme":"odeme","teklif_fiyat":"teklif_fiyat","islem_tarihi_manuel":"islem_tarihi_manuel","takip_tarihi_manuel":"takip_tarihi_manuel","randevu_tarihi_manuel":"randevu_tarihi_manuel",
                       "islem_asamasi":"islem_asamasi","aciklama":"aciklama","tarih":"tarih","guncelleme_tarihi":"guncelleme_tarihi",
                       "📨 Notlar":"📨 Notlar","id":"id",
                       "beklenen_ciro":"beklenen_ciro","gerceklesen_ciro":"gerceklesen_ciro",
@@ -9042,7 +8870,7 @@ function kartSec(id){
         if "aciklama" not in _kv.columns:
             _kv["aciklama"] = ""
         _kv["aciklama"] = _kv["aciklama"].fillna("").astype(str).replace("nan","")
-        _kayit_kolonlar = ["id","firma","yetkili","gsm","sabit","email","il","ilce","durum","temsilci","islem_asamasi","aciklama","asama1","asama2","asama3","sonuc"]
+        _kayit_kolonlar = ["id","firma","yetkili","gsm","sabit","email","il","ilce","durum","islem_asamasi","aciklama","asama1","asama2","asama3","sonuc"]
         _mevcut = [c for c in _kayit_kolonlar if c in _kv.columns]
         st.session_state["_ls_tablo"] = _kv[_mevcut].to_json(orient="records", force_ascii=False)
     except:
@@ -9220,13 +9048,10 @@ function kartSec(id){
                             "ilce": _tas_al("ilce"),
                             "il": _tas_al("il", "İstanbul"),
                             "durum": _tas_al("durum", "Portföy"),
-                            "temsilci": _tas_al("temsilci", st.session_state.get("kullanici","")),
                             "islem_asamasi": _tas_al("islem_asamasi"),
-                            "segment": "--",
                             "aciklama": _tas_al("aciklama"),
-                            "silindi": 0, "olusturan": st.session_state.get("kullanici",""),
-                            "beklenen_ciro": 0, "gerceklesen_ciro": 0,
-                            "atanan_kullanici": st.session_state.get("kullanici","")
+                            "silindi": 0,
+                            "beklenen_ciro": 0, "gerceklesen_ciro": 0
                         }
                         _taslak_basarili = False
                         _taslak_hata = ""
@@ -9476,7 +9301,7 @@ function kartSec(id){
                     guncelle = {}
                     for k, v in degisiklikler.items():
                         if k in ("Seç", "🗑️ Sil", "Varış İli", "Koli/Palet", "Varış İlleri", "Fiyatlandırma", "Hesaplama", "hesaplama",
-                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "musteri_kodu", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "randevu_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
+                                 "vergi_no", "vergi_dairesi", "musteri_subesi", "vade", "odeme", "teklif_fiyat", "islem_tarihi_manuel", "takip_tarihi_manuel", "randevu_tarihi_manuel", "il_ciro_ozet") or k in _IL_SUTUN_LISTESI: continue
                         if k in ("beklenen_ciro", "gerceklesen_ciro"):
                             try: guncelle[k] = float(v or 0)
                             except: guncelle[k] = 0
@@ -10075,7 +9900,7 @@ elif aktif == "kullanici":
         "excel":"📥 Excel","mesajlar":"💬 Mesajlar",
     }
 
-    kul_tab1, kul_tab2, kul_tab3, kul_tab5_ekran, kul_tab_tanim, kul_tab_kolon, kul_tab_toplu, kul_tab_font, kul_tab_kural = st.tabs(["📋 Kullanıcılar","➕ Yeni Kullanıcı","🔐 Yetki Düzenle","🎨 Ekran Ayarları","⚙️ Tanımlar","📐 Kolon Ayarları","🔄 Toplu Değiştir","🔤 Fontlar","📌 Kurallar"])
+    kul_tab1, kul_tab2, kul_tab3, kul_tab5_ekran, kul_tab_tanim, kul_tab_kolon, kul_tab_kural = st.tabs(["📋 Kullanıcılar","➕ Yeni Kullanıcı","🔐 Yetki Düzenle","🎨 Ekran Ayarları","⚙️ Tanımlar","📐 Kolon Ayarları","📌 Kurallar"])
 
     with kul_tab1:
         df_kul = db_read("kullanicilar", extra_sql="")
@@ -10319,9 +10144,9 @@ elif aktif == "kullanici":
         _KOL_VARS_UI = {
             "Seç":40,"tarih":90,
             "hesaplama":130,"firma":100,"rakip_firma":100,"yetkili":100,"gsm":110,"sabit":100,"email":100,
-            "adres":120,"il":80,"ilce":70,"durum":90,"temsilci":90,
+            "adres":120,"il":80,"ilce":70,"durum":90,
             "vergi_no":90,"vergi_dairesi":100,"musteri_subesi":100,"vade":70,"odeme":80,"teklif_fiyat":90,"islem_tarihi_manuel":90,"takip_tarihi_manuel":90,"randevu_tarihi_manuel":100,
-            "islem_asamasi":90,"aciklama":120,"📨 Notlar":60,"id":50,"musteri_kodu":80,
+            "islem_asamasi":90,"aciklama":120,"📨 Notlar":60,"id":50,
             "asama1":100,"asama2":100,"asama3":100,"sonuc":100,"ara_islem":100,"il_ciro_ozet":120,"sektor":100,"rut":100,
             "beklenen_ciro":80,"gerceklesen_ciro":80,"Varış İli":100,"Koli/Palet":120,
         }
@@ -10331,8 +10156,8 @@ elif aktif == "kullanici":
             "Seç":"Seç (işaret kutusu)","tarih":"İşlem Tarih",
             "hesaplama":"Hesaplama","firma":"Firma","rakip_firma":"Özel","yetkili":"Yetkili","gsm":"GSM","sabit":"S.Tel",
             "email":"Email","adres":"Adres","il":"İl","ilce":"İlçe",
-            "durum":"Durum","temsilci":"Temsilci","islem_asamasi":"İlk Temas",
-            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","musteri_kodu":"Müşteri Kodu","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi","randevu_tarihi_manuel":"Randevu Tarihi",
+            "durum":"Durum","islem_asamasi":"İlk Temas",
+            "vergi_no":"Vergi No","vergi_dairesi":"Vergi Dairesi","musteri_subesi":"Müşteri Şubesi","vade":"Vade","odeme":"Ödeme","teklif_fiyat":"Teklif Fiyat","islem_tarihi_manuel":"İşlem Tarihi","takip_tarihi_manuel":"Takip Tarihi","randevu_tarihi_manuel":"Randevu Tarihi",
             "aciklama":"Açıklama","📨 Notlar":"Notlar","id":"ID",
             "asama1":"1. Aşama","asama2":"2. Aşama","asama3":"3. Aşama","sonuc":"Sonuç","ara_islem":"Ara İşlem","il_ciro_ozet":"İl Ciroları","sektor":"Sektör","rut":"🛣️ Rut",
             "beklenen_ciro":"Hedef ₺","gerceklesen_ciro":"Gerçek ₺","Varış İli":"Varış İli","Koli/Palet":"Koli/Palet",
@@ -10512,81 +10337,6 @@ elif aktif == "kullanici":
                 st.error(f"Hata: {_kkgue}")
 
     # ── 🔄 TOPLU DEĞİŞTİR ────────────────────────────────────────────────────
-    with kul_tab_toplu:
-        st.markdown("### 🔄 Toplu Aşama / Durum Değiştir")
-        st.caption("Seçili aşama veya durumu toplu olarak değiştirin")
-
-        _sb_toplu = get_sb_client()
-        _df_toplu = db_read("cari_kartlar", extra_sql="WHERE (silindi=0 OR silindi='0' OR silindi IS NULL)")
-
-        if not _df_toplu.empty:
-            _tc1, _tc2, _tc3 = st.columns(3)
-
-            # Filtrele
-            _t_tem_opts = ["Tümü"] + sorted(_df_toplu["temsilci"].dropna().astype(str).unique().tolist()) if "temsilci" in _df_toplu.columns else ["Tümü"]
-            _t_tem = _tc1.selectbox("Temsilci filtrele", _t_tem_opts, key="toplu_tem")
-            if _t_tem != "Tümü":
-                _df_toplu = _df_toplu[_df_toplu["temsilci"] == _t_tem]
-
-            _t_asama_l = _tanimlar_yukle("asama")
-            _t_durum_l  = _tanimlar_yukle("durum")
-
-            _t_asama_opts = ["Tümü"] + _t_asama_l
-            _t_asama_fil = _tc2.selectbox("Mevcut Aşama filtrele", _t_asama_opts, key="toplu_asama_fil")
-            if _t_asama_fil != "Tümü":
-                _df_toplu = _df_toplu[_df_toplu["islem_asamasi"] == _t_asama_fil]
-
-            _t_durum_opts = ["Tümü"] + _t_durum_l
-            _t_durum_fil = _tc3.selectbox("Mevcut Durum filtrele", _t_durum_opts, key="toplu_durum_fil")
-            if _t_durum_fil != "Tümü":
-                _df_toplu = _df_toplu[_df_toplu["durum"] == _t_durum_fil]
-
-            st.caption(f"**{len(_df_toplu)} müşteri** seçili")
-
-            st.divider()
-            st.markdown("#### Ne Değiştirilsin?")
-            _tc4, _tc5 = st.columns(2)
-
-            _degistir_ne = _tc4.radio("Değiştirilecek alan:", ["Aşama", "Durum"], horizontal=True, key="toplu_ne")
-
-            if _degistir_ne == "Aşama":
-                _yeni_deger = _tc5.selectbox("Yeni Aşama:", ["— Boş (Temizle) —"] + _t_asama_l, key="toplu_yeni_asama")
-                _alan = "islem_asamasi"
-                _yeni_deger_db = "" if _yeni_deger == "— Boş (Temizle) —" else _yeni_deger
-            else:
-                _yeni_deger = _tc5.selectbox("Yeni Durum:", ["— Boş (Temizle) —"] + _t_durum_l, key="toplu_yeni_durum")
-                _alan = "durum"
-                _yeni_deger_db = "" if _yeni_deger == "— Boş (Temizle) —" else _yeni_deger
-
-            _secim_gecerli = True  # Boş da geçerli seçim
-
-            # Önizleme
-            with st.expander(f"👁 Etkilenecek {len(_df_toplu)} müşteriyi gör", expanded=False):
-                st.dataframe(_df_toplu[["id","firma","durum","islem_asamasi","temsilci"]].head(50),
-                           use_container_width=True, hide_index=True)
-
-            _onay = st.checkbox(f"✅ **{len(_df_toplu)} müşterinin {_degistir_ne} değerini '{_yeni_deger}' yapmayı onaylıyorum**", key="toplu_onay", disabled=not _secim_gecerli)
-
-            if st.button("🔄 Toplu Değiştir", type="primary", key="toplu_kaydet", disabled=not (_onay and _secim_gecerli)):
-                _basarili = 0
-                _hatali = 0
-                for _, _tr in _df_toplu.iterrows():
-                    try:
-                        if _sb_toplu:
-                            _sb_toplu.table("cari_kartlar").update({_alan: _yeni_deger_db}).eq("id", int(_tr["id"])).execute()
-                        _basarili += 1
-                    except:
-                        _hatali += 1
-                try: db_read.clear()
-                except: pass
-                st.session_state.pop("toplu_onay", None)
-                if _basarili:
-                    st.success(f"✅ {_basarili} müşteri güncellendi!" + (f" ⚠️ {_hatali} hata" if _hatali else ""))
-                    st.rerun()
-                else:
-                    st.error("Güncelleme başarısız!")
-        else:
-            st.info("Müşteri verisi bulunamadı.")
     with kul_tab_tanim:
         st.markdown("### ⚙️ Aşama & Durum Tanımları")
         _sb_tan = get_sb_client()
@@ -10707,35 +10457,6 @@ elif aktif == "kullanici":
                     if _tan_sil("durum", _d):
                         st.success(f"'{_d}' silindi!"); st.rerun()
 
-    with kul_tab_font:
-        st.markdown("### 🔤 Sözleşme PDF Fontları")
-        st.caption("Sözleşme PDF'lerinin Türkçe karakterleri (ş, ğ, ı, ç, ö, ü, İ) doğru basabilmesi için gereken "
-                   "font dosyaları. Başka bir bilgisayarda kuruluma ihtiyaç olursa buradan indirilebilir; "
-                   "`fonts/` klasörüne konup GitHub'a yüklenmesi gerekir.")
-        import os as _fnt_os
-        _fnt_dir = None
-        for _aday in ["fonts", "./fonts", "/mount/src/mwcrmpro/fonts"]:
-            if _fnt_os.path.isdir(_aday):
-                _fnt_dir = _aday; break
-        if not _fnt_dir:
-            st.warning("⚠️ Sunucuda `fonts/` klasörü henüz yok — önce font dosyalarını repo'ya eklemeniz gerekiyor.")
-        else:
-            _fnt1, _fnt2 = st.columns(2)
-            _fnt_normal = _fnt_os.path.join(_fnt_dir, "DejaVuSans.ttf")
-            _fnt_bold   = _fnt_os.path.join(_fnt_dir, "DejaVuSans-Bold.ttf")
-            if _fnt_os.path.isfile(_fnt_normal):
-                with open(_fnt_normal, "rb") as _f:
-                    _fnt1.download_button("⬇️ DejaVuSans.ttf indir", data=_f.read(),
-                        file_name="DejaVuSans.ttf", mime="font/ttf", use_container_width=True, key="fnt_dl_normal")
-            else:
-                _fnt1.warning("DejaVuSans.ttf bulunamadı")
-            if _fnt_os.path.isfile(_fnt_bold):
-                with open(_fnt_bold, "rb") as _f:
-                    _fnt2.download_button("⬇️ DejaVuSans-Bold.ttf indir", data=_f.read(),
-                        file_name="DejaVuSans-Bold.ttf", mime="font/ttf", use_container_width=True, key="fnt_dl_bold")
-            else:
-                _fnt2.warning("DejaVuSans-Bold.ttf bulunamadı")
-
     with kul_tab_kural:
         st.markdown("### 🔧 Bağlantısız Teklif Onarımı")
         st.caption("Eskiden bazı teklifler hiçbir cari karta bağlanmadan (musteri_id=0) kaydediliyordu — bu yüzden Cari Liste'deki '🧾 Teklif' rozetinde hiç görünmüyorlardı. Bu araç, teklif üzerindeki müşteri adını cari kartlardaki firma adıyla eşleştirip düzeltir.")
@@ -10797,7 +10518,7 @@ elif aktif == "excel":
 
     st.markdown("## 📥 Excel ile Toplu Veri Aktarımı")
 
-    sablon_kolonlar = ["firma","yetkili","gsm","sabit","email","adres","ilce","il","durum","temsilci","islem_asamasi","beklenen_ciro","gerceklesen_ciro",
+    sablon_kolonlar = ["firma","yetkili","gsm","sabit","email","adres","ilce","il","durum","islem_asamasi","beklenen_ciro","gerceklesen_ciro",
                        "vergi_no","vergi_dairesi","musteri_subesi","vade","odeme","teklif_fiyat","islem_tarihi_manuel","takip_tarihi_manuel"]
 
     sablon_buf = io.BytesIO()
@@ -10910,11 +10631,9 @@ elif aktif == "excel":
                     "ilce": _ex_temiz_str(_row.get("ilce","")),
                     "il": _ex_temiz_str(_row.get("il","")),
                     "durum": _ex_temiz_str(_row.get("durum","Hedef")) or "Hedef",
-                    "temsilci": _ex_temiz_str(_row.get("temsilci","")),
                     "islem_asamasi": _ex_temiz_str(_row.get("islem_asamasi","")) or "",
                     "beklenen_ciro": _ex_temiz_float(_row.get("beklenen_ciro",0)),
                     "gerceklesen_ciro": _ex_temiz_float(_row.get("gerceklesen_ciro",0)),
-                    "olusturan": st.session_state.get("kullanici",""),
                     "silindi": 0,
                 }
                 # KULLANICI İSTEĞİ (2026-09): Vergi No / Vergi Dairesi / Müşteri
