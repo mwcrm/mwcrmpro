@@ -1966,6 +1966,32 @@ def _hic_none_gosterme(_df):
             return _df
 
 
+def _excel_indir_butonu(_df, _anahtar, _dosya_on_ek, _imza):
+    """HIZ (2026-09): Excel dosyası eskiden SAYFANIN HER TIKLAMASINDA baştan
+    üretiliyordu (4.800+ satırda ~3,5 sn — sayfanın en yavaş parçasıydı).
+    Artık sadece istenince hazırlanır: önce '📥 Excel Hazırla', sonra aynı yerde
+    '📥 Excel İndir' çıkar. Liste/filtre değişince eski dosya otomatik atılır,
+    böylece hiçbir zaman ESKİ veri indirilmez."""
+    _b_key = f"_excel_bytes_{_anahtar}"
+    _i_key = f"_excel_imza_{_anahtar}"
+    if st.session_state.get(_i_key) != _imza:
+        st.session_state.pop(_b_key, None)
+    if _b_key in st.session_state:
+        st.download_button("📥 Excel İndir", data=st.session_state[_b_key],
+                           file_name=f"{_dosya_on_ek}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           key=_anahtar, use_container_width=True)
+    elif st.button("📥 Excel Hazırla", key=f"{_anahtar}_hazirla", use_container_width=True,
+                   help="Tıklayınca Excel dosyası hazırlanır, ardından aynı yerde 'Excel İndir' butonu çıkar."):
+        import io as _exh_io
+        _buf = _exh_io.BytesIO()
+        with st.spinner("Excel hazırlanıyor..."):
+            _df.to_excel(_buf, index=False, engine="openpyxl")
+        st.session_state[_b_key] = _buf.getvalue()
+        st.session_state[_i_key] = _imza
+        st.rerun()
+
+
 _CARI_RUT_ANAHTAR = "_cari_rut_atamalari"
 
 
@@ -8829,14 +8855,8 @@ function kartSec(id){
         with _sb4:
             # Gerçek .xlsx (openpyxl) — virgülle ayrılmış CSV DEĞİL, Excel'de doğrudan
             # sorunsuz açılan binary Excel formatı. Ekrandaki (filtrelenmiş) liste iner.
-            import io as _cl_xio
-            _cl_xl_buf = _cl_xio.BytesIO()
-            df_f.to_excel(_cl_xl_buf, index=False, engine="openpyxl")
-            _cl_xl_buf.seek(0)
-            st.download_button("📥 Excel İndir", data=_cl_xl_buf,
-                                file_name=f"cari_liste_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key="cl_excel_indir_ust", use_container_width=True)
+            _excel_indir_butonu(df_f, "cl_excel_indir_ust", "cari_liste",
+                                (_cl_imza, st.session_state.get("_cl_editor_versiyon", 0)))
         # KULLANICI İSTEĞİ (2026-09): "☑️ Tümünü Seç" / "⬜ Seçimi Temizle"
         # artık AYRI bir satırda değil, aynı üst buton satırında.
         with _sb5:
@@ -11538,14 +11558,13 @@ elif aktif == "kargolar":
 
         # ── EXCEL İNDİR — tek sayfalık, bölünmemiş tam liste. Buton satırdaki
         # rezerve edilmiş kutunun İÇİNE konur (yukarıda "_kl_excel_indir_kutu").
-        _kl_excel_buf = io.BytesIO()
-        _kl_df_goster.drop(columns=["Seç", "_cari_id", "_satir_no"]).to_excel(_kl_excel_buf, index=False, engine="openpyxl")
-        _kl_excel_buf.seek(0)
+        _kl_excel_df = _kl_df_goster.drop(columns=["Seç", "_cari_id", "_satir_no"])
+        try:
+            _kl_excel_imza = (len(_kl_excel_df), int(pd.util.hash_pandas_object(_kl_excel_df.astype(str), index=False).sum()))
+        except Exception:
+            _kl_excel_imza = (len(_kl_excel_df), datetime.now().isoformat())
         with _kl_excel_indir_kutu:
-            st.download_button("📥 Excel İndir", data=_kl_excel_buf,
-                                file_name=f"kargolar_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key="kargolar_excel_indir", use_container_width=True)
+            _excel_indir_butonu(_kl_excel_df, "kargolar_excel_indir", "kargolar", _kl_excel_imza)
 
         # ── EXCEL YÜKLE — "📤 Excel Yükle" butonuna basılınca açılır/kapanır.
         if st.session_state.get("_kargolar_excel_yukle_ac", False):
