@@ -1356,6 +1356,19 @@ import sqlite3
 import pandas as pd
 import shutil
 import os
+
+
+def _gizli_ayar(_ad, _varsayilan=""):
+    """Supabase gibi gizli ayarları okur: önce Streamlit secrets.toml,
+    bulunamazsa ortam değişkeni (Hugging Face / Render / Railway paneli).
+    Hangi sunucuda çalışırsa çalışsın aynı kod çalışsın diye."""
+    try:
+        _v = st.secrets.get(_ad, "")
+        if _v:
+            return _v
+    except Exception:
+        pass
+    return os.environ.get(_ad, _varsayilan)
 import io
 import re
 import json
@@ -1493,8 +1506,8 @@ vermesi gerekir.
 def sb_or_sqlite():
     """Supabase varsa True, yoksa SQLite kullan"""
     try:
-        url = st.secrets.get("SUPABASE_URL","")
-        key = st.secrets.get("SUPABASE_KEY","")
+        url = _gizli_ayar("SUPABASE_URL","")
+        key = _gizli_ayar("SUPABASE_KEY","")
         return bool(url and key)
     except:
         return False
@@ -1504,8 +1517,8 @@ def get_sb_client():
     """Supabase client — tek seferlik oluştur, cache'le"""
     try:
         from supabase import create_client, ClientOptions
-        url = st.secrets.get("SUPABASE_URL","")
-        key = st.secrets.get("SUPABASE_KEY","")
+        url = _gizli_ayar("SUPABASE_URL","")
+        key = _gizli_ayar("SUPABASE_KEY","")
         if url and key:
             try:
                 # Max rows limitini kaldır
@@ -2000,9 +2013,9 @@ def get_sb_service():
     """Supabase service_role client — log ve admin işlemler için"""
     try:
         from supabase import create_client
-        url = st.secrets.get("SUPABASE_URL","")
+        url = _gizli_ayar("SUPABASE_URL","")
         # Önce service key dene, yoksa normal key
-        key = st.secrets.get("SUPABASE_SERVICE_KEY","") or st.secrets.get("SUPABASE_KEY","")
+        key = _gizli_ayar("SUPABASE_SERVICE_KEY","") or _gizli_ayar("SUPABASE_KEY","")
         if url and key:
             return create_client(url, key)
     except:
@@ -2193,8 +2206,8 @@ def get_cari_listesi():
     döndürülmez."""
     import requests as _rq
     import time as _cl_time
-    _url = st.secrets.get("SUPABASE_URL","")
-    _key = st.secrets.get("SUPABASE_SERVICE_KEY","") or st.secrets.get("SUPABASE_KEY","")
+    _url = _gizli_ayar("SUPABASE_URL","")
+    _key = _gizli_ayar("SUPABASE_SERVICE_KEY","") or _gizli_ayar("SUPABASE_KEY","")
     _tum = []
     _pagination_guvenilir = False
     if _url and _key:
@@ -2641,8 +2654,8 @@ div[data-testid="stRadio"] div[role="radiogroup"]{gap:0.4rem;}
             # 1. Supabase
             try:
                 from supabase import create_client
-                url = st.secrets.get("SUPABASE_URL","")
-                key = st.secrets.get("SUPABASE_KEY","")
+                url = _gizli_ayar("SUPABASE_URL","")
+                key = _gizli_ayar("SUPABASE_KEY","")
                 if url and key:
                     sb = create_client(url, key)
                     res = sb.table("kullanicilar").select("*").eq("kullanici_adi", kullanici).eq("sifre", sifre).execute()
@@ -5284,7 +5297,7 @@ if not st.session_state.get("giris", False):
                 _ag_row = None
                 try:
                     from supabase import create_client as _agsc
-                    _ag_sb = _agsc(st.secrets.get("SUPABASE_URL",""), st.secrets.get("SUPABASE_KEY",""))
+                    _ag_sb = _agsc(_gizli_ayar("SUPABASE_URL",""), _gizli_ayar("SUPABASE_KEY",""))
                     _ag_res = _ag_sb.table("kullanicilar").select("*").eq("kullanici_adi", _ag_kul).eq("sifre", _ag_sif).execute()
                     if _ag_res.data: _ag_row = _ag_res.data[0]
                 except: pass
@@ -8508,10 +8521,60 @@ function kartSec(id){
         except Exception:
             pass
 
-    # ── SAYFALAMA KALDIRILDI — kullanıcı isteği üzerine, liste artık her zaman
-    # tam (Tümü) gösteriliyor, sayfa butonları tamamen kaldırıldı. ────────────
+    # ── SAYFALAMA (2026-09, KULLANICI İSTEĞİ — bellek/hız için) ────────────────
+    # 4.800 satırın tamamı yerine ekranda 100/250/500'lük sayfalar gösterilir.
+    # Filtreler, arama, sıralama, rapor sayıları ve Excel İndir yine TÜM listede
+    # çalışır — sadece EKRANDAKİ tablo parça parça gösterilir.
     _cl_toplam_kayit = len(df_f)
-    df_f_sayfali = df_f
+    _CL_SAYFA_BOYUTLARI = [100, 250, 500]
+    _cl_sayfa_boyutu = st.session_state.get("_cl_sayfa_boyutu", 100)
+    if _cl_sayfa_boyutu not in _CL_SAYFA_BOYUTLARI:
+        _cl_sayfa_boyutu = 100
+    _cl_toplam_sayfa = max(1, -(-_cl_toplam_kayit // _cl_sayfa_boyutu))
+    # Liste İMZASI: hangi müşteriler listede + sıralama + sayfa boyutu. Filtre ya
+    # da arama sonucu değişince 1. sayfaya dönülür. GÜVENLİK: imza tablo
+    # anahtarına da eklenir — böylece kaydedilmemiş bir düzenleme, filtre
+    # değişince YANLIŞ müşterinin satırına kayamaz (eskiden bu risk vardı).
+    try:
+        _cl_uye_imza = hash(frozenset(int(x) for x in df_f["id"].tolist())) if "id" in df_f.columns else _cl_toplam_kayit
+    except Exception:
+        _cl_uye_imza = _cl_toplam_kayit
+    _cl_imza = (_cl_uye_imza, str(_cl_sirala_alan), str(_cl_sirala_yon),
+                str(_cl_tarih_sirala_alan), str(_cl_tarih_sirala_yon), _cl_sayfa_boyutu)
+    if st.session_state.get("_cl_liste_imza") != _cl_imza:
+        st.session_state["_cl_liste_imza"] = _cl_imza
+        st.session_state["_cl_sayfa"] = 1
+    _cl_sayfa = min(max(1, int(st.session_state.get("_cl_sayfa", 1) or 1)), _cl_toplam_sayfa)
+    st.session_state["_cl_sayfa"] = _cl_sayfa
+    _cl_bas = (_cl_sayfa - 1) * _cl_sayfa_boyutu
+    df_f_sayfali = df_f.iloc[_cl_bas:_cl_bas + _cl_sayfa_boyutu]
+
+    def _cl_kaydedilmemis_var_mi():
+        """Açık sayfada 'Seç' dışında kaydedilmemiş bir değişiklik var mı?"""
+        _ek = st.session_state.get("_cl_aktif_editor_key")
+        _durum = st.session_state.get(_ek, {}) if _ek else {}
+        if not isinstance(_durum, dict):
+            return False
+        for _deg in (_durum.get("edited_rows") or {}).values():
+            if any(_k != "Seç" for _k in _deg.keys()):
+                return True
+        return bool(_durum.get("added_rows"))
+
+    def _cl_sayfa_git(_yeni):
+        if _cl_kaydedilmemis_var_mi():
+            st.session_state["_cl_sayfa_uyari"] = True
+            return
+        st.session_state["_cl_sayfa"] = int(_yeni)
+
+    def _cl_sayfa_no_degisti(_k):
+        _cl_sayfa_git(st.session_state.get(_k, 1) or 1)
+
+    def _cl_boyut_degisti():
+        if _cl_kaydedilmemis_var_mi():
+            st.session_state["_cl_sayfa_uyari"] = True
+            st.session_state["_cl_sayfa_boyutu_sec"] = st.session_state.get("_cl_sayfa_boyutu", 100)
+            return
+        st.session_state["_cl_sayfa_boyutu"] = st.session_state.get("_cl_sayfa_boyutu_sec", 100)
 
     df_edit = df_f_sayfali.copy()
     # "None" / "nan" string değerlerini temizle — boş göster
@@ -8990,7 +9053,9 @@ function kartSec(id){
         _cl_haric = st.session_state["_cl_tumu_haric_idler"]
         _cl_id_sayisal = pd.to_numeric(df_edit["id"], errors="coerce").fillna(-1).astype(int)
         df_edit["Seç"] = ~_cl_id_sayisal.isin(_cl_haric)
-    _cl_editor_key = f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
+    _cl_editor_key = (f"cari_editor_{st.session_state['_cl_editor_versiyon']}"
+                      f"_s{_cl_sayfa}_{_cl_sayfa_boyutu}_{abs(hash(_cl_imza)) % 100000000}")
+    st.session_state["_cl_aktif_editor_key"] = _cl_editor_key
 
     # ── KALICI KURAL 3c UYGULAMASI (2026-09 düzeltmesi): "Hiçbir Yerde None
     # Yazısı Gösterilmeyecek" kuralı yazılmıştı ama Cari Liste'nin ANA
@@ -9020,8 +9085,12 @@ function kartSec(id){
         # buradan yeniden kurulacak.
         if st.session_state.get("_cl_tumu_secili_mod", False) and "id" in edited_df.columns:
             _cl_id_sayisal2 = pd.to_numeric(edited_df["id"], errors="coerce").fillna(-1).astype(int)
-            st.session_state["_cl_tumu_haric_idler"] = set(
-                _cl_id_sayisal2[edited_df["Seç"] == False].tolist()
+            # Sayfalama: sadece BU sayfadaki müşterilerin durumu güncellenir,
+            # diğer sayfalardaki işaret kaldırmaları korunur.
+            _cl_bu_sayfa_idler = set(_cl_id_sayisal2.tolist())
+            st.session_state["_cl_tumu_haric_idler"] = (
+                (set(st.session_state.get("_cl_tumu_haric_idler", set())) - _cl_bu_sayfa_idler)
+                | set(_cl_id_sayisal2[edited_df["Seç"] == False].tolist())
             )
 
     # (not paneli artık tablonun altında expander olarak açılıyor)
@@ -9669,10 +9738,35 @@ function kartSec(id){
 
 
 
-    # ── SAYFALAMA KONTROLLERİ KALDIRILDI — kullanıcı isteği üzerine ──────────
+    # ── SAYFALAMA KONTROLLERİ ─────────────────────────────────────────────────
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     if _cl_toplam_kayit > 0:
-        st.caption(f"Seçmek için Seç kolonunu işaretleyin · **Tümü** gösteriliyor — {_cl_toplam_kayit} kayıt")
+        if st.session_state.pop("_cl_sayfa_uyari", False):
+            st.warning("⚠️ Bu sayfada kaydedilmemiş değişiklik var. Önce **💾 Değişiklikleri Kaydet**'e bas, sonra sayfa değiştir — yoksa yazdıkların kaybolur.")
+        _cl_son = min(_cl_bas + _cl_sayfa_boyutu, _cl_toplam_kayit)
+        _pc1, _pc2, _pc3, _pc4, _pc5, _pc6, _pc7 = st.columns([0.8, 1, 2.4, 0.9, 1, 0.8, 1.1], vertical_alignment="center")
+        _pc1.button("⏮ İlk", key="cl_sayfa_ilk", on_click=_cl_sayfa_git, args=(1,),
+                    disabled=_cl_sayfa <= 1, use_container_width=True)
+        _pc2.button("◀ Önceki", key="cl_sayfa_onceki", on_click=_cl_sayfa_git, args=(_cl_sayfa - 1,),
+                    disabled=_cl_sayfa <= 1, use_container_width=True)
+        _pc3.markdown(
+            f"<div style='text-align:center;font-size:14px;'><b>Sayfa {_cl_sayfa} / {_cl_toplam_sayfa}</b>"
+            f" · {_cl_bas + 1}–{_cl_son} arası · toplam <b>{_cl_toplam_kayit}</b> kayıt</div>",
+            unsafe_allow_html=True)
+        _cl_git_key = f"cl_sayfa_git_{_cl_sayfa}_{_cl_toplam_sayfa}"
+        _pc4.number_input("Sayfaya git", min_value=1, max_value=_cl_toplam_sayfa, value=_cl_sayfa, step=1,
+                          key=_cl_git_key, on_change=_cl_sayfa_no_degisti, args=(_cl_git_key,),
+                          label_visibility="collapsed", help="Sayfa numarasını yazıp Enter'a bas")
+        _pc5.button("Sonraki ▶", key="cl_sayfa_sonraki", on_click=_cl_sayfa_git, args=(_cl_sayfa + 1,),
+                    disabled=_cl_sayfa >= _cl_toplam_sayfa, use_container_width=True)
+        _pc6.button("Son ⏭", key="cl_sayfa_son", on_click=_cl_sayfa_git, args=(_cl_toplam_sayfa,),
+                    disabled=_cl_sayfa >= _cl_toplam_sayfa, use_container_width=True)
+        st.session_state.setdefault("_cl_sayfa_boyutu_sec", _cl_sayfa_boyutu)
+        _pc7.selectbox("Sayfa başına", _CL_SAYFA_BOYUTLARI, key="_cl_sayfa_boyutu_sec",
+                       on_change=_cl_boyut_degisti, format_func=lambda _x: f"{_x} satır / sayfa",
+                       label_visibility="collapsed")
+        st.caption("Seçmek için Seç kolonunu işaretleyin · Arama, filtre ve sıralama TÜM müşterilerde çalışır · "
+                   "'☑️ Tümünü Seç' sadece bu sayfadakileri seçer · 'Excel İndir' filtrelenmiş listenin TAMAMINI indirir.")
 
     st.divider()
 
