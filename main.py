@@ -144,28 +144,26 @@ _CARI_EK_ALAN_ETIKET = {
 }
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _cari_ek_bilgi_yukle_goster():
+    """SADECE GÖRÜNTÜLEME için, önbellekli. Her kayıttan sonra temizlenir."""
+    _s = _kt_oku_taze(_CARI_EK_ALAN_ANAHTAR)
+    return {} if (_s is _OKUMA_BASARISIZ or _s is None) else _s
+
+
 def _cari_ek_bilgi_yukle():
-    """KULLANICI İSTEĞİ (2026-09): Vergi No / Vergi Dairesi / Müşteri Şubesi /
-    Vade / Ödeme alanları cari_kartlar'da GERÇEK birer sütun DEĞİL (proje
-    kuralı: yeni SQL migration yok) — Rut ile AYNI desen: mevcut
-    kullanici_tercih tablosunda TEK bir JSON blob olarak, {cari_id_str:
-    {alan: değer}} şeklinde saklanır."""
-    try:
-        sb = get_sb_client()
-        if not sb:
-            return {}
-        r = sb.table("kullanici_tercih").select("deger").eq(
-            "kullanici", "__liste_ui__").eq("anahtar", _CARI_EK_ALAN_ANAHTAR).execute()
-        if r.data:
-            return json.loads(r.data[0]["deger"])
-        return {}
-    except Exception:
-        return {}
+    """KAYIT öncesi okuma — önbelleksiz. Okunamazsa _VeriOkumaHatasi fırlatır
+    (eskiden {} dönüyordu; bu, tek müşteriyi kaydederken HERKESİN Vergi No /
+    Teklif Fiyat / İl Ciroları bilgisini silebilirdi)."""
+    return _kt_oku_zorunlu(_CARI_EK_ALAN_ANAHTAR, {})
+
 
 
 def _cari_ek_bilgi_kaydet(_sozluk):
     """GÜVENLİ (bkz. _cari_rut_kaydet ile aynı desen) — SİLME YOK, satır
     varsa UPDATE, yoksa INSERT."""
+    try: _cari_ek_bilgi_yukle_goster.clear()
+    except Exception: pass
     try:
         sb = get_sb_client()
         if not sb:
@@ -177,6 +175,8 @@ def _cari_ek_bilgi_kaydet(_sozluk):
             sb.table("kullanici_tercih").insert({
                 "kullanici": "__liste_ui__", "anahtar": _CARI_EK_ALAN_ANAHTAR, "deger": _deger
             }).execute()
+        try: _cari_ek_bilgi_yukle_goster.clear()
+        except Exception: pass
         return True
     except Exception:
         return False
@@ -193,22 +193,17 @@ def _cari_ek_bilgi_kaydet(_sozluk):
 _MUSTERI_KODU_ANAHTAR = "_musteri_kodu_haritasi"
 
 
-def _musteri_kodu_yukle():
-    try:
-        sb = get_sb_client()
-        if not sb:
-            return {}
-        r = sb.table("kullanici_tercih").select("deger").eq(
-            "kullanici", "__liste_ui__").eq("anahtar", _MUSTERI_KODU_ANAHTAR).execute()
-        if r.data:
-            return json.loads(r.data[0]["deger"])
-        return {}
-    except Exception:
-        return {}
+@st.cache_data(ttl=60, show_spinner=False)
+def _musteri_kodu_yukle_goster():
+    _s = _kt_oku_taze(_MUSTERI_KODU_ANAHTAR)
+    return {} if (_s is _OKUMA_BASARISIZ or _s is None) else _s
+
 
 
 def _musteri_kodu_kaydet(_sozluk):
     """GÜVENLİ — SİLME YOK, satır varsa UPDATE, yoksa INSERT."""
+    try: _musteri_kodu_yukle_goster.clear()
+    except Exception: pass
     try:
         sb = get_sb_client()
         if not sb:
@@ -220,6 +215,8 @@ def _musteri_kodu_kaydet(_sozluk):
             sb.table("kullanici_tercih").insert({
                 "kullanici": "__liste_ui__", "anahtar": _MUSTERI_KODU_ANAHTAR, "deger": _deger
             }).execute()
+        try: _musteri_kodu_yukle_goster.clear()
+        except Exception: pass
         return True
     except Exception:
         return False
@@ -256,22 +253,24 @@ def _musteri_kodu_sonraki_bul(_harita, _tum_gecerli_idler):
 _CARI_ARSIV_ANAHTAR = "_cari_arsiv_idler"
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _cari_arsiv_yukle_goster():
+    """SADECE GÖRÜNTÜLEME için, önbellekli. Her arşiv kaydından sonra temizlenir."""
+    _s = _kt_oku_taze(_CARI_ARSIV_ANAHTAR)
+    return set() if (_s is _OKUMA_BASARISIZ or _s is None) else set(_s)
+
+
 def _cari_arsiv_yukle():
-    try:
-        sb = get_sb_client()
-        if not sb:
-            return set()
-        r = sb.table("kullanici_tercih").select("deger").eq(
-            "kullanici", "__liste_ui__").eq("anahtar", _CARI_ARSIV_ANAHTAR).execute()
-        if r.data:
-            return set(json.loads(r.data[0]["deger"]))
-        return set()
-    except Exception:
-        return set()
+    """KAYIT öncesi okuma — okunamazsa hata fırlatır (eskiden boş küme dönüp
+    tüm arşivi silebiliyordu)."""
+    return set(_kt_oku_zorunlu(_CARI_ARSIV_ANAHTAR, []))
+
 
 
 def _cari_arsiv_kaydet(_id_seti):
     """GÜVENLİ — SİLME YOK, satır varsa UPDATE, yoksa INSERT."""
+    try: _cari_arsiv_yukle_goster.clear()
+    except Exception: pass
     try:
         sb = get_sb_client()
         if not sb:
@@ -283,6 +282,8 @@ def _cari_arsiv_kaydet(_id_seti):
             sb.table("kullanici_tercih").insert({
                 "kullanici": "__liste_ui__", "anahtar": _CARI_ARSIV_ANAHTAR, "deger": _deger
             }).execute()
+        try: _cari_arsiv_yukle_goster.clear()
+        except Exception: pass
         return True
     except Exception:
         return False
@@ -295,7 +296,7 @@ def _cari_arsiv_goruntule_dialog():
     KALICI BAYRAK deseni (bkz. not_dialog) — pencere içinde bir işlem
     (Geri Al) yapılıp sayfa yenilense bile, "❌ Kapat"a basılana kadar
     açık kalır."""
-    _ars_idler = _cari_arsiv_yukle()
+    _ars_idler = _cari_arsiv_yukle_goster()
     if not _ars_idler:
         st.info("📦 Arşivde hiç müşteri yok.")
     else:
@@ -776,7 +777,7 @@ def _fy_hepsini_yerlestir_ana_tablo(cari_id, ham_metin, firma_adi=""):
         # ── İlleri İşaretle (Varış İlleri matrisine) ──
         _fyat_il_isaretlenen = []
         try:
-            _fyat_tum_matris = dict(_il_gonderim_matrisi_yukle())
+            _fyat_tum_matris = dict(_il_gonderim_matrisi_yukle_taze())
             _fyat_id_str = str(int(cari_id))
             _fyat_tum_matris.setdefault(_fyat_id_str, {})
             for _fyat_il_bulunan in _fyat_iller_bulunan_set:
@@ -1552,6 +1553,8 @@ def _il_gonderim_matrisi_kaydet(_matris):
             _sb_ilm2.table("kullanici_tercih").insert(
                 {"kullanici": "__liste_ui__", "anahtar": "_il_gonderim_matrisi", "deger": _deger}
             ).execute()
+        try: _il_gonderim_matrisi_yukle.clear()
+        except Exception: pass
         # 🚨 DÜZELTME (2026-09): Cari Liste'nin Rut/İl sütunları performans için
         # session_state'te önbelleğe alınıyor (bkz. _cl_il_rut_onbellek_*).
         # İl matrisi HER değiştiğinde bu önbellek de KESİN olarak temizlenir —
@@ -1593,7 +1596,13 @@ def _kg_manuel_alici_kaydet(_sozluk):
         if not _sb_ma2:
             return False
         import json as _maj2
-        _deger = _maj2.dumps(_sozluk, ensure_ascii=False)
+        # GÜVENLİK: eski/önbellekli kopya yerine TAZE liste üzerine eklenir.
+        _ma_taze = _kt_oku_taze("_kargo_manuel_alici_firmalar")
+        if _ma_taze is _OKUMA_BASARISIZ:
+            return False
+        _ma_birlesik = dict(_ma_taze or {})
+        _ma_birlesik.update(_sozluk)
+        _deger = _maj2.dumps(_ma_birlesik, ensure_ascii=False)
         _guncelle_sonuc = _sb_ma2.table("kullanici_tercih").update({"deger": _deger}).eq(
             "kullanici", "__liste_ui__").eq("anahtar", "_kargo_manuel_alici_firmalar").execute()
         if not _guncelle_sonuc.data:
@@ -1633,6 +1642,65 @@ def _kg_kayitlari_yukle(_anahtar):
 # Bu sinyal döndüğünde çağıran taraf İŞLEMİ İPTAL ETMELİ, boşmuş gibi devam
 # ETMEMELİ.
 _OKUMA_BASARISIZ = object()
+
+
+class _VeriOkumaHatasi(Exception):
+    """Veritabanı okunamadığında fırlatılır — çağıran kayıt işlemi İPTAL olur,
+    böylece 'boş sanılıp üzerine yazma' yüzünden veri kaybı yaşanmaz."""
+    pass
+
+
+def _kt_oku_taze(_anahtar, _kullanici="__liste_ui__"):
+    """kullanici_tercih'ten ÖNBELLEKSİZ okuma. Satır yoksa None, okuma
+    başarısızsa _OKUMA_BASARISIZ döner (ASLA sessizce {} dönmez)."""
+    try:
+        _sb_kto = get_sb_client()
+        if not _sb_kto:
+            return _OKUMA_BASARISIZ
+        _r_kto = _sb_kto.table("kullanici_tercih").select("deger").eq(
+            "kullanici", _kullanici).eq("anahtar", _anahtar).execute()
+        if _r_kto.data:
+            return json.loads(_r_kto.data[0]["deger"])
+        return None
+    except Exception:
+        return _OKUMA_BASARISIZ
+
+
+def _kt_oku_zorunlu(_anahtar, _varsayilan, _kullanici="__liste_ui__"):
+    """Kaydetmeden önce kullanılan okuma. Okunamazsa kullanıcıyı uyarır ve
+    _VeriOkumaHatasi fırlatır — kayıt yapılmaz, mevcut veri korunur."""
+    _sonuc_kto = _kt_oku_taze(_anahtar, _kullanici)
+    if _sonuc_kto is _OKUMA_BASARISIZ:
+        try:
+            st.toast("⚠️ Veritabanı şu an okunamadı — veri kaybını önlemek için bu kayıt YAPILMADI. Lütfen tekrar dene.", icon="⚠️")
+        except Exception:
+            pass
+        raise _VeriOkumaHatasi("Veritabanı okunamadı, güvenlik için kayıt yapılmadı.")
+    return _varsayilan if _sonuc_kto is None else _sonuc_kto
+
+
+def _kt_yaz(_anahtar, _deger_obj, _kullanici="__liste_ui__"):
+    """GÜVENLİ yazma (Kural 3b): SİLME YOK, upsert YOK — satır varsa UPDATE,
+    yoksa INSERT. Başarılıysa True döner."""
+    try:
+        _sb_kty = get_sb_client()
+        if not _sb_kty:
+            return False
+        _deger_kty = _deger_obj if isinstance(_deger_obj, str) else json.dumps(_deger_obj, ensure_ascii=False)
+        _g_kty = _sb_kty.table("kullanici_tercih").update({"deger": _deger_kty}).eq(
+            "kullanici", _kullanici).eq("anahtar", _anahtar).execute()
+        if not _g_kty.data:
+            _sb_kty.table("kullanici_tercih").insert({
+                "kullanici": _kullanici, "anahtar": _anahtar, "deger": _deger_kty
+            }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def _il_gonderim_matrisi_yukle_taze():
+    """Kaydetmeden önce kullanılır — önbelleksiz, okunamazsa hata fırlatır."""
+    return _kt_oku_zorunlu("_il_gonderim_matrisi", {})
 
 
 def _kg_kayitlari_yukle_taze(_anahtar):
@@ -2252,13 +2320,17 @@ def db_insert(table, data):
     sb = get_sb_client()
     _sb_hata = None
     if sb:
+        # 🚨 DÜZELTME: Supabase hata verirse artık sessizce yerel SQLite'a
+        # yazıp "kaydedildi" DENMİYOR (o dosya sunucu yeniden başlayınca
+        # siliniyordu = kayıp). Hata açıkça gösterilir.
         try:
-            res = sb.table(table).insert(data).execute()
-            if res.data:
-                return True
+            sb.table(table).insert(data).execute()
+            return True
         except Exception as e:
-            _sb_hata = str(e)
-    # SQLite fallback
+            st.session_state["_last_db_error"] = str(e)
+            st.error(f"⚠️ Kayıt veritabanına yazılamadı ({table}): {e}")
+            return False
+    # SQLite (sadece Supabase hiç yapılandırılmamışsa)
     try:
         conn = get_conn()
         cols = ", ".join(data.keys())
@@ -2285,12 +2357,14 @@ def db_update(table, data, where_col, where_val):
             return True
     sb = get_sb_client()
     if sb:
+        # 🚨 DÜZELTME: Supabase hata verirse artık sessizce yerel SQLite'a
+        # yazıp True DÖNMÜYOR — hata gösterilir, kayıt yapılmadığı bilinir.
         try:
             sb.table(table).update(data).eq(where_col, where_val).execute()
             return True
         except Exception as _e_up:
-            # Supabase hata — SQLite'a dön
-            pass
+            st.error(f"⚠️ Güncelleme veritabanına yazılamadı ({table}): {_e_up}")
+            return False
     try:
         conn = get_conn()
         sets = ", ".join([f"{k}=?" for k in data.keys()])
@@ -2441,6 +2515,7 @@ def sayfa_log(sayfa):
 
 
 
+@st.cache_data(ttl=120, show_spinner=False)
 def _tanimlar_yukle(tip):
     """sistem_tanimlar tablosundan aşama/durum listesi çek"""
     _sb = get_sb_client()
@@ -3215,10 +3290,8 @@ def _dis_nakliye_kaydet(kayitlar):
     try:
         _sb = get_sb_client()
         if _sb:
-            _sb.table("kullanici_tercih").upsert({
-                "kullanici": "__liste_ui__", "anahtar": "dis_nakliye_islemleri",
-                "deger": json.dumps(kayitlar, ensure_ascii=False)
-            }, on_conflict="kullanici,anahtar").execute()
+            if not _kt_yaz("dis_nakliye_islemleri", kayitlar):
+                return False
         st.session_state["_dn2_kayitlar"] = kayitlar
         return True
     except Exception:
@@ -3242,10 +3315,8 @@ def _dis_nakliye_tasiyici_kaydet(liste):
     try:
         _sb = get_sb_client()
         if _sb:
-            _sb.table("kullanici_tercih").upsert({
-                "kullanici": "__liste_ui__", "anahtar": "dis_nakliye_tasiyicilar",
-                "deger": json.dumps(liste, ensure_ascii=False)
-            }, on_conflict="kullanici,anahtar").execute()
+            if not _kt_yaz("dis_nakliye_tasiyicilar", liste):
+                return False
         st.session_state["_dn2_tasiyicilar"] = liste
         return True
     except Exception:
@@ -3324,9 +3395,7 @@ def _tedarikci_migrasyon_isaretle():
     try:
         _sb_tdm2 = get_sb_client()
         if _sb_tdm2:
-            _sb_tdm2.table("kullanici_tercih").upsert({
-                "kullanici": "__liste_ui__", "anahtar": _TEDARIKCI_MIGRASYON_ANAHTARI, "deger": "1"
-            }, on_conflict="kullanici,anahtar").execute()
+            _kt_yaz(_TEDARIKCI_MIGRASYON_ANAHTARI, "1")
     except Exception:
         pass
 
@@ -3973,39 +4042,43 @@ def not_dialog(cari_id, firma_adi=""):
             else:
                 _kg_gonderen_il_deger = _kg_gonderen_il if _kg_gonderen_il != "-- İl seçilir --" else ""
                 _kg_alici_il_deger = _kg_alici_il if _kg_alici_il != "-- İl seçilir --" else ""
-                _kg_liste = list(_kg_kayitlari_yukle(_kg_anahtar))
-                # Yazdığın her şey (il isimleri dahil) kaydedilirken otomatik
-                # BÜYÜK HARFE çevrilir — Türkçe karaktere duyarlı şekilde.
-                _kg_yeni_kayit = {
-                    "tarih": str(_kg_tarih), "takip_no": _tr_buyuk(_kg_takip), "fatura_no": _tr_buyuk(_kg_fatura_no), "gonderen_firma": _tr_buyuk(_kg_gonderen),
-                    "alici_firma": _tr_buyuk(_kg_alici), "fatura_firma": _tr_buyuk(_kg_fatura_odeyen),
-                    "gonderen_il": _tr_buyuk(_kg_gonderen_il_deger), "alici_il": _tr_buyuk(_kg_alici_il_deger),
-                    "fatura_odeme_sekli": _kg_fatura_odeme_sekli, "yetkili": _tr_buyuk(_kg_yetkili), "not": _kg_not,
-                    "adet": _kg_adet, "tur": _tr_buyuk(_kg_tur), "tutar": _kg_tutar,
-                    "desi": _kg_desi, "kilo": _kg_kilo,
-                    "odeme_tur": _kg_odeme_tur, "tahsilat_durumu": _kg_tahsilat,
-                    "dis_nakliye_firma": _tr_buyuk(_kg_dn_firma), "dis_nakliye_fatura": _tr_buyuk(_kg_dn_fatura),
-                    "dis_nakliye_detay": _tr_buyuk(_kg_dn_detay), "dis_nakliye_tutar": _kg_dn_tutar,
-                    "musteri_tutar": _kg_musteri_tutar, "dis_nakliye_odeme_durumu": _kg_dn_odeme,
-                }
-                # Sigorta/Ara Toplam/Kdv/Son Toplam VE Kar/Zarar burada da
-                # (canlı önizlemedekiyle birebir aynı mantıkla) OTOMATİK
-                # hesaplanıp kayda yazılır — elle girilen bir değer yok.
-                _kg_hesap_zinciri(_kg_yeni_kayit)
-                _kg_kar_zarar_hesapla(_kg_yeni_kayit)
-                _kg_liste.append(_kg_yeni_kayit)
-                _kg_kayitlari_kaydet(_kg_anahtar, _kg_liste)
-                _kg_kayitlari_yukle.clear()
-                _cari_gerceklesen_ciro_ekle(cari_id, _kg_efektif_tutar(_kg_liste[-1]))
-                # Alıcı Firma + Alıcı İl çiftini kalıcı hafızaya yaz — bir dahaki
-                # sefere bu firma yazılınca ili otomatik gelsin.
-                if _kg_alici and _kg_alici_il_deger:
-                    _kg_hafiza_guncel = dict(_kg_manuel_alici_hafiza)
-                    _kg_hafiza_guncel[_tr_buyuk(_kg_alici)] = _tr_buyuk(_kg_alici_il_deger)
-                    _kg_manuel_alici_kaydet(_kg_hafiza_guncel)
-                    _kg_manuel_alici_yukle.clear()
-                st.toast("✅ Kargo girişi kaydedildi", icon="🚚")
-                st.rerun()
+                _kg_taze_liste = _kg_kayitlari_yukle_taze(_kg_anahtar)
+                if _kg_taze_liste is _OKUMA_BASARISIZ:
+                    st.error("⚠️ Veritabanına şu an ulaşılamadı — güvenlik için kargo kaydı YAPILMADI (mevcut kayıtlar korundu). Lütfen tekrar dene.")
+                else:
+                    _kg_liste = list(_kg_taze_liste)
+                    # Yazdığın her şey (il isimleri dahil) kaydedilirken otomatik
+                    # BÜYÜK HARFE çevrilir — Türkçe karaktere duyarlı şekilde.
+                    _kg_yeni_kayit = {
+                        "tarih": str(_kg_tarih), "takip_no": _tr_buyuk(_kg_takip), "fatura_no": _tr_buyuk(_kg_fatura_no), "gonderen_firma": _tr_buyuk(_kg_gonderen),
+                        "alici_firma": _tr_buyuk(_kg_alici), "fatura_firma": _tr_buyuk(_kg_fatura_odeyen),
+                        "gonderen_il": _tr_buyuk(_kg_gonderen_il_deger), "alici_il": _tr_buyuk(_kg_alici_il_deger),
+                        "fatura_odeme_sekli": _kg_fatura_odeme_sekli, "yetkili": _tr_buyuk(_kg_yetkili), "not": _kg_not,
+                        "adet": _kg_adet, "tur": _tr_buyuk(_kg_tur), "tutar": _kg_tutar,
+                        "desi": _kg_desi, "kilo": _kg_kilo,
+                        "odeme_tur": _kg_odeme_tur, "tahsilat_durumu": _kg_tahsilat,
+                        "dis_nakliye_firma": _tr_buyuk(_kg_dn_firma), "dis_nakliye_fatura": _tr_buyuk(_kg_dn_fatura),
+                        "dis_nakliye_detay": _tr_buyuk(_kg_dn_detay), "dis_nakliye_tutar": _kg_dn_tutar,
+                        "musteri_tutar": _kg_musteri_tutar, "dis_nakliye_odeme_durumu": _kg_dn_odeme,
+                    }
+                    # Sigorta/Ara Toplam/Kdv/Son Toplam VE Kar/Zarar burada da
+                    # (canlı önizlemedekiyle birebir aynı mantıkla) OTOMATİK
+                    # hesaplanıp kayda yazılır — elle girilen bir değer yok.
+                    _kg_hesap_zinciri(_kg_yeni_kayit)
+                    _kg_kar_zarar_hesapla(_kg_yeni_kayit)
+                    _kg_liste.append(_kg_yeni_kayit)
+                    _kg_kayitlari_kaydet(_kg_anahtar, _kg_liste)
+                    _kg_kayitlari_yukle.clear()
+                    _cari_gerceklesen_ciro_ekle(cari_id, _kg_efektif_tutar(_kg_liste[-1]))
+                    # Alıcı Firma + Alıcı İl çiftini kalıcı hafızaya yaz — bir dahaki
+                    # sefere bu firma yazılınca ili otomatik gelsin.
+                    if _kg_alici and _kg_alici_il_deger:
+                        _kg_hafiza_guncel = dict(_kg_manuel_alici_hafiza)
+                        _kg_hafiza_guncel[_tr_buyuk(_kg_alici)] = _tr_buyuk(_kg_alici_il_deger)
+                        _kg_manuel_alici_kaydet(_kg_hafiza_guncel)
+                        _kg_manuel_alici_yukle.clear()
+                    st.toast("✅ Kargo girişi kaydedildi", icon="🚚")
+                    st.rerun()
 
         _kg_mevcut_ham = _kg_kayitlari_yukle(_kg_anahtar)
         # GÜVENLİK: silinen kayıtlar listeden TAMAMEN çıkarılmıyor, sadece
@@ -4223,7 +4296,7 @@ def not_dialog(cari_id, firma_adi=""):
             if _vd_illeri.strip():
                 try:
                     import re as _vd_re
-                    _vd_tum_matris2 = dict(_il_gonderim_matrisi_yukle())
+                    _vd_tum_matris2 = dict(_il_gonderim_matrisi_yukle_taze())
                     _vd_id_str = str(int(cari_id))
                     _vd_tum_matris2.setdefault(_vd_id_str, {})
                     # Kelime bazlı TAM eşleşme — böylece yazım hatası olan kelimeler
@@ -4544,7 +4617,7 @@ def not_dialog(cari_id, firma_adi=""):
                     # ayrıca o kutuya tekrar yazmaya gerek kalmaz.
                     if (_fy_ikisi_tiklandi or _fy_hepsi_tiklandi) and _fy_iller_bulunan_set:
                         try:
-                            _fy_tum_matris2 = dict(_il_gonderim_matrisi_yukle())
+                            _fy_tum_matris2 = dict(_il_gonderim_matrisi_yukle_taze())
                             _fy_id_str = str(int(cari_id))
                             _fy_tum_matris2.setdefault(_fy_id_str, {})
                             _fy_il_isaretlenen = []
@@ -6484,7 +6557,7 @@ section[data-testid="stSidebar"] { display: none !important; }
     # ── Vergi No / Vergi Dairesi / Müşteri Şubesi / Vade / Ödeme — KULLANICI
     # İSTEĞİ (2026-09): cari_kartlar'da GERÇEK sütun DEĞİL (yeni SQL migration
     # yok), Rut ile AYNI desen — kullanici_tercih'te {cari_id: {alan: değer}}.
-    _cari_ek_bilgi_erken = _cari_ek_bilgi_yukle()
+    _cari_ek_bilgi_erken = _cari_ek_bilgi_yukle_goster()
     if not df.empty and "id" in df.columns:
         # 🚀 SAF PERFORMANS (2026-09, davranış değişmedi, sadece daha hızlı):
         # .apply()+lambda yerine ön-hesaplanmış {id: değer} sözlüğü ile .map()
@@ -6509,16 +6582,21 @@ section[data-testid="stSidebar"] { display: none !important; }
     # YENİ kod GÖRÜNTÜLEME/REFERANS için eklenir. Henüz kodu olmayan (yeni
     # eklenmiş) müşterilere otomatik, silinen müşterilerin boşta kalan
     # numarası öncelikli olacak şekilde kod atanır.
-    _musteri_kodu_erken = _musteri_kodu_yukle()
+    _musteri_kodu_erken = dict(_musteri_kodu_yukle_goster())
     if not df.empty and "id" in df.columns:
         _mk_gecerli_idler = set(str(int(_r)) for _r in df["id"] if pd.notna(_r))
-        _mk_degisti = False
-        for _mk_id in _mk_gecerli_idler:
-            if _mk_id not in _musteri_kodu_erken:
-                _musteri_kodu_erken[_mk_id] = _musteri_kodu_sonraki_bul(_musteri_kodu_erken, _mk_gecerli_idler)
-                _mk_degisti = True
-        if _mk_degisti:
-            _musteri_kodu_kaydet(_musteri_kodu_erken)
+        if any(_mk_id not in _musteri_kodu_erken for _mk_id in _mk_gecerli_idler):
+            # Yeni kod atanacak — GÜVENLİK: önbellekteki değil, TAZE listeye ekle.
+            _mk_taze = _kt_oku_taze(_MUSTERI_KODU_ANAHTAR)
+            if _mk_taze is not _OKUMA_BASARISIZ:
+                _musteri_kodu_erken = dict(_mk_taze or {})
+                _mk_degisti = False
+                for _mk_id in sorted(_mk_gecerli_idler, key=lambda _x: int(_x)):
+                    if _mk_id not in _musteri_kodu_erken:
+                        _musteri_kodu_erken[_mk_id] = _musteri_kodu_sonraki_bul(_musteri_kodu_erken, _mk_gecerli_idler)
+                        _mk_degisti = True
+                if _mk_degisti:
+                    _musteri_kodu_kaydet(_musteri_kodu_erken)
         df["musteri_kodu"] = df["id"].apply(
             lambda _rid: _musteri_kodu_erken.get(str(int(_rid)), "") if pd.notna(_rid) else "")
 
@@ -6717,11 +6795,7 @@ section[data-testid="stSidebar"] { display: none !important; }
             try:
                 _sb = get_sb_client()
                 if _sb:
-                    import json as _tj
-                    _sb.table("kullanici_tercih").upsert({
-                        "kullanici":"__liste_ui__","anahtar":anahtar,
-                        "deger":_tj.dumps(deger, ensure_ascii=False)
-                    }, on_conflict="kullanici,anahtar").execute()
+                    _kt_yaz(anahtar, deger)
             except: pass
 
         # Sıra — session_state'te yoksa DB'den yükle
@@ -7857,7 +7931,7 @@ function kartSec(id){
     # durum YOK. Arşivdekileri görmek için AYRI bir buton/pencere kullanılır
     # (bkz. "📦 Arşiv" butonu, sticky bar'da — kendi dialog'unu açar). Üstteki
     # GENEL/SONUÇ rapor sayaçları bu filtrelemeden ETKİLENMEZ.
-    _cl_arsiv_idler_gizli = _cari_arsiv_yukle()
+    _cl_arsiv_idler_gizli = _cari_arsiv_yukle_goster()
     if _cl_arsiv_idler_gizli and "id" in df_f.columns:
         df_f = df_f[~df_f["id"].astype(str).isin(_cl_arsiv_idler_gizli)]
     # Toplam aktifse tüm filtreleri zorla sıfırla
@@ -8245,21 +8319,6 @@ function kartSec(id){
 
     st.divider()
 
-    # ── DURUM LİSTESİ — Supabase'den yükle (col_config için) ─────────────────
-    def _durum_listesi_yukle():
-        try:
-            _sb_d = get_sb_client()
-            if _sb_d:
-                _res = _sb_d.table("kullanici_tercih").select("deger") \
-                    .eq("kullanici","__sistem__").eq("anahtar","ekstra_durumlar").execute()
-                if _res.data:
-                    import json as _jdl
-                    return _jdl.loads(_res.data[0]["deger"])
-        except: pass
-        return []
-    _ekstra_d = _durum_listesi_yukle()
-    _durum_temel = _tanimlar_yukle("durum") or ["Özel Müşteri","Portföy"]
-    _tum_durumlar = _durum_temel + [d for d in _ekstra_d if d not in _durum_temel]
 
     # ── KOLON AYARLARI ──────────────────────────────────────────────────────────
     # ── KOLON GENİŞLİKLERİ — DB'den oku ─────────────────────────────────────
@@ -8482,9 +8541,12 @@ function kartSec(id){
     # ama HER ZAMAN DOĞRU ve GÜNCEL sonucu garanti eder.
     _il_gonderim_matrisi = _il_gonderim_matrisi_yukle()
     if "id" in df_edit.columns:
+        # SAF PERFORMANS (aynı sonuç, önbellek YOK): id metni bir kez hesaplanır,
+        # her il sütunu sözlük eşlemesiyle doldurulur.
+        _ilm_id_str = df_edit["id"].apply(lambda _rid: str(int(_rid)) if pd.notna(_rid) else "")
         for _il_kol in _IL_SUTUN_LISTESI:
-            df_edit[_il_kol] = df_edit["id"].apply(
-                lambda _rid: (_il_gonderim_matrisi.get(str(int(_rid)), {}).get(_il_kol, "") or "") if pd.notna(_rid) else "")
+            _ilm_kol_map = {_k: ((_v or {}).get(_il_kol, "") or "") for _k, _v in _il_gonderim_matrisi.items()}
+            df_edit[_il_kol] = _ilm_id_str.map(_ilm_kol_map).fillna("")
         # "Rut" — KULLANICI İSTEĞİ (2026-09): artık elle yazılmıyor, hangi İL
         # sütun(lar)ına gönderim bilgisi girildiyse OTOMATİK hesaplanır (bkz.
         # _cari_rut_hesapla_otomatik, dosya başında tanımlı GLOBAL fonksiyon).
@@ -8699,10 +8761,7 @@ function kartSec(id){
         try:
             _sb_ko = get_sb_client()
             if _sb_ko:
-                _sb_ko.table("kullanici_tercih").upsert({
-                    "kullanici": "__liste_ui__", "anahtar": "_cl_kolon_sira",
-                    "deger": json.dumps(_kayitli_sira)
-                }, on_conflict="kullanici,anahtar").execute()
+                _kt_yaz("_cl_kolon_sira", _kayitli_sira)
         except Exception:
             pass
     _aktif_col_order = _kayitli_sira if _kayitli_sira else col_order
@@ -8977,11 +9036,7 @@ function kartSec(id){
             try:
                 _sb_ko = get_sb_client()
                 if _sb_ko:
-                    import json as _koj
-                    _sb_ko.table("kullanici_tercih").upsert({
-                        "kullanici":"__liste_ui__","anahtar":"_cl_kolon_sira",
-                        "deger":_koj.dumps(_col_order_now, ensure_ascii=False)
-                    }, on_conflict="kullanici,anahtar").execute()
+                    _kt_yaz("_cl_kolon_sira", _col_order_now)
             except: pass
     except: pass
 
@@ -9214,9 +9269,11 @@ function kartSec(id){
                     st.session_state["_cl_taslak_sayisi"] = max(0, _cl_taslak_sayisi - _taslak_basarili_sayisi)
 
                 # ── Analiz / Çıkış İli / Koli-Palet manuel override'ları ────────────────
-                _analiz_ov_guncel = dict(st.session_state.get("_analiz_manuel_override", {}))
-                _cikis_ov_guncel  = dict(st.session_state.get("_cikis_ili_manuel", {}))
-                _koli_ov_guncel   = dict(st.session_state.get("_koli_palet_manuel", {}))
+                # GÜVENLİK: oturum başındaki ESKİ kopya yerine sadece bu kayıttaki
+                # DEĞİŞİKLİKLER toplanır ({id: yeni değer ya da None=sil}); yazmadan
+                # hemen önce veritabanından TAZE okunup üzerine uygulanır.
+                _cikis_ov_degisim = {}
+                _koli_ov_degisim = {}
                 _icy_etkilenen_idler = set()  # KULLANICI İSTEĞİ (2026-09): "İl Ciroları" — Koli/Palet değişen satırlar
                 _ex_degisti = False
                 for _idx_str_ex, _deg_ex in _edited_rows.items():
@@ -9228,17 +9285,11 @@ function kartSec(id){
                         continue
                     if "Varış İli" in _deg_ex:
                         _v_ex = str(_deg_ex["Varış İli"] or "").strip()
-                        if _v_ex:
-                            _cikis_ov_guncel[str(_rid_ex)] = _v_ex
-                        else:
-                            _cikis_ov_guncel.pop(str(_rid_ex), None)
+                        _cikis_ov_degisim[str(_rid_ex)] = _v_ex or None
                         _ex_degisti = True
                     if "Koli/Palet" in _deg_ex:
                         _v_ex = str(_deg_ex["Koli/Palet"] or "").strip()
-                        if _v_ex:
-                            _koli_ov_guncel[str(_rid_ex)] = _v_ex
-                        else:
-                            _koli_ov_guncel.pop(str(_rid_ex), None)
+                        _koli_ov_degisim[str(_rid_ex)] = _v_ex or None
                         _ex_degisti = True
                         _icy_etkilenen_idler.add(_rid_ex)
                     # ── 🆕 YENİ ÖZELLİK (2026-09, KULLANICI İSTEĞİ): "Hesaplama"
@@ -9266,33 +9317,33 @@ function kartSec(id){
                                 st.toast(f"🎯 {_fyat_mesaj}", icon="✅")
                             else:
                                 st.toast(f"⚠️ {_fyat_firma_adi or _rid_ex}: {_fyat_mesaj}", icon="⚠️")
-                            # KRİTİK: yukarıdaki fonksiyon "_koli_palet_manuel"yi
-                            # DOĞRUDAN kaydetti — buradaki ESKİ (fonksiyon
-                            # çalışmadan ÖNCE alınmış) kopyayı GÜNCEL haliyle
-                            # senkronize ediyoruz, yoksa aşağıdaki toplu kayıt
-                            # bu satırın YENİ verisinin ÜZERİNE ESKİ veriyi
-                            # yazıp SİLERDİ.
-                            _koli_ov_guncel = dict(st.session_state.get("_koli_palet_manuel", _koli_ov_guncel))
-                            _ex_degisti = True
+                            # KRİTİK: Hesaplama bu müşterinin Koli/Palet'ini zaten
+                            # kaydetti — aynı satırdaki elle Koli/Palet değişikliği
+                            # onun üzerine yazmasın.
+                            if _fyat_basarili:
+                                _koli_ov_degisim.pop(str(_rid_ex), None)
+                                _icy_etkilenen_idler.discard(_rid_ex)
                 _kaydet_ilerleme.progress(75, text="⏳ Diğer değişiklikler veritabanına yazılıyor...")
-                if _ex_degisti:
-                    st.session_state["_analiz_manuel_override"] = _analiz_ov_guncel
-                    st.session_state["_cikis_ili_manuel"] = _cikis_ov_guncel
-                    st.session_state["_koli_palet_manuel"] = _koli_ov_guncel
+                if _ex_degisti and (_cikis_ov_degisim or _koli_ov_degisim):
                     try:
-                        _sb_ex1 = get_sb_client()
-                        if _sb_ex1:
-                            import json as _exj1
-                            _sb_ex1.table("kullanici_tercih").upsert([
-                                {"kullanici": "__liste_ui__", "anahtar": "_analiz_manuel_override",
-                                 "deger": _exj1.dumps(_analiz_ov_guncel, ensure_ascii=False)},
-                                {"kullanici": "__liste_ui__", "anahtar": "_cikis_ili_manuel",
-                                 "deger": _exj1.dumps(_cikis_ov_guncel, ensure_ascii=False)},
-                                {"kullanici": "__liste_ui__", "anahtar": "_koli_palet_manuel",
-                                 "deger": _exj1.dumps(_koli_ov_guncel, ensure_ascii=False)},
-                            ], on_conflict="kullanici,anahtar").execute()
-                    except:
-                        pass
+                        _cikis_ov_guncel = dict(_kt_oku_zorunlu("_cikis_ili_manuel", {}))
+                        _koli_ov_guncel = dict(_kt_oku_zorunlu("_koli_palet_manuel", {}))
+                        for _dg_k, _dg_v in _cikis_ov_degisim.items():
+                            if _dg_v: _cikis_ov_guncel[_dg_k] = _dg_v
+                            else: _cikis_ov_guncel.pop(_dg_k, None)
+                        for _dg_k, _dg_v in _koli_ov_degisim.items():
+                            if _dg_v: _koli_ov_guncel[_dg_k] = _dg_v
+                            else: _koli_ov_guncel.pop(_dg_k, None)
+                        _ex_ok1 = _kt_yaz("_cikis_ili_manuel", _cikis_ov_guncel) if _cikis_ov_degisim else True
+                        _ex_ok2 = _kt_yaz("_koli_palet_manuel", _koli_ov_guncel) if _koli_ov_degisim else True
+                        st.session_state["_cikis_ili_manuel"] = _cikis_ov_guncel
+                        st.session_state["_koli_palet_manuel"] = _koli_ov_guncel
+                        if not (_ex_ok1 and _ex_ok2):
+                            hata_list.append("Varış İli / Koli-Palet veritabanına yazılamadı.")
+                            _icy_etkilenen_idler = set()
+                    except _VeriOkumaHatasi as _ex_oku_e:
+                        hata_list.append(f"Varış İli / Koli-Palet: {_ex_oku_e}")
+                        _icy_etkilenen_idler = set()
                     # KULLANICI İSTEĞİ (2026-09): "İl Ciroları" — Koli/Palet
                     # değişen HER satır için otomatik yeniden hesaplanır.
                     # 🚨 KRİTİK DÜZELTME: "Hedeflenen Ciro" de AYNI ANDA, AYNI
@@ -9320,9 +9371,14 @@ function kartSec(id){
                 # DEĞİL, Rut ile AYNI desen — kullanici_tercih'te
                 # {cari_id: {alan: değer}} olarak saklanır. GÜVENLİ (SİLME
                 # YOK, UPDATE-yoksa-INSERT) fonksiyon kullanılır.
-                _cek_guncel = _cari_ek_bilgi_yukle()
+                try:
+                    _cek_guncel = _cari_ek_bilgi_yukle()
+                except _VeriOkumaHatasi as _cek_e:
+                    _cek_guncel = None
+                    if any(_a in _d for _d in _edited_rows.values() for _a in _CARI_EK_ALAN_LISTESI):
+                        hata_list.append(f"Vergi No / Vade / Ödeme vb.: {_cek_e}")
                 _cek_degisti = False
-                for _idx_str_cek, _deg_cek in _edited_rows.items():
+                for _idx_str_cek, _deg_cek in (_edited_rows.items() if _cek_guncel is not None else []):
                     _idxn_cek = int(_idx_str_cek)
                     if _idxn_cek >= len(_rows):
                         continue
@@ -9339,7 +9395,8 @@ function kartSec(id){
                                 _cek_guncel[str(_rid_cek)].pop(_cek_alan, None)
                             _cek_degisti = True
                 if _cek_degisti:
-                    _cari_ek_bilgi_kaydet(_cek_guncel)
+                    if not _cari_ek_bilgi_kaydet(_cek_guncel):
+                        hata_list.append("Vergi No / Vade / Ödeme vb. veritabanına yazılamadı.")
 
                 # NOT: "🛣️ Rut" artık elle düzenlenmiyor — İL sütunlarından
                 # otomatik hesaplanıyor (bkz. _cari_rut_hesapla_otomatik).
@@ -9367,23 +9424,18 @@ function kartSec(id){
                     _sg_guncel[str(_rid_sg)] = _sg_simdi
                     _sg_degisti = True
                 if _sg_degisti:
-                    st.session_state["_cari_son_guncelleme"] = _sg_guncel
-                    try:
-                        _sb_sg1 = get_sb_client()
-                        if _sb_sg1:
-                            import json as _sgj1
-                            _sb_sg1.table("kullanici_tercih").upsert({
-                                "kullanici": "__liste_ui__", "anahtar": "_cari_son_guncelleme",
-                                "deger": _sgj1.dumps(_sg_guncel, ensure_ascii=False)
-                            }, on_conflict="kullanici,anahtar").execute()
-                    except:
-                        pass
+                    _sg_taze = _kt_oku_taze("_cari_son_guncelleme")
+                    if _sg_taze is not _OKUMA_BASARISIZ:
+                        _sg_birlesik = dict(_sg_taze or {})
+                        _sg_birlesik.update({_k: _v for _k, _v in _sg_guncel.items() if _v == _sg_simdi})
+                        if _kt_yaz("_cari_son_guncelleme", _sg_birlesik):
+                            st.session_state["_cari_son_guncelleme"] = _sg_birlesik
 
                 # ── İL SÜTUNLARI kaydı — cari_kartlar'a değil, ayrı JSON haritaya
                 # yazılır (kullanici_tercih._il_gonderim_matrisi). "Hangi ile ne
                 # gönderiyor" bilgisi firma bazlı olarak burada tutulur.
                 _ilm_degisti = False
-                _ilm_guncel = dict(_il_gonderim_matrisi)
+                _ilm_guncel = None  # sadece gerçekten il değişikliği varsa TAZE okunur
 
                 def _vi_norm(_s):
                     return (str(_s or "").strip().upper().replace("İ", "I").replace("Ş", "S")
@@ -9401,6 +9453,12 @@ function kartSec(id){
                     if not _rid_ilm:
                         continue
                     _rid_ilm_str = str(_rid_ilm)
+                    if _ilm_guncel is None:
+                        try:
+                            _ilm_guncel = dict(_il_gonderim_matrisi_yukle_taze())
+                        except _VeriOkumaHatasi as _ilm_e:
+                            hata_list.append(f"İl sütunları: {_ilm_e}")
+                            break
                     _ilm_guncel.setdefault(_rid_ilm_str, {})
                     for _ilk, _ilv in _ilm_fark.items():
                         _ilm_guncel[_rid_ilm_str][_ilk] = str(_ilv) if _ilv is not None else ""
@@ -9418,7 +9476,8 @@ function kartSec(id){
                                     _ilm_guncel[_rid_ilm_str][_il_ad_vi] = _il_ad_vi.upper()
                                     _ilm_degisti = True
                 if _ilm_degisti:
-                    _il_gonderim_matrisi_kaydet(_ilm_guncel)
+                    if not _il_gonderim_matrisi_kaydet(_ilm_guncel):
+                        hata_list.append("İl sütunları veritabanına yazılamadı.")
                     try: _il_gonderim_matrisi_yukle.clear()
                     except: pass
 
@@ -9897,10 +9956,7 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
                     if _sb_dn1:
                         import json as _dnj1
                         _dn_json_str = _dnj1.dumps(_dn_kayit_listesi, ensure_ascii=False)
-                        _sb_dn1.table("kullanici_tercih").upsert({
-                            "kullanici": "__liste_ui__", "anahtar": "dis_nakliye_kayitlari",
-                            "deger": _dn_json_str
-                        }, on_conflict="kullanici,anahtar").execute()
+                        _kt_yaz("dis_nakliye_kayitlari", _dn_json_str)
                         # Doğrulama — gerçekten yazıldı mı diye geri okuyoruz
                         _dn_dogrula = _sb_dn1.table("kullanici_tercih").select("deger").eq(
                             "kullanici", "__liste_ui__").eq("anahtar", "dis_nakliye_kayitlari").execute()
@@ -10542,6 +10598,8 @@ elif aktif == "kullanici":
             except: return []
 
         def _tan_ekle(tip, deger):
+            try: _tanimlar_yukle.clear()
+            except Exception: pass
             try:
                 if _sb_tan:
                     # Önce duplicate kontrolü
@@ -10555,6 +10613,8 @@ elif aktif == "kullanici":
             except: return False
 
         def _tan_sil(tip, deger):
+            try: _tanimlar_yukle.clear()
+            except Exception: pass
             try:
                 if _sb_tan:
                     # Aynı isimde TÜM kayıtları sil (duplicate temizler)
@@ -10563,6 +10623,8 @@ elif aktif == "kullanici":
             except: return False
 
         def _tan_temizle(tip):
+            try: _tanimlar_yukle.clear()
+            except Exception: pass
             """Duplicate kayıtları temizle — her değerden sadece birini bırak"""
             try:
                 if _sb_tan:
@@ -10923,9 +10985,13 @@ elif aktif == "excel":
                         durum_text.text(f"{min(i+BATCH,toplam)}/{toplam} işlendi, {basarili} eklendi")
 
                     if _ex_ek_bilgi_toplu:
-                        _ex_ek_bilgi_mevcut = _cari_ek_bilgi_yukle()
-                        _ex_ek_bilgi_mevcut.update(_ex_ek_bilgi_toplu)
-                        _cari_ek_bilgi_kaydet(_ex_ek_bilgi_mevcut)
+                        try:
+                            _ex_ek_bilgi_mevcut = _cari_ek_bilgi_yukle()
+                            _ex_ek_bilgi_mevcut.update(_ex_ek_bilgi_toplu)
+                            if not _cari_ek_bilgi_kaydet(_ex_ek_bilgi_mevcut):
+                                st.error("⚠️ Vergi No / Vade / Ödeme bilgileri yazılamadı (firmalar eklendi).")
+                        except _VeriOkumaHatasi as _ex_ek_e:
+                            st.error(f"⚠️ Vergi No / Vade / Ödeme bilgileri kaydedilmedi: {_ex_ek_e} (firmalar eklendi).")
 
                     st.success(f"🎉 Tamamlandı! {basarili}/{toplam} kayıt eklendi.")
                     if hatalar:
