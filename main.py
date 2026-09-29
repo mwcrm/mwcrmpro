@@ -2790,6 +2790,18 @@ section[data-testid="stSidebar"] {
     background-color: #f8fafc !important;
 }
 
+/* ── YANIP SÖNMEYİ GİZLE (2026-09, KULLANICI İSTEĞİ) — SADECE GÖRÜNÜM ────
+   Streamlit sayfayı yeniden hesaplarken ekrandaki her şeyi yarı saydam yapıp
+   geri açıyor; gözün "yanıp sönme" diye gördüğü şey bu soluklaşma. Burada
+   yalnızca bu soluklaşma kapatılır — hiçbir çalışma şekli (kaydetme, Seç,
+   pencere, rerun) DEĞİŞMEZ; st.form / st.fragment KULLANILMAZ (Kural 3d/3e). */
+[data-stale="true"], .stale-element, div[data-stale="true"] * {
+    opacity: 1 !important;
+    filter: none !important;
+    transition: none !important;
+}
+[data-testid="stSkeleton"] { display: none !important; }
+
 /* ── KOMPAKT MOD — tüm sistem genelinde gerçek küçültme ──────────────────
    NOT: Tablo (data_editor) canvas ile çizildiği için normal font-size CSS'i
    onu küçültemiyor. "zoom" özelliği tarayıcının PİKSEL bazında her şeyi
