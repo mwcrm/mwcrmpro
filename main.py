@@ -2111,9 +2111,9 @@ def il_ilce_bolge_bul(il, ilce):
         return _BL_TUM_ILLER_ADI[_il]
     return str(il).strip().title()
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def get_cari_listesi():
-    """60 sn cache'li cari listesi — HTTP Range ile limitsiz çek.
+    """10 dk cache'li cari listesi — HTTP Range ile limitsiz çek.
     GÜVENLİ (2026-09 düzeltmesi): eskiden bir ara sayfa (batch) ağ hatasına
     takılırsa liste SESSİZCE YARIM kalıp (ör. 3700 yerine 1800 kayıt)
     DOĞRUYMUŞ gibi 60 saniye önbelleğe alınıyordu — kullanıcı 'müşteriler
@@ -2611,11 +2611,6 @@ div[data-testid="stRadio"] div[role="radiogroup"]{gap:0.4rem;}
                     "_ekran_kontrol":   True,
                     "giris_cihaz":      "mobil" if _mobil_secildi else "masaustu",
                 })
-                # localStorage'a kaydet — sayfa yenilenince otomatik giriş
-                _ls_veri = json.dumps({"kullanici": kullanici, "sifre": sifre, "mobil": _mobil_secildi})
-                st.markdown(f"""<script>
-try{{localStorage.setItem('mwcrm_oturum', {repr(_ls_veri)});}}catch(e){{}}
-</script>""", unsafe_allow_html=True)
                 # Giriş logla
                 try:
                     _sb_logi = get_sb_client()
@@ -2643,9 +2638,6 @@ def cikis():
             }).execute()
     except: pass
     st.session_state.clear()
-    st.markdown("""<script>
-try{localStorage.removeItem('mwcrm_oturum');}catch(e){}
-</script>""", unsafe_allow_html=True)
     st.rerun()
 
 # ── SESSION STATE ─────────────────────────────────────────────────────────────
@@ -2657,6 +2649,33 @@ _sayfa_adlari_cfg = {
 _aktif_cfg = st.session_state.get("aktif_tab","liste")
 _baslik_cfg = "MWCRMPRO | " + _sayfa_adlari_cfg.get(_aktif_cfg,"MWCRMPRO")
 st.set_page_config(page_title=_baslik_cfg, layout="wide", initial_sidebar_state="expanded")
+
+# 🚨 KRİTİK DÜZELTME (2026-09, KULLANICI İSTEĞİ): Chrome'un (veya başka bir
+# tarayıcının) OTOMATİK ÇEVİRİ özelliği, sayfanın DOM'unu (React'in kendi
+# çizdiği ekran) React'in HABERİ OLMADAN değiştiriyor. React sonra kendi
+# ekranını güncellemeye çalışınca "NotFoundError: removeChild" hatasıyla
+# TÜM UYGULAMA ÇÖKÜYOR — bu, React'in kendi GitHub'ında yıllardır açık,
+# ÇOK BİLİNEN bir sorun (facebook/react#11538). Çözüm: sayfaya "bu sayfayı
+# ASLA çevirme" işareti (notranslate) eklemek — bu, Google'ın KENDİ önerdiği
+# resmi çözüm. streamlit.components.v1.html KULLANILIYOR (st.markdown İÇİNDE
+# <script> ÇALIŞTIRAMAZ, sadece görünür HTML basar) — bu bir iframe içinde
+# çalışıp "window.parent.document" üzerinden ANA sayfaya işareti ekliyor.
+import streamlit.components.v1 as _notr_components
+_notr_components.html("""
+<script>
+try {
+    var _pd = window.parent.document;
+    _pd.documentElement.setAttribute('translate', 'no');
+    _pd.documentElement.classList.add('notranslate');
+    if (!_pd.querySelector('meta[name="google"]')) {
+        var _m = _pd.createElement('meta');
+        _m.name = 'google';
+        _m.content = 'notranslate';
+        _pd.head.appendChild(_m);
+    }
+} catch (e) {}
+</script>
+""", height=0, width=0)
 
 # ── UYGULAMAYI HER ZAMAN AÇIK TEMADA SABİTLE ─────────────────────────────────
 # Bazı bilgisayarlarda Windows/tarayıcı karanlık mod (dark mode) kullanıyor,
@@ -2744,15 +2763,6 @@ p, .stMarkdown, label { font-size: 0.9rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# Sekme başlığını aktif menüye göre güncelle
-_sayfa_adlari = {
-    "yeni":"Yeni Kart","liste":"Cari Liste",
-    "excel":"Excel","kullanici":"Kullanıcılar",
-    "dis_nakliye":"Dış Nakliye","dis_nakliye_toplu":"Dış Nakliyeler Listesi",
-}
-_aktif_sayfa = st.session_state.get("aktif_tab","liste")
-_sayfa_adi = _sayfa_adlari.get(_aktif_sayfa, _aktif_sayfa)
-st.markdown(f"<script>document.title='MWCRMPRO | {_sayfa_adi}'</script>", unsafe_allow_html=True)
 st.markdown("""<style>
 section[data-testid="stSidebar"]{transform:none!important;display:flex!important;}
 button[data-testid="collapsedControl"]{display:none!important;}
@@ -2771,79 +2781,6 @@ button[kind="header"]{display:none!important;}
 .mw-not-metin{color:#1e293b;}
 .mw-not-daha{font-size:11px;color:#94a3b8;margin-top:6px;font-style:italic;}
 </style>""", unsafe_allow_html=True)
-
-st.markdown("""<script>
-(function(){setInterval(function(){try{var _=window.parent.document.title;}catch(e){}},270000);})();
-</script>""", unsafe_allow_html=True)
-
-# ── TAKVİM TÜRKÇELEŞTİRME — tüm date_input bileşenleri için ──────────────────
-st.markdown("""<script>
-(function(){
-  var AY_TR = {
-    "January":"Ocak","February":"Şubat","March":"Mart","April":"Nisan",
-    "May":"Mayıs","June":"Haziran","July":"Temmuz","August":"Ağustos",
-    "September":"Eylül","October":"Ekim","November":"Kasım","December":"Aralık"
-  };
-  // Gün kısaltmaları sıralı dizi olarak — "Sa" hem Tuesday hem Saturday kısaltması olduğundan
-  // object key çakışmasını önlemek için pozisyon bazlı eşleştirme kullanılır.
-  // Streamlit/BaseWeb takvimi pazartesi başlangıçlı: Mo,Tu,We,Th,Fr,Sa,Su
-  var GUN_KISA_SIRA = ["Mo","Tu","We","Th","Fr","Sa","Su"];
-  var GUN_KISA_TR   = ["Pt","Sa","Ça","Pe","Cu","Ct","Pa"];
-  var GUN_TAM_TR = {
-    "Monday":"Pazartesi","Tuesday":"Salı","Wednesday":"Çarşamba",
-    "Thursday":"Perşembe","Friday":"Cuma","Saturday":"Cumartesi","Sunday":"Pazar"
-  };
-  function turkceleştir(root){
-    if(!root) return;
-    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
-    var node;
-    while(node = walker.nextNode()){
-      var t = node.nodeValue;
-      if(!t || !t.trim()) continue;
-      var trimmed = t.trim();
-      var degisti = false;
-
-      // Ay isimleri — metin içinde geçebilir (örn. "30 June 2026")
-      for(var ay in AY_TR){
-        if(t.indexOf(ay) !== -1){ t = t.split(ay).join(AY_TR[ay]); degisti = true; }
-      }
-
-      // Tam gün isimleri (Monday, Tuesday...)
-      for(var gunTam in GUN_TAM_TR){
-        if(t.indexOf(gunTam) !== -1){ t = t.split(gunTam).join(GUN_TAM_TR[gunTam]); degisti = true; }
-      }
-
-      // Kısa gün başlıkları — SADECE node içeriği TAM OLARAK kısaltmaya eşitse değiştir
-      // (içerik karışmasını önlemek için, örn. "Sa" hücre içinde tek başınaysa)
-      if(!degisti){
-        var idx = GUN_KISA_SIRA.indexOf(trimmed);
-        if(idx !== -1 && trimmed === t.trim()){
-          t = t.replace(trimmed, GUN_KISA_TR[idx]);
-          degisti = true;
-        }
-      }
-
-      if(degisti) node.nodeValue = t;
-    }
-  }
-  function tumDokumani(){
-    try { turkceleştir(document.body); } catch(e){}
-    try { if(window.parent && window.parent.document) turkceleştir(window.parent.document.body); } catch(e){}
-  }
-  // İlk çalıştırma
-  tumDokumani();
-  // Takvim her açıldığında tekrar çalıştır (MutationObserver)
-  try {
-    var hedefDoc = (window.parent && window.parent.document) ? window.parent.document : document;
-    var observer = new MutationObserver(function(mutations){
-      tumDokumani();
-    });
-    observer.observe(hedefDoc.body, { childList: true, subtree: true });
-  } catch(e){}
-  // Periyodik yedek kontrol
-  setInterval(tumDokumani, 800);
-})();
-</script>""", unsafe_allow_html=True)
 
 
 # ── EKRAN AYARLARI UYGULA ────────────────────────────────────────────────────
@@ -2871,26 +2808,6 @@ section.main > div.block-container,
 }}
 {_bg_css}
 </style>
-<script>
-(function applyPadding() {{
-    function apply() {{
-        var bc = document.querySelector('.block-container') ||
-                 document.querySelector('[data-testid="stAppViewBlockContainer"]') ||
-                 document.querySelector('section.main > div');
-        if (bc) {{
-            bc.style.setProperty('padding-top', '{_e_ust}px', 'important');
-            bc.style.setProperty('padding-bottom', '{_e_alt}px', 'important');
-            bc.style.setProperty('padding-left', '{_e_yan}px', 'important');
-            bc.style.setProperty('padding-right', '{_e_yan}px', 'important');
-        }}
-    }}
-    apply();
-    setTimeout(apply, 500);
-    setTimeout(apply, 1500);
-    var obs = new MutationObserver(apply);
-    obs.observe(document.body, {{childList:true, subtree:true}});
-}})();
-</script>
 """, unsafe_allow_html=True)
 
 st.markdown("""
@@ -3019,24 +2936,12 @@ st.markdown("""<div id="mw-mobile-nav">
   font-size:11px; font-weight:600; padding:7px 12px;
   border-radius:20px; box-shadow:0 2px 8px rgba(0,0,0,.25);
   display:none;" id="mw-masaustu-btn">🖥️ Masaüstüne geç</a>
-<script>
-(function(){
-  var _b = window.parent ? window.parent.document.body : document.body;
-  var _btn = document.getElementById('mw-masaustu-btn');
-  if(_btn && _b.classList.contains('mw-mobil-aktif')){ _btn.style.display = 'block'; }
-})();
-</script>""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # Mobilde menüye hiç girmeden tek dokunuşla masaüstü moduna geçiş
 try:
     if st.query_params.get("_masaustune_gec", "") == "1":
         st.session_state["_mobil_mod"] = False
-        st.markdown("""<script>
-try{
-  var _eski = localStorage.getItem('mwcrm_oturum');
-  if(_eski){ var _o = JSON.parse(_eski); _o.mobil = false; localStorage.setItem('mwcrm_oturum', JSON.stringify(_o)); }
-}catch(e){}
-</script>""", unsafe_allow_html=True)
         st.query_params.clear()
         st.rerun()
 except Exception:
@@ -3085,27 +2990,6 @@ div:has(> button[data-testid="baseButton-secondary"]:is(
   [data-key="mw_nav_st_harita"]
 )) { height: 0 !important; overflow: hidden !important; margin: 0 !important; padding: 0 !important; }
 </style>
-<script>
-function mwTab(tab) {
-  // Streamlit'in sidebar butonlarını bul ve tıkla — session state güvenli
-  var btns = window.parent.document.querySelectorAll('section[data-testid="stSidebar"] button');
-  var tabMap = {
-    'liste':'Cari Liste','analiz':'Müşteri Analizi','randevu':'Randevular',
-    'ozel_teklif':'Özel Teklif','sozlesme':'Sözleşmeler','harita':'Müşteri Haritası',
-    'rapor':'Raporlar','yeni':'Yeni Kart'
-  };
-  var hedef = tabMap[tab] || tab;
-  for(var i=0;i<btns.length;i++){
-    if(btns[i].innerText && btns[i].innerText.indexOf(hedef.substring(0,6)) >= 0){
-      btns[i].click();
-      // Aktif class güncelle
-      document.querySelectorAll('.mw-nav-btn').forEach(function(b){ b.classList.remove('aktif'); });
-      event.currentTarget.classList.add('aktif');
-      return;
-    }
-  }
-}
-</script>
 """, unsafe_allow_html=True)
 
 
@@ -5350,22 +5234,6 @@ if not st.session_state.get("giris", False):
         except: pass
         st.query_params.clear()
 
-    # localStorage'dan oku ve query param ile gönder
-    if not st.session_state.get("giris", False) and not st.session_state.get("_ls_denendi", False):
-        st.session_state["_ls_denendi"] = True
-        st.markdown("""<script>
-(function(){
-  try{
-    var v = localStorage.getItem('mwcrm_oturum');
-    if(v){
-      var url = new URL(window.parent.location.href);
-      url.searchParams.set('_ag', v);
-      window.parent.location.replace(url.toString());
-    }
-  }catch(e){}
-})();
-</script>""", unsafe_allow_html=True)
-
     giris_ekrani()
     st.stop()
 
@@ -5850,32 +5718,6 @@ else:
             st.session_state["_sayfa_gecmisi"] = _sg_liste_kontrol
             st.session_state["_sayfa_gecmisi_idx"] = len(_sg_liste_kontrol) - 1
 
-
-# ── MOBİL MOD — body class + nav aktif ikon ──────────────────────────────────
-_mobil_mod_aktif = st.session_state.get("_mobil_mod", False)
-_aktif_tab_js = aktif
-st.markdown(f"""
-<script>
-(function(){{
-  var _body = window.parent ? window.parent.document.body : document.body;
-  if({'true' if _mobil_mod_aktif else 'false'}){{
-    _body.classList.add('mw-mobil-aktif');
-  }} else {{
-    _body.classList.remove('mw-mobil-aktif');
-  }}
-  // Nav butonlarında aktif class güncelle
-  var _cur = '{_aktif_tab_js}';
-  var _tabMap = {{'liste':'liste','analiz':'analiz','randevu':'randevu','harita':'harita'}};
-  var _curNav = _tabMap[_cur] || _cur;
-  document.querySelectorAll('.mw-nav-btn').forEach(function(b){{
-    var _fn = b.getAttribute('onclick') || '';
-    var _m = _fn.match(/mwTab\('([^']+)'\)/);
-    if(_m && _m[1] === _curNav) b.classList.add('aktif');
-    else b.classList.remove('aktif');
-  }});
-}})();
-</script>
-""", unsafe_allow_html=True)
 
 # ── OTOMATİK SAYFA TAKİBİ ───────────────────────────────────────────────────
 sayfa_log(aktif)
@@ -6608,56 +6450,6 @@ section[data-testid="stSidebar"] { display: none !important; }
             st.info("Müşteri bulunamadı.")
         st.stop()
     # ── MASAÜSTÜ — normal liste devam eder ──────────────────────────────────
-    # Kolon genişliklerini localStorage'a kaydet ve geri yükle
-    st.markdown("""<script>
-(function(){
-  const STORE_KEY = 'mwcrm_col_widths';
-  function saveWidths(){
-    try {
-      const headers = document.querySelectorAll('[data-testid="stDataEditor"] th');
-      if(!headers.length) return;
-      const widths = {};
-      headers.forEach(th => {
-        const label = th.innerText.trim();
-        if(label) widths[label] = th.offsetWidth;
-      });
-      localStorage.setItem(STORE_KEY, JSON.stringify(widths));
-    } catch(e){}
-  }
-  function restoreWidths(){
-    try {
-      const saved = localStorage.getItem(STORE_KEY);
-      if(!saved) return;
-      const widths = JSON.parse(saved);
-      const headers = document.querySelectorAll('[data-testid="stDataEditor"] th');
-      headers.forEach(th => {
-        const label = th.innerText.trim();
-        if(widths[label]){
-          th.style.width = widths[label]+'px';
-          th.style.minWidth = widths[label]+'px';
-          th.style.maxWidth = widths[label]+'px';
-        }
-      });
-    } catch(e){}
-  }
-  // Resize observer — genişlik değişince kaydet
-  const obs = new MutationObserver(() => {
-    restoreWidths();
-    setTimeout(saveWidths, 500);
-  });
-  function init(){
-    const editor = document.querySelector('[data-testid="stDataEditor"]');
-    if(editor){
-      restoreWidths();
-      obs.observe(editor, {childList:true, subtree:true, attributes:true});
-      editor.addEventListener('mouseup', () => setTimeout(saveWidths, 300));
-    } else {
-      setTimeout(init, 500);
-    }
-  }
-  setTimeout(init, 1000);
-})();
-</script>""", unsafe_allow_html=True)
     if st.session_state.get("kayit_mesaj"):
         st.success(st.session_state["kayit_mesaj"])
         st.session_state["kayit_mesaj"] = ""
@@ -6751,7 +6543,7 @@ section[data-testid="stSidebar"] { display: none !important; }
             pass
     _cari_son_guncelleme_erken = st.session_state.get("_cari_son_guncelleme", {})
 
-    @st.cache_data(ttl=60, show_spinner=False)
+    @st.cache_data(ttl=180, show_spinner=False)
     def _tum_aktivite_tarihleri_yukle_erken():
         """id_str -> o müşteriye ait TÜM işlem günlerinin kümesi (set of date)."""
         import collections as _colae
@@ -7171,7 +6963,7 @@ section[data-testid="stSidebar"] { display: none !important; }
     # kayıtları) + Cari Liste'de MANUEL yazılan override değerleri. Cari
     # Liste'de görünen "💬 N" değerleriyle BİREBİR aynı toplamı versin diye
     # override'lar da dahil ediliyor (sadece gerçek kayıt sayısı değil).
-    @st.cache_data(ttl=60, show_spinner=False)
+    @st.cache_data(ttl=180, show_spinner=False)
     def _rbar_mesaj_toplam_yukle():
         _toplam = 0
         try:
@@ -7207,7 +6999,7 @@ section[data-testid="stSidebar"] { display: none !important; }
         return _toplam
     _mesaj_gercek_toplam = _rbar_mesaj_toplam_yukle()
 
-    @st.cache_data(ttl=60, show_spinner=False)
+    @st.cache_data(ttl=180, show_spinner=False)
     def _rbar_mesaj_id_seti_yukle():
         """'💬 Mesaj' kutusuna tıklanınca filtrelemek için — mesaj toplamıyla
         AYNI mantık (gerçek islem_kaydi + manuel override), ama toplam yerine
@@ -7244,7 +7036,7 @@ section[data-testid="stSidebar"] { display: none !important; }
     # kayıtları da toplama karışıp sayıyı şişiriyordu (232 gibi yanlış sayı).
     _aktif_id_seti = set(str(int(x)) for x in df["id"].dropna().tolist()) if not df.empty and "id" in df.columns else set()
 
-    @st.cache_data(ttl=60, show_spinner=False)
+    @st.cache_data(ttl=180, show_spinner=False)
     def _rbar_teklif_toplam_yukle(_aktif_idler):
         # ID'leri normalize eden yardımcı — bazı kayıtlarda musteri_id "123" yerine
         # "123.0" gibi ondalıklı/farklı biçimde saklanmış olabilir; bu farklar
@@ -8746,7 +8538,7 @@ function kartSec(id){
     _not_sayac = {}
     if sb_liste:
         try:
-            @st.cache_data(ttl=60, show_spinner=False)
+            @st.cache_data(ttl=180, show_spinner=False)
             def _tum_notlari_yukle():
                 _sb2 = get_sb_client()
                 if _sb2:
@@ -8820,7 +8612,7 @@ function kartSec(id){
     # güncel tarih burada görünür. Hiçbiri yoksa ilk kayıt (İşlem Tarih) tarihi
     # gösterilir. cari_kartlar'da yeni kolon açmadan, mevcut ilişkili
     # tablolardan (cari_aciklamalar, teklifler, islem_kaydi) hesaplanır.
-    @st.cache_data(ttl=60, show_spinner=False)
+    @st.cache_data(ttl=180, show_spinner=False)
     def _son_aktivite_tarihleri_yukle():
         _sonuc = {}
         _sb5 = get_sb_client()
