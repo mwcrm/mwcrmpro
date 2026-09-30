@@ -2120,16 +2120,6 @@ def get_cari_listesi():
             if _tk in _df_g.columns:
                 _df_g[_tk] = _telefon_temizle(_df_g[_tk])
     return _df_g
-    try:
-        conn = get_conn()
-        df = pd.read_sql("SELECT * FROM cari_kartlar WHERE silindi=0 OR silindi='0' OR silindi IS NULL ORDER BY firma", conn)
-        conn.close()
-        for _tk in ["gsm","sabit"]:
-            if _tk in df.columns:
-                df[_tk] = _telefon_temizle(df[_tk])
-        return df
-    except:
-        return pd.DataFrame()
 
 @st.cache_data(ttl=120)
 def get_kullanici_listesi():
@@ -2727,9 +2717,7 @@ button[kind="header"]{display:none!important;}
 
 
 # ── EKRAN AYARLARI UYGULA ────────────────────────────────────────────────────
-_e_ust     = st.session_state.get("_ust_px", 32)
-_e_alt     = st.session_state.get("_alt_px", 32)
-_e_yan     = st.session_state.get("_yan_px", 16)
+_e_ust, _e_alt, _e_yan = 32, 32, 16
 
 # Arka plan artık kullanıcı tarafından değiştirilemez — her cihazda/ekranda
 # HER ZAMAN beyaz, tek renk. Takım teması / arka plan rengi seçimi özelliği
@@ -4871,7 +4859,6 @@ _TAB_ETIKETLER = {
     "dis_nakliye_toplu": "🚚 Dış Nakliyeler Listesi",
     
     "kullanici": "👥 Kullanıcı Yönetimi",
-    "mesajlar": "💬 Mesajlar",
     "kargolar": "🚚 Kargolar",
     "mukerrer": "🔍 Mükerrer Bul",
     "tedarikci": "🚛 Tedarikçi",
@@ -4943,41 +4930,6 @@ GUNCEL_SURUM = "v6.7"  # Bu kodun versiyonu — her güncellemede artır
 
 # Giriş kontrolü
 if not st.session_state.get("giris", False):
-    # ── ÖNCE localStorage'dan otomatik giriş dene ────────────────────────────
-    _auto_giris_qp = st.query_params.get("_ag", "")
-    if _auto_giris_qp:
-        try:
-            _ag_veri = json.loads(_auto_giris_qp)
-            _ag_kul  = _ag_veri.get("kullanici","")
-            _ag_sif  = _ag_veri.get("sifre","")
-            _ag_mob  = _ag_veri.get("mobil", False)
-            if _ag_kul and _ag_sif:
-                _ag_row = None
-                try:
-                    from supabase import create_client as _agsc
-                    _ag_sb = _agsc(_gizli_ayar("SUPABASE_URL",""), _gizli_ayar("SUPABASE_KEY",""))
-                    _ag_res = _ag_sb.table("kullanicilar").select("*").eq("kullanici_adi", _ag_kul).eq("sifre", _ag_sif).execute()
-                    if _ag_res.data: _ag_row = _ag_res.data[0]
-                except: pass
-                if _ag_row:
-                    _ag_rol = str(_ag_row.get("rol","") or "kullanici")
-                    try:
-                        import json as _agj
-                        _ag_yetki_val = str(_ag_row.get("yetkiler","tam") or "tam")
-                        _ag_yetki = "tam" if _ag_yetki_val == "tam" else _agj.loads(_ag_yetki_val)
-                    except: _ag_yetki = "tam"
-                    st.session_state.update({
-                        "giris": True, "kullanici": _ag_kul, "kullanici_ad": _ag_kul,
-                        "rol": _ag_rol, "aktif_tab": "liste",
-                        "_yetki_listesi": _ag_yetki,
-                        "_mobil_mod": _ag_mob, "_ekran_kontrol": True,
-                        "giris_cihaz": "mobil" if _ag_mob else "masaustu",
-                    })
-                    st.query_params.clear()
-                    st.rerun()
-        except: pass
-        st.query_params.clear()
-
     giris_ekrani()
     st.stop()
 
@@ -5286,26 +5238,6 @@ button[data-testid="manage-app-button"] { display: none !important; }
     if st.session_state.get("rol") != "admin":
         _sb_liste = [t for t in _sb_liste if t not in _SADECE_ADMIN]
 
-    _TAB_RENKLER = {
-        "yeni":        "#16a34a",
-        "liste":       "#0369a1",
-        "excel":       "#047857",
-        "kullanici":   "#be123c",
-        "mesajlar":    "#0891b2",
-    }
-
-    # Gizli menü öğelerini yükle
-    if "_gizli_menu_list" not in st.session_state:
-        try:
-            _sb_gml = get_sb_client()
-            if _sb_gml:
-                import json as _gmlj
-                _r_gml = _sb_gml.table("kullanici_tercih").select("deger").eq("kullanici", st.session_state["kullanici"]).eq("anahtar","_gizli_menu").execute()
-                st.session_state["_gizli_menu_list"] = _gmlj.loads(_r_gml.data[0]["deger"]) if _r_gml.data else []
-        except: st.session_state["_gizli_menu_list"] = []
-
-    _gizli_menu_render = st.session_state.get("_gizli_menu_list", [])
-    _sb_liste = [t for t in _sb_liste if t not in _gizli_menu_render]
 
     # Yetki bazlı menü gizleme — admin olmayan kullanıcılardan bazı menüler gizlenir
     _menu_rol = st.session_state.get("rol", "")
@@ -6338,16 +6270,10 @@ section[data-testid="stSidebar"] { display: none !important; }
 
     _sure_isaretle("rut / ciro / ek bilgi hesapları")
     # ── HTML RAPOR SATIRI ─────────────────────────────────────────────────────
-    import json as _rjson
     _aktif_fil_durum = st.session_state.get("_cl_fil_durum_multi", [])
     _aktif_fil_asama = st.session_state.get("_cl_fil_asama_multi", [])
     _toplam_aktif_flag = st.session_state.get("_toplam_aktif", False)
-    _grp_gizli = set(st.session_state.get("_rbar_grp_gizli", []))
-    _grp_sira_def = ["genel","iletisim","asama1","asama2","asama3","sonuc"]
-    _grp_sira = list(st.session_state.get("_rbar_grp_sira", _grp_sira_def.copy()))
-    for _gs in _grp_sira_def:
-        if _gs not in _grp_sira: _grp_sira.append(_gs)
-    _ayar_modu = st.session_state.get("_rbar_ayar_modu", False)
+    _grp_sira = ["genel","iletisim","asama1","asama2","asama3","sonuc"]
 
     def _asama_ikon(a):
         _m = {"arama":"📞","tekrar ara":"📲","mesaj":"💬","mail":"📧","e-mail":"📧",
@@ -6417,7 +6343,7 @@ section[data-testid="stSidebar"] { display: none !important; }
         ("📊","Toplam", len(df), "toplam", _toplam_aktif_flag),
         ("📦","Portföy", _durum_sayi("Portföy"), "durum_Portföy", "Portföy" in _aktif_fil_durum),
         ("⭐","Özel Müşteri", _durum_sayi("Özel Müşteri"), "durum_Özel Müşteri", "Özel Müşteri" in _aktif_fil_durum),
-        ("📋","Aşamasız", _asamasiz_sayi(), "asamasiz", st.session_state.get("_asamasiz_aktif",False)),
+        ("📋","Aşamasız", _asamasiz_sayi(), "asamasiz", False),
     ]
     for _dn in tum_durum_opts:
         if str(_dn).upper() in ["NONE","NAN",""] or _dn in ["Portföy","Özel Müşteri"]: continue
@@ -6465,31 +6391,6 @@ section[data-testid="stSidebar"] { display: none !important; }
         return _toplam
     _mesaj_gercek_toplam = _rbar_mesaj_toplam_yukle()
 
-    @st.cache_data(ttl=180, show_spinner=False)
-    def _rbar_mesaj_id_seti_yukle():
-        """'💬 Mesaj' kutusuna tıklanınca filtrelemek için — mesaj toplamıyla
-        AYNI mantık (gerçek islem_kaydi + manuel override), ama toplam yerine
-        hangi müşteri id'lerinin dahil olduğunu (id seti) döndürür."""
-        try:
-            _sb_rbm2 = get_sb_client()
-            if not _sb_rbm2:
-                return set()
-            _r_rbm2 = _sb_rbm2.table("islem_kaydi").select("musteri_id,islem_turu").in_(
-                "islem_turu", ["WhatsApp Teklif", "Email Teklif"]).execute()
-            _gercek_idler = {str(r.get("musteri_id","")) for r in (_r_rbm2.data or []) if r.get("musteri_id")}
-            _override_idler = set()
-            try:
-                _r_rbov2 = _sb_rbm2.table("kullanici_tercih").select("deger").eq(
-                    "kullanici","__liste_ui__").eq("anahtar","_mesaj_manuel_override").execute()
-                if _r_rbov2.data:
-                    import json as _rbovj2
-                    _override_map2 = _rbovj2.loads(_r_rbov2.data[0]["deger"])
-                    _override_idler = set(_override_map2.keys())
-            except Exception:
-                pass
-            return _gercek_idler | _override_idler
-        except Exception:
-            return set()
 
 
     # ── "2. AŞAMA — Teklif" sayısı — Cari Liste'deki "🧾 Teklif" kolonunda
@@ -6550,12 +6451,11 @@ section[data-testid="stSidebar"] { display: none !important; }
     # çünkü o değişken "Aşamasız" hesabında da kullanılıyor (o kayıtlar hâlâ
     # aşamalı sayılmaya devam etsin, "aşamasız"a düşmesinler diye).
     _grp1_asama_goster = [a for a in _grp1_asama if a not in ["Tekrar Ara", "Mesaj"]]
-    _mesaj_gercek_aktif_flag = st.session_state.get("_mesaj_gercek_aktif", False)
 
     _grp_data = {
         "genel":    ("📊","GENEL",    None, _genel_items),
         "genel":    ("📊","GENEL",    None, _genel_items),
-        "iletisim": ("🤝","İlk Temas",    None, [((_asama_ikon(a),a,_asama_sayi(a),f"asama_{a}",a in _aktif_fil_asama)) for a in _grp1_asama_goster] + [("💬","Mesaj",_mesaj_gercek_toplam,"mesaj_gercek",_mesaj_gercek_aktif_flag)]),
+        "iletisim": ("🤝","İlk Temas",    None, [((_asama_ikon(a),a,_asama_sayi(a),f"asama_{a}",a in _aktif_fil_asama)) for a in _grp1_asama_goster] + [("💬","Mesaj",_mesaj_gercek_toplam,"mesaj_gercek",False)]),
         "asama1":   ("📅","1. AŞAMA", None, [((_asama_ikon(a),a,_kolon_sayi("asama1",a),f"asama1_{a}",False)) for a in _grp2_asama]),
         "asama2":   ("📄","2. AŞAMA", None, [((_asama_ikon(a),a,_kolon_sayi("asama2",a),f"asama2_{a}",False)) for a in _grp3_asama]),
         "asama3":   ("🧪","3. AŞAMA", None, [((_asama_ikon(a),a,_kolon_sayi("asama3",a),f"asama3_{a}",False)) for a in _grp4_asama]),
@@ -6572,7 +6472,7 @@ section[data-testid="stSidebar"] { display: none !important; }
     _html += '<thead><tr>'
     _ilk = True
     for _gid in _grp_sira:
-        if _gid not in _grp_data or _gid in _grp_gizli: continue
+        if _gid not in _grp_data: continue
         _ikon,_lbl,_top,_items = _grp_data[_gid]
         if not _items: continue
         _span = len(_items)
@@ -6580,37 +6480,16 @@ section[data-testid="stSidebar"] { display: none !important; }
         # Grup arası boşluk
         _border_l = "border-left:2px solid #cbd5e1;" if not _ilk else ""
         _ilk = False
-        if _ayar_modu:
-            _idx = _grp_sira.index(_gid)
-            _n = len([g for g in _grp_sira if g in _grp_data and _grp_data[g][3] and g not in _grp_gizli])
-            _sol = "opacity:.3;" if _idx==0 else "cursor:pointer;"
-            _sag = "opacity:.3;" if _idx>=_n-1 else "cursor:pointer;"
-            _h  = f'<th colspan="{_span}" style="border:0.5px solid #e2e8f0;{_border_l}padding:0;background:#fef9c3;text-align:center;">'
-            _h += f'<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px;">'
-            _h += f'<span onclick="gs(\'{_gid}\',\'l\')" style="font-size:10px;{_sol}">◀</span>'
-            _h += f'<b style="font-size:10px;color:#374151;">{_ikon} {_lbl}{_top_txt}</b>'
-            _h += f'<span onclick="gs(\'{_gid}\',\'r\')" style="font-size:10px;{_sag}">▶</span>'
-            _h += f'<span onclick="gg(\'{_gid}\')" style="font-size:11px;cursor:pointer;">🙈</span>'
-            _h += '</div></th>'
-        else:
-            _h = f'<th colspan="{_span}" style="border:0.5px solid #e2e8f0;{_border_l}padding:4px 10px;background:#f8fafc;text-align:center;font-size:12px;font-weight:700;color:#374151;white-space:nowrap;">{_ikon} {_lbl}{_top_txt}</th>'
+        _h = f'<th colspan="{_span}" style="border:0.5px solid #e2e8f0;{_border_l}padding:4px 10px;background:#f8fafc;text-align:center;font-size:12px;font-weight:700;color:#374151;white-space:nowrap;">{_ikon} {_lbl}{_top_txt}</th>'
         _html += _h
 
-    # Gizli gruplar için ayar modunda göster
-    if _ayar_modu:
-        for _gid in _grp_sira:
-            if _gid in _grp_gizli and _gid in _grp_data:
-                _ikon,_lbl,_top,_items = _grp_data[_gid]
-                _html += "<th onclick=\"gg('" + _gid + "')\" style=\"border:0.5px solid #e2e8f0;padding:3px 5px;background:#fee2e2;cursor:pointer;font-size:9px;white-space:nowrap;\">👁 " + _lbl + "</th>"
-
-    _gear_bg = "#fef9c3" if _ayar_modu else "#f8fafc"
     _html += '</tr></thead>'
 
     # 2. SATIR — sayılar
     _html += '<tbody><tr>'
     _ilk2 = True
     for _gid in _grp_sira:
-        if _gid not in _grp_data or _gid in _grp_gizli: continue
+        if _gid not in _grp_data: continue
         _ikon,_lbl,_top,_items = _grp_data[_gid]
         if not _items: continue
         _grp_ilk = True
@@ -6618,8 +6497,7 @@ section[data-testid="stSidebar"] { display: none !important; }
             _bg = "background:#dbeafe;" if _aktif else "background:#fff;"
             _tc = "color:#1d4ed8;font-weight:700;" if _aktif else "color:#0f172a;"
             _border_l2 = ("border-left:2px solid #cbd5e1;" if not _ilk2 and _grp_ilk else "")
-            _td_onclick = f"sf('{_key}')"
-            _html += f'<td onclick="{_td_onclick}" style="border:0.5px solid #f1f5f9;{_border_l2}padding:4px 7px;text-align:center;cursor:pointer;white-space:nowrap;{_bg}vertical-align:middle;min-width:50px;">'
+            _html += f'<td style="border:0.5px solid #f1f5f9;{_border_l2}padding:4px 7px;text-align:center;white-space:nowrap;{_bg}vertical-align:middle;min-width:50px;">'
             _html += f'<div style="font-size:18px;line-height:1;margin-bottom:4px;">{_ic}</div>'
             _html += f'<div style="font-size:14px;font-weight:600;{_tc};line-height:1;">{_sayi}</div>'
             _html += f'<div style="font-size:14px;font-weight:500;color:#374151;line-height:1;">{_ad}</div>'
@@ -6628,125 +6506,10 @@ section[data-testid="stSidebar"] { display: none !important; }
             _ilk2 = False
 
     _html += '</tr></tbody></table></div>'
-    import json as _rjson2
-    _html += f"""<script>
-var _s={_rjson2.dumps(_grp_sira)};
-function sf(k){{
-  if(k==='_ayar_toggle'){{
-    var u=new URL(window.parent.location.href);
-    u.searchParams.set("_rfil","_ayar_toggle");
-    window.parent.location.replace(u.toString());
-    return;
-  }}
-  var u=new URL(window.parent.location.href);u.searchParams.set("_rfil",k);window.parent.location.replace(u.toString());
-}}
-function gg(id){{var u=new URL(window.parent.location.href);var g=JSON.parse(u.searchParams.get("_grp_gizli")||"[]");if(g.includes(id))g=g.filter(x=>x!==id);else g.push(id);u.searchParams.set("_grp_gizli",JSON.stringify(g));window.parent.location.replace(u.toString());}}
-function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse(u.searchParams.get("_grp_sira")||JSON.stringify(_s));var i=s.indexOf(id);if(dir==="l"&&i>0){{var t=s[i-1];s[i-1]=s[i];s[i]=t;}}else if(dir==="r"&&i<s.length-1){{var t=s[i+1];s[i+1]=s[i];s[i]=t;}}u.searchParams.set("_grp_sira",JSON.stringify(s));window.parent.location.replace(u.toString());}}
-</script>"""
     st.markdown(_html, unsafe_allow_html=True)
 
 
-    # Grup ayar param
-    _qp_grp_gizli = st.query_params.get("_grp_gizli","")
-    _qp_grp_sira  = st.query_params.get("_grp_sira","")
-    if _qp_grp_gizli or _qp_grp_sira:
-        if _qp_grp_gizli:
-            try: st.session_state["_rbar_grp_gizli"] = _rjson.loads(_qp_grp_gizli)
-            except: pass
-        if _qp_grp_sira:
-            try: st.session_state["_rbar_grp_sira"] = _rjson.loads(_qp_grp_sira)
-            except: pass
-        st.query_params.clear(); st.rerun()
 
-    # Query param'dan filtre oku
-    _qp_rfil = st.query_params.get("_rfil", "")
-    if _qp_rfil:
-        st.query_params.clear()
-        _fk_sfx_now = st.session_state.get("_filtre_reset_sayac", 0)
-
-        def _rapor_kutuya_ekle(_hedef_key, _deger):
-            """Üst rapor rozetine tıklanınca değeri ilgili filtre kutusuna (Aşama.../Durum...) ekler.
-            Kutuda zaten varsa tekrar eklemez — hem tek tek hem toplu tıklama birikerek çalışır."""
-            _cur = list(st.session_state.get(_hedef_key, []))
-            if _deger not in _cur:
-                _cur.append(_deger)
-            st.session_state[_hedef_key] = _cur
-            st.session_state[f"{_hedef_key}_{_fk_sfx_now}"] = _cur
-
-        def _tekli_asama_temizle():
-            """Eski tekli-kolon (1/2/3. Aşama) yedek filtrelerini temizler — genel kutuyla çakışmasın diye"""
-            for _fk in ["_cl_fil_asama1", "_cl_fil_asama2", "_cl_fil_asama3", "_cl_fil_sonuc"]:
-                st.session_state.pop(_fk, None)
-
-        if _qp_rfil == "toplam":
-            st.session_state["_toplam_aktif"] = True
-            st.session_state["_asamasiz_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = False
-            st.session_state["_filtre_reset_sayac"] = st.session_state.get("_filtre_reset_sayac",0)+1
-            _tekli_asama_temizle()
-            for _fk in ["_cl_fil_durum_multi","_cl_fil_asama_multi","_cl_fil_il_multi","_cl_fil_ilce_multi"]:
-                st.session_state.pop(_fk, None)
-        elif _qp_rfil == "asamasiz":
-            st.session_state["_asamasiz_aktif"] = True
-            st.session_state["_toplam_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = False
-            _tekli_asama_temizle()
-            st.session_state.pop("_cl_fil_durum_multi", None)
-            st.session_state["_cl_fil_asama_multi"] = []
-        elif _qp_rfil == "mesaj_gercek":
-            # "💬 Mesaj" kutusuna tıklanınca — gerçekten mesaj/whatsapp/email
-            # kaydı olan (veya manuel override edilmiş) müşterileri filtrele.
-            st.session_state["_toplam_aktif"] = False
-            st.session_state["_asamasiz_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = True
-            _tekli_asama_temizle()
-            st.session_state.pop("_cl_fil_durum_multi", None)
-            st.session_state["_cl_fil_asama_multi"] = []
-        elif _qp_rfil.startswith("durum_"):
-            _d = _qp_rfil[6:]
-            st.session_state["_toplam_aktif"] = False
-            st.session_state["_asamasiz_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = False
-            _rapor_kutuya_ekle("_cl_fil_durum_multi", _d)
-        elif _qp_rfil.startswith("asama_"):
-            _a = _qp_rfil[6:]
-            st.session_state["_toplam_aktif"] = False
-            st.session_state["_asamasiz_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = False
-            _rapor_kutuya_ekle("_cl_fil_asama_multi", _a)
-        elif _qp_rfil.startswith("asama1_"):
-            _a = _qp_rfil[7:]
-            st.session_state["_toplam_aktif"] = False
-            st.session_state["_asamasiz_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = False
-            _tekli_asama_temizle()
-            st.session_state["_cl_fil_asama1"] = _a
-            _rapor_kutuya_ekle("_cl_fil_asama_multi", _a)
-        elif _qp_rfil.startswith("asama2_"):
-            _a = _qp_rfil[7:]
-            st.session_state["_toplam_aktif"] = False
-            st.session_state["_asamasiz_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = False
-            _tekli_asama_temizle()
-            st.session_state["_cl_fil_asama2"] = _a
-            _rapor_kutuya_ekle("_cl_fil_asama_multi", _a)
-        elif _qp_rfil.startswith("asama3_"):
-            _a = _qp_rfil[7:]
-            st.session_state["_toplam_aktif"] = False
-            st.session_state["_asamasiz_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = False
-            _tekli_asama_temizle()
-            st.session_state["_cl_fil_asama3"] = _a
-            _rapor_kutuya_ekle("_cl_fil_asama_multi", _a)
-        elif _qp_rfil.startswith("sonuc_"):
-            _a = _qp_rfil[6:]
-            st.session_state["_toplam_aktif"] = False
-            st.session_state["_asamasiz_aktif"] = False
-            st.session_state["_mesaj_gercek_aktif"] = False
-            _tekli_asama_temizle()
-            st.session_state["_cl_fil_sonuc"] = _a
-            _rapor_kutuya_ekle("_cl_fil_asama_multi", _a)
-        st.rerun()
 
 
     # ── GELİŞMİŞ FİLTRE PANEL ────────────────────────────────────────────────
@@ -6806,18 +6569,13 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
 
 
         _fk_sfx = st.session_state.get("_filtre_reset_sayac", 0)
-        _asama_def = [] if st.session_state.get("_filtre_sifirla_flag") else [x for x in st.session_state.get("_cl_fil_asama_multi",[]) if x in tum_asama_opts]
+        _asama_def = [x for x in st.session_state.get("_cl_fil_asama_multi",[]) if x in tum_asama_opts]
         _asama_sec = _fc[3].multiselect("a", tum_asama_opts, default=_asama_def, key=f"_cl_fil_asama_multi_{_fk_sfx}", placeholder="Aşama...", label_visibility="collapsed")
         st.session_state["_cl_fil_asama_multi"] = _asama_sec
-        # Kutudan çıkarılmış/değiştirilmiş bir değer için eski tekli-kolon yedeği (asama1/2/3/sonuc) takılı kalmasın
-        for _fk_stale in ["_cl_fil_asama1", "_cl_fil_asama2", "_cl_fil_asama3", "_cl_fil_sonuc"]:
-            _fv_stale = st.session_state.get(_fk_stale)
-            if _fv_stale and _fv_stale not in _asama_sec:
-                st.session_state.pop(_fk_stale, None)
 
         _fk_sfx = st.session_state.get("_filtre_reset_sayac", 0)
         _durum_opts_tumu = [x for x in tum_durum_opts if str(x).upper() not in ["NONE","NAN",""]]
-        _durum_def = [] if st.session_state.get("_filtre_sifirla_flag") else [x for x in st.session_state.get("_cl_fil_durum_multi",[]) if x in _durum_opts_tumu]
+        _durum_def = [x for x in st.session_state.get("_cl_fil_durum_multi",[]) if x in _durum_opts_tumu]
         _durum_sec_raw = _fc[4].multiselect("d", _durum_opts_tumu, default=_durum_def, key=f"_cl_fil_durum_multi_{_fk_sfx}", placeholder="Durum...", label_visibility="collapsed")
         st.session_state["_cl_fil_durum_multi"] = _durum_sec_raw
         _durum_sec = _durum_sec_raw
@@ -7029,8 +6787,6 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
             else:
                 st.caption(f"✅ '{_yf_ara}' ile eşleşen kayıtlı müşteri yok — yeni firma olarak güvenle eklenebilir.")
 
-        if st.session_state.get("_filtre_sifirla_flag"):
-            del st.session_state["_filtre_sifirla_flag"]
 
 
     # Varsayılan: hiçbir filtre seçilmemişse tüm liste gelsin
@@ -7044,16 +6800,9 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
     if not st.session_state.get("_toplam_aktif") and \
        not st.session_state.get("_cl_fil_durum_multi") and \
        not st.session_state.get("_cl_fil_asama_multi") and \
-       not st.session_state.get("_asamasiz_aktif") and \
-       not st.session_state.get("_mesaj_gercek_aktif") and \
-       not st.session_state.get("_cl_fil_asama1") and \
-       not st.session_state.get("_cl_fil_asama2") and \
-       not st.session_state.get("_cl_fil_asama3") and \
-       not st.session_state.get("_cl_fil_sonuc") and \
        not st.session_state.get("_cl_fil_il_multi") and \
        not st.session_state.get("_cl_fil_ilce_multi") and \
        not st.session_state.get("_cl_fil_ozel_multi") and \
-       not st.session_state.get("_cl_fil_guncelleme_tarih_multi") and \
        not (_cl_ozel_filtre_widget_anahtari_erken and st.session_state.get(_cl_ozel_filtre_widget_anahtari_erken)) and \
        not st.session_state.get("_cl_fil_sonuc_multi") and \
        not st.session_state.get("_cl_fil_rut_multi"):
@@ -7072,21 +6821,7 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
     # Toplam aktifse tüm filtreleri zorla sıfırla
     if st.session_state.get("_toplam_aktif", False):
         _asama_sec = []; _durum_sec = []; _il_sec = []; _ilce_sec = []; _guncelleme_tarih_sec = []; _ozel_sec = []; _rut_sec = []
-        for _fk in ["_cl_fil_asama1","_cl_fil_asama2","_cl_fil_asama3","_cl_fil_sonuc"]:
-            st.session_state.pop(_fk, None)
-    # Aşamasız filtresi
-    if st.session_state.get("_asamasiz_aktif", False):
-        _tum_asama_set = set(_grp1_asama + _grp2_asama + _grp3_asama + _grp4_asama + _grp5_asama)
-        if "islem_asamasi" in df_f.columns:
-            df_f = df_f[df_f["islem_asamasi"].isna() | ~df_f["islem_asamasi"].isin(_tum_asama_set)]
-    # "💬 Mesaj" kutusuna tıklanınca — gerçek mesaj/whatsapp/email kaydı olan
-    # (veya manuel override edilmiş) müşterilerle filtrele.
-    elif st.session_state.get("_mesaj_gercek_aktif", False):
-        if "id" in df_f.columns:
-            _mg_idler = _rbar_mesaj_id_seti_yukle()
-            df_f = df_f[df_f["id"].astype(str).isin(_mg_idler)]
-    # Toplam butonuna basıldıysa hiçbir filtre uygulanmaz
-    elif not st.session_state.get("_toplam_aktif", False):
+    if not st.session_state.get("_toplam_aktif", False):
         if _asama_sec:
             # Aşama değerleri (Randevu, Teklif, TAKİP, Sözleşme...) ile Sonuç değerlerini (Kazanıldı, Kaybedildi, Devam Ediyor)
             # ayrı gruplar olarak ele alıyoruz: kendi grubu içinde VEYA (OR), gruplar arasında VE (AND).
@@ -7114,19 +6849,6 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
             else:
                 _asama_mask = _sonuc_mask
             df_f = df_f[_asama_mask]
-        # asama1/2/3/sonuc filtresi — hangi kolonda olduğuna bakılmaksızın, büyük/küçük harf farkı yok sayılarak eşleşeni yakalar
-        _tekli_asama_hedef = (st.session_state.get("_cl_fil_asama1") or
-                               st.session_state.get("_cl_fil_asama2") or
-                               st.session_state.get("_cl_fil_asama3"))
-        if _tekli_asama_hedef:
-            _tekli_hedef_n = _asama_norm(_tekli_asama_hedef)
-            _tek_mask = pd.Series([False] * len(df_f), index=df_f.index)
-            for _acol in ["islem_asamasi", "asama1", "asama2", "asama3"]:
-                if _acol in df_f.columns:
-                    _tek_mask = _tek_mask | (df_f[_acol].apply(_asama_norm) == _tekli_hedef_n)
-            df_f = df_f[_tek_mask]
-        if st.session_state.get("_cl_fil_sonuc") and "sonuc" in df_f.columns:
-            df_f = df_f[df_f["sonuc"].apply(_asama_norm) == _asama_norm(st.session_state["_cl_fil_sonuc"])]
         if _durum_sec:
             df_f = df_f[df_f["durum"].isin(_durum_sec)]
         if _il_sec:
@@ -7502,7 +7224,7 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
         df_edit["gerceklesen_ciro"] = pd.to_numeric(df_edit["gerceklesen_ciro"], errors="coerce").fillna(0)
     # ── Manuel Analiz / Çıkış İli / Koli-Palet override'ları — DB'den yükle ──
     # (Analiz hesabından ÖNCE yüklenmeli — aşağıda kullanılıyor)
-    for _ov_key in ["_analiz_manuel_override", "_cikis_ili_manuel", "_koli_palet_manuel"]:
+    for _ov_key in ["_cikis_ili_manuel", "_koli_palet_manuel"]:
         if _ov_key not in st.session_state:
             st.session_state[_ov_key] = {}
     if not st.session_state.get("_ekstra_override_yuklendi"):
@@ -7512,12 +7234,11 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
             if _sb_ex0:
                 import json as _exj0
                 _r_ex0 = _sb_ex0.table("kullanici_tercih").select("anahtar,deger").eq("kullanici","__liste_ui__").in_(
-                    "anahtar", ["_analiz_manuel_override", "_cikis_ili_manuel", "_koli_palet_manuel"]).execute()
+                    "anahtar", ["_cikis_ili_manuel", "_koli_palet_manuel"]).execute()
                 for _row_ex in (_r_ex0.data or []):
                     st.session_state[_row_ex["anahtar"]] = _exj0.loads(_row_ex["deger"])
         except:
             pass
-    _analiz_override = st.session_state.get("_analiz_manuel_override", {})
     _cikis_ili_map   = st.session_state.get("_cikis_ili_manuel", {})
     _koli_palet_map  = st.session_state.get("_koli_palet_manuel", {})
 
@@ -7676,8 +7397,6 @@ function gs(id,dir){{var u=new URL(window.parent.location.href);var s=JSON.parse
     # yapardı — bu yüzden kaldırıldı. Notlu müşteriler "📨 Notlar" sütunundaki
     # sayıdan hâlâ görülebiliyor.
 
-    # Sağda not paneli açık mı?
-    _not_panel_id = st.session_state.get("_cl_not_panel_id")
 
     # ── KAYDET BUTONU — TABLONUN ÜSTÜNDE, STICKY ───────────────────────────────
     st.markdown("""<style>
@@ -8944,7 +8663,7 @@ elif aktif == "kullanici":
     # ── ADMİN — tam yetki ─────────────────────────────────────────────────────
     TUM_MENULER = {
         "yeni":"➕ Yeni Kart","liste":"📋 Cari Liste",
-        "excel":"📥 Excel","mesajlar":"💬 Mesajlar",
+        "excel":"📥 Excel",
     }
 
     kul_tab1, kul_tab2, kul_tab3, kul_tab_tanim, kul_tab_kolon, kul_tab_kural = st.tabs(["📋 Kullanıcılar","➕ Yeni Kullanıcı","🔐 Yetki Düzenle","⚙️ Tanımlar","📐 Kolon Ayarları","📌 Kurallar"])
